@@ -1,0 +1,116 @@
+spring:
+  application:
+    name: dormitory-management
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  config:
+    import: optional:file:.env[.properties]
+
+  web:
+    resources:
+      add-mappings: true
+      static-locations: classpath:/static/
+
+  threads:
+    virtual:
+      enabled: true
+
+  jackson:
+    date-format: yyyy-MM-dd'T'HH:mm:ss.SSSXXX
+    time-zone: Asia/Ho_Chi_Minh
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:dormitory_db}?currentSchema=public&reWriteBatchedInserts=true
+    username: ${POSTGRES_USER:dorm_user}
+    password: ${POSTGRES_PASSWORD:dorm_password}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: 5000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:dorm_redis_pass}
+
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${EMAIL_USERNAME:dev}
+    password: ${EMAIL_PASSWORD:dev}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: false
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    connect-retries: 30
+    connect-retries-interval: 5
+
+server:
+  address: 0.0.0.0
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+scalar:
+  path: /scalar
+  enabled: true
+  page-title: "KTX Hub API Reference | Private Dormitory Management System"
+  theme: purple
+  layout: modern
+  show-sidebar: true
+  with-default-fonts: true
+  default-open-all-tags: true
+  order-required-properties-first: true
+  persist-auth: true
+  search-hot-key: k
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    access-token-expiration: ${JWT_ACCESS_EXPIRATION:86400000}
+    refresh-token-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+  cors:
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*}
+  otp:
+    length: 6
+    ttl-minutes: 5
+    max-attempts: 3
+    resend-cooldown-seconds: 60
+    reset-max-per-hour: 3
+  cloudinary:
+    cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+    api-key: ${CLOUDINARY_API_KEY:}
+    api-secret: ${CLOUDINARY_API_SECRET:}

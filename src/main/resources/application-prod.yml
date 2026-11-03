@@ -1,0 +1,35 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/${POSTGRES_DB}?currentSchema=public&reWriteBatchedInserts=true&ssl=true
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      pool-name: DormHikariProdPool
+      maximum-pool-size: 30
+      minimum-idle: 5
+      idle-timeout: 30000
+      connection-timeout: 30000
+      max-lifetime: 1800000
+  jpa:
+    properties:
+      hibernate:
+        format_sql: false
+
+app:
+  jwt:
+    secret: ${JWT_SECRET} # Fail-Fast: Bắt buộc truyền biến môi trường ở Production
+  cloudinary:
+    cloud-name: ${CLOUDINARY_CLOUD_NAME}
+    api-key: ${CLOUDINARY_API_KEY}
+    api-secret: ${CLOUDINARY_API_SECRET}
+
+logging:
+  level:
+    root: WARN
+    com.uit.dormmanagement: INFO
+    org.flywaydb: INFO
+    org.hibernate.SQL: WARN

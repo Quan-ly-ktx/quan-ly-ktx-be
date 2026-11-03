@@ -28,7 +28,11 @@ spring:
 app:
   jwt:
     secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-    expiration-ms: 86400000
-    refresh-expiration-ms: 604800000
-  mail:
-    otp-expiration-seconds: 300
+    access-token-expiration: 86400000
+    refresh-token-expiration: 604800000
+  otp:
+    length: 6
+    ttl-minutes: 5
+    max-attempts: 3
+    resend-cooldown-seconds: 60
+    reset-max-per-hour: 3
