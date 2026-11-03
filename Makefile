@@ -29,19 +29,19 @@ help:
 
 # Khởi động PostgreSQL và Redis
 up:
-	$(DOCKER_COMPOSE) -f docker/docker-compose.yml --env-file .env up -d
+	$(DOCKER_COMPOSE) -p dorm -f docker/docker-compose.yml --env-file .env up -d
 
 # Tắt các container
 down:
-	$(DOCKER_COMPOSE) -f docker/docker-compose.yml --env-file .env down
+	$(DOCKER_COMPOSE) -p dorm -f docker/docker-compose.yml --env-file .env down
 
 # Xem logs của các container
 logs:
-	$(DOCKER_COMPOSE) -f docker/docker-compose.yml --env-file .env logs -f
+	$(DOCKER_COMPOSE) -p dorm -f docker/docker-compose.yml --env-file .env logs -f
 
 # Xem trạng thái các container
 ps:
-	$(DOCKER_COMPOSE) -f docker/docker-compose.yml --env-file .env ps
+	$(DOCKER_COMPOSE) -p dorm -f docker/docker-compose.yml --env-file .env ps
 
 # Format code chuẩn Google Java Format (thông qua Spotless plugin)
 format:
@@ -69,5 +69,5 @@ clean:
 
 # Reset toàn bộ database và Redis (xóa volume và khởi động lại container mới tinh)
 db-reset:
-	$(DOCKER_COMPOSE) -f docker/docker-compose.yml --env-file .env down -v
-	$(DOCKER_COMPOSE) -f docker/docker-compose.yml --env-file .env up -d
+	$(DOCKER_COMPOSE) -p dorm -f docker/docker-compose.yml --env-file .env down -v
+	$(DOCKER_COMPOSE) -p dorm -f docker/docker-compose.yml --env-file .env up -d

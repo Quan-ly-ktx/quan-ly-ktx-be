@@ -2,6 +2,7 @@ package com.uit.dormmanagement.repositories;
 
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.enums.ContractStatus;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -23,4 +24,16 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
   Optional<Contract> findByBedIdAndStatus(UUID bedId, ContractStatus status);
 
   Optional<Contract> findByTenantIdAndStatus(UUID tenantId, ContractStatus status);
+
+  boolean existsByBedIdAndStatusInAndDeletedAtIsNull(
+      UUID bedId, Collection<ContractStatus> statuses);
+
+  boolean existsByBed_Room_IdAndStatusInAndDeletedAtIsNull(
+      UUID roomId, Collection<ContractStatus> statuses);
+
+  List<Contract> findByBedIdInAndStatusInAndDeletedAtIsNull(
+      Collection<UUID> bedIds, Collection<ContractStatus> statuses);
+
+  Optional<Contract> findFirstByBedIdAndStatusInAndDeletedAtIsNull(
+      UUID bedId, Collection<ContractStatus> statuses);
 }

@@ -1,5 +1,5 @@
 # TÀI LIỆU THIẾT KẾ MÔ HÌNH DỮ LIỆU MỨC KHÁI NIỆM (CONCEPTUAL ERD)
-## DỰ ÁN: HỆ THỐNG QUẢN LÝ KÝ TÚC XÁ TƯ NHÂN & SLEEPBOX (KTX HUB / PDMS)
+## DỰ ÁN: HỆ THỐNG QUẢN LÝ KÝ TÚC XÁ TƯ NHÂN (KTX HUB / PDMS)
 
 ---
 
@@ -18,9 +18,9 @@
 Mô hình dữ liệu KTX Hub được thiết kế dựa trên thực tế vận hành chính xác của ứng dụng Prototype:
 
 1. **Quản lý duy nhất 01 Tòa nhà theo Tầng (Single-facility Architecture):**
-   - Không có khái niệm nhiều tòa nhà hay chi nhánh. Toàn bộ cơ sở lưu trú là **01 Tòa nhà duy nhất**, được phân cấp quản lý theo **Tầng** (`floor: 1, 2, 3, 4`).
+   - Không có khái niệm nhiều tòa nhà hay chi nhánh. Toàn bộ cơ sở lưu trú là **01 Tòa nhà duy nhất**, được phân cấp quản lý theo **Tầng** linh hoạt (`floor: 1, 2, 3...`).
 2. **Quản lý theo vị trí giường riêng biệt (Bed-level Tracking):**
-   - Đơn vị cho thuê và quản lý là từng vị trí giường tiêu chuẩn (`G01, G02, ...`), có đơn giá thuê và khách thuê riêng biệt trong từng phòng.
+   - Đơn vị cho thuê và quản lý là từng vị trí giường tiêu chuẩn (`G01, G02, ...`), áp dụng giá thuê đồng nhất theo phòng và khách thuê riêng biệt trong từng phòng.
    - Khóa vị trí giường duy nhất: `RoomCode-BedCode` (Ví dụ: `P.302-G02`).
 3. **Quy tắc cách ly giới tính nghiêm ngặt 100% (Gender Isolation Policy):**
    - Mỗi phòng gắn cố định chính sách giới tính (`Nam` hoặc `Nữ`). Hệ thống tuyệt đối ngăn chặn việc xếp khách khác giới tính vào cùng phòng.
@@ -50,7 +50,7 @@ Hệ thống được tổ chức thành 4 phân vùng nghiệp vụ chính vớ
 |:---:|:---|:---|:---|
 | **I** | **Không gian lưu trú (01 Tòa nhà duy nhất)** | | |
 | 1 | **Phòng** | `ROOM` | Đơn vị phòng ở, thuộc tầng cụ thể (`floor`), có sức chứa, loại phòng, chính sách giới tính cố định (`Nam`/`Nữ`) và đơn giá cơ bản. |
-| 2 | **Giường / Vị trí nằm** | `BED` | Vị trí giường cá nhân tiêu chuẩn (G01, G02...), có đơn giá thuê riêng và trạng thái (`AVAILABLE`, `OCCUPIED`, `MAINTENANCE`). |
+| 2 | **Giường / Vị trí nằm** | `BED` | Vị trí giường cá nhân tiêu chuẩn (G01, G02...), có giá thuê đồng nhất theo phòng và trạng thái độc lập (`AVAILABLE`, `OCCUPIED`, `MAINTENANCE`). Chỉ được bảo trì khi không có người ở. |
 | 3 | **Tiện nghi phòng** | `AMENITY` | Danh mục trang thiết bị phòng (Điều hòa, Nóng lạnh, Tủ lạnh, Tủ cá nhân, Bàn học...). |
 | **II** | **Người dùng & Nhân sự** | | |
 | 4 | **Tài khoản người dùng** | `USER_ACCOUNT` | Danh tính đăng nhập hệ thống (Quản lý - Manager, Kỹ thuật viên - Technician, Khách thuê - Tenant). |
@@ -108,7 +108,7 @@ Bảng dưới đây thống kê **đầy đủ 100% toàn bộ 18 mối quan h�
 
 | STT | Thực thể nguồn | Mối quan hệ | Thực thể đích | Bản số | Ý nghĩa và Ràng buộc nghiệp vụ |
 |:---:|:---|:---:|:---|:---:|:---|
-| 1 | `ROOM` | chứa | `BED` | **1 : 1..N** | Một phòng bắt buộc chứa ít nhất 1 giường (chuẩn 4, 6, 8 giường hoặc sleepbox); mỗi vị trí giường thuộc đúng một phòng xác định. |
+| 1 | `ROOM` | chứa | `BED` | **1 : 1..N** | Một phòng bắt buộc chứa ít nhất 1 giường (chuẩn 4, 6, 8 giường); mỗi vị trí giường thuộc đúng một phòng xác định. |
 | 2 | `ROOM` | trang bị | `AMENITY` | **0..N : 0..M** | Một phòng có thể trang bị nhiều tiện nghi (Máy lạnh, Tủ lạnh, Bình nóng lạnh...); một tiện nghi có thể được trang bị cho nhiều phòng. |
 | 3 | `USER_ACCOUNT` | định danh | `TENANT_PROFILE` | **1 : 0..1** | Một tài khoản người dùng có thể là khách thuê (khi role = `TENANT`); mỗi khách thuê liên kết với tối đa 1 tài khoản đăng nhập. |
 | 4 | `USER_ACCOUNT` | định danh | `STAFF_PROFILE` | **1 : 0..1** | Một tài khoản người dùng có thể là nhân sự nội bộ (khi role = `MANAGER` hoặc `TECHNICIAN`). |

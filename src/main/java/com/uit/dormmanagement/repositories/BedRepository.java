@@ -19,4 +19,6 @@ public interface BedRepository extends JpaRepository<Bed, UUID> {
   List<Bed> findByRoomIdAndStatus(UUID roomId, BedStatus status);
 
   List<Bed> findByStatus(BedStatus status);
+
+  List<Bed> findByRoomIdOrderByBedCodeAsc(UUID roomId);
 }
