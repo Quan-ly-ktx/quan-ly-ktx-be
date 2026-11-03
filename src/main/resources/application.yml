@@ -18,12 +18,6 @@ spring:
   jackson:
     date-format: yyyy-MM-dd'T'HH:mm:ss.SSSXXX
     time-zone: Asia/Ho_Chi_Minh
-    default-property-inclusion: non_null
-    serialization:
-      write-dates-as-timestamps: false
-      fail-on-empty-beans: false
-    deserialization:
-      fail-on-unknown-properties: false
 
   servlet:
     multipart:
