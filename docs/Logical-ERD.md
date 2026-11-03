@@ -1,5 +1,5 @@
 # TÀI LIỆU THIẾT KẾ MÔ HÌNH DỮ LIỆU MỨC LOGIC (LOGICAL ERD)
-## DỰ ÁN: HỆ THỐNG QUẢN LÝ KÝ TÚC XÁ TƯ NHÂN & SLEEPBOX (KTX HUB / PDMS)
+## DỰ ÁN: HỆ THỐNG QUẢN LÝ KÝ TÚC XÁ TƯ NHÂN (KTX HUB / PDMS)
 
 ---
 
@@ -17,7 +17,7 @@
 ## 1. TIÊU CHUẨN THIẾT KẾ VÀ NGUYÊN TẮC TINH GẢN
 
 Lược đồ dữ liệu mức logic được thiết kế bám sát 100% các màn hình và cấu trúc dữ liệu thực tế của Prototype:
-1. **Kiến trúc 01 Tòa nhà theo Tầng (Single-facility Architecture):** Loại bỏ bảng `buildings`. Toàn bộ hệ thống quản lý 01 tòa nhà duy nhất, chia theo các tầng (`floor: 1, 2, 3, 4`).
+1. **Kiến trúc 01 Tòa nhà theo Tầng (Single-facility Architecture):** Loại bỏ bảng `buildings`. Toàn bộ hệ thống quản lý 01 tòa nhà duy nhất, chia theo các tầng linh hoạt (`floor: 1, 2, 3...`).
 2. **Khách thuê đa đối tượng:** Bảng `tenants` loại bỏ hoàn toàn các trường học vị đại học (`university`, `faculty`, `student_code`, `priority_type`).
 3. **Mô hình Thuê trọn gói (All-inclusive Rental):** Loại bỏ bảng công tơ phụ từng phòng (`meter_readings`) và bảng chia tiền lẻ (`proration_details`). Hóa đơn hàng tháng thu tiền phòng trọn gói.
 4. **Hạch toán Lợi nhuận ròng thực tế:** Bổ sung bảng `facility_expenses` để Chủ cơ sở nhập hóa đơn tiền điện EVN, nước, internet tổng của cơ sở, tự động tính:
@@ -109,7 +109,6 @@ erDiagram
         int total_beds
         int occupied_beds
         numeric base_price
-        text status
         timestamptz deleted_at
     }
 
@@ -257,12 +256,11 @@ erDiagram
 | `id` | `uuid` | No | PK | `gen_random_uuid()` | Khóa chính UUID v4 bảo mật |
 | `room_number` | `text` | No | UK | | Số phòng duy nhất trong tòa nhà (VD: "P.102", "P.201", "P.302", "P.401") |
 | `floor` | `int` | No | | | Số tầng: `CHECK (floor >= 1 AND floor <= 10)` |
-| `room_type` | `text` | No | | | `CHECK (room_type IN ('4 giường', '6 giường', '8 giường', 'Sleepbox'))` |
+| `room_type` | `text` | No | | | `CHECK (room_type IN ('4 giường', '6 giường', '8 giường'))` |
 | `gender_policy` | `text` | No | | | `CHECK (gender_policy IN ('Nam', 'Nữ'))` (**Cách ly giới tính 100%**) |
 | `total_beds` | `int` | No | | | Sức chứa tối đa của phòng: `CHECK (total_beds > 0 AND total_beds <= 16)` |
 | `occupied_beds` | `int` | No | | `0` | Số giường đang có người ở: `CHECK (occupied_beds >= 0 AND occupied_beds <= total_beds)` |
-| `base_price` | `numeric(12,2)`| No | | | Đơn giá thuê tiêu chuẩn / tháng (VNĐ) |
-| `status` | `text` | No | | `'Trống'` | `CHECK (status IN ('Trống', 'Đang ở', 'Bảo trì'))` |
+| `base_price` | `numeric(12,2)`| No | | | Đơn giá thuê trọn gói hàng tháng đồng nhất cho các giường trong phòng (VNĐ) |
 | `deleted_at` | `timestamptz` | Yes | | `NULL` | Soft delete |
 
 #### Bảng: `beds` (Vị trí Giường / Slot riêng biệt)
@@ -272,8 +270,8 @@ erDiagram
 | `room_id` | `uuid` | No | FK | | Tham chiếu `rooms(id)` ON DELETE RESTRICT |
 | `bed_code` | `text` | No | | | Mã giường (VD: "G01", "G02", "G03", "G04", "G05", "G06") |
 | `slot_key` | `text` | No | UK | | Khóa vị trí duy nhất toàn tòa nhà: `RoomCode-BedCode` (VD: "P.302-G02") |
-| `price` | `numeric(12,2)`| No | | | Đơn giá thuê riêng của vị trí giường này (VNĐ) |
-| `status` | `text` | No | | `'Sẵn sàng'` | `CHECK (status IN ('Sẵn sàng', 'Đang thuê', 'Bảo trì'))` |
+| `price` | `numeric(12,2)`| No | | | Đơn giá thuê vị trí giường (đồng nhất kế thừa từ `rooms.base_price`) |
+| `status` | `text` | No | | `'Sẵn sàng'` | `CHECK (status IN ('Sẵn sàng', 'Đang thuê', 'Bảo trì'))` (**Chỉ được bảo trì khi không có khách ở**) |
 
 #### Bảng: `amenities` (Danh mục Tiện nghi)
 | Cột | Kiểu dữ liệu | Null | Khóa | Mặc định | Ràng buộc / Mô tả |
@@ -611,6 +609,36 @@ CREATE TRIGGER trg_check_gender_isolation
 BEFORE INSERT OR UPDATE ON contracts
 FOR EACH ROW
 EXECUTE FUNCTION validate_gender_isolation();
+```
+
+### 6.3. Ràng buộc Bảo trì Giường Độc lập (Bed Maintenance Invariant Trigger)
+```sql
+CREATE OR REPLACE FUNCTION validate_bed_maintenance()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status = 'Bảo trì' THEN
+        IF OLD.status = 'Đang thuê' THEN
+            RAISE EXCEPTION 'VI PHAM NGUYEN TAC BAO TRI GIUONG (BR-01): Khong the chuyen giuong dang co nguoi o sang trang thai bao tri';
+        END IF;
+        
+        IF EXISTS (
+            SELECT 1 FROM contracts 
+            WHERE bed_id = NEW.id 
+              AND status IN ('Hiệu lực', 'Sắp hết hạn') 
+              AND deleted_at IS NULL
+        ) THEN
+            RAISE EXCEPTION 'VI PHAM NGUYEN TAC BAO TRI GIUONG (BR-01): Khong the chuyen giuong dang co hop dong hieu luc sang trang thai bao tri';
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_check_bed_maintenance
+BEFORE UPDATE OF status ON beds
+FOR EACH ROW
+EXECUTE FUNCTION validate_bed_maintenance();
 ```
 
 ---
