@@ -22,10 +22,6 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET} # Fail-Fast: Bắt buộc truyền biến môi trường ở Production
-  cloudinary:
-    cloud-name: ${CLOUDINARY_CLOUD_NAME}
-    api-key: ${CLOUDINARY_API_KEY}
-    api-secret: ${CLOUDINARY_API_SECRET}
 
 logging:
   level:
