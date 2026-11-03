@@ -4,9 +4,6 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST}:${POSTGRES_PORT:5432}/${POSTGRES_DB}?currentSchema=public&reWriteBatchedInserts=true&ssl=true
-    username: ${POSTGRES_USER}
-    password: ${POSTGRES_PASSWORD}
     hikari:
       pool-name: DormHikariProdPool
       maximum-pool-size: 30
