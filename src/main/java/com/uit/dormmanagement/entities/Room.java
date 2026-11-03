@@ -1,7 +1,6 @@
 package com.uit.dormmanagement.entities;
 
 import com.uit.dormmanagement.enums.GenderPolicy;
-import com.uit.dormmanagement.enums.RoomStatus;
 import com.uit.dormmanagement.enums.RoomType;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -62,11 +61,6 @@ public class Room {
 
   @Column(name = "base_price", nullable = false, precision = 12, scale = 2)
   private BigDecimal basePrice;
-
-  @Enumerated(EnumType.STRING)
-  @Column(nullable = false)
-  @Builder.Default
-  private RoomStatus status = RoomStatus.AVAILABLE;
 
   @Column(name = "deleted_at")
   private Instant deletedAt;
