@@ -6,7 +6,7 @@
 | Thông tin tài liệu | Chi tiết |
 |:---|:---|
 | **Dự án** | Private Dormitory Management System (PDMS / KTX Hub) |
-| **Phiên bản (Version)** | 3.0 (Chuẩn hóa tinh gọn khớp 100% UI Prototype: 01 Tòa nhà, Giá trọn gói, Hạch toán Lợi nhuận ròng) |
+| **Phiên bản (Version)** | 3.1 (Bổ sung bảng contract_documents hỗ trợ upload đa tệp minh chứng & Chuẩn hóa bảng vehicles) |
 | **Hệ quản trị CSDL** | PostgreSQL 15+ LTS (Theo quy chuẩn `postgres-patterns`) |
 | **Trạng thái (Status)** | Đã phê duyệt (Approved for Implementation & Database Migration) |
 | **Tác giả / Biên soạn** | Ban Kỹ thuật & Quản trị Dữ liệu KTX Hub |
@@ -27,7 +27,8 @@ Lợi nhuận ròng = Doanh thu thực thu - Chi phí sửa chữa hoàn thành 
 5. **Đồng bộ Thứ tự ưu tiên & Kỷ luật:**
    - Bảng `maintenance_tickets` có thuộc tính `priority` (`Khẩn cấp`, `Cao`, `Bình thường`) và chỉ mục tối ưu cho kỹ thuật viên.
    - Bảng `violations` chuẩn hóa đúng các trường ghi nhận vi phạm trên UI: Người thuê, Phòng, Loại vi phạm, Mức độ (`Nhắc nhở`, `Cảnh cáo`, `Phạt tiền`), Tiền phạt, Ghi chú.
-6. **Phương tiện hầm xe:** Bảng `vehicles` liên kết trực tiếp với `tenants`, lưu biển số, thẻ từ và ảnh cà vẹt xe.
+6. **Phương tiện hầm xe:** Bảng `vehicles` liên kết trực tiếp với `tenants`, tách hãng xe (`brand`) và màu xe (`color`), lưu biển số, thẻ từ, 2 ảnh cà vẹt xe và hỗ trợ Soft Delete (`deleted_at`).
+7. **Minh chứng Hợp đồng Đa tệp:** Bổ sung bảng `contract_documents` liên kết 1:N với `contracts` để lưu trữ nhiều trang ảnh chụp hợp đồng giấy, phụ lục gia hạn cư trú linh hoạt và biên bản bàn giao.
 
 ---
 
@@ -44,6 +45,7 @@ erDiagram
     
     tenants ||--o{ contracts : "ký hợp đồng"
     beds ||--o{ contracts : "được thuê trong"
+    contracts ||--o{ contract_documents : "đính kèm nhiều tệp minh chứng"
     
     contracts ||--o{ invoices : "phát sinh tiền trọn gói"
     invoices ||--o{ payment_transactions : "thanh toán bằng"
@@ -150,6 +152,17 @@ erDiagram
         timestamptz deleted_at
     }
 
+    contract_documents {
+        uuid id PK
+        uuid contract_id FK
+        text file_name
+        text file_url
+        text file_type
+        bigint file_size
+        text document_category
+        timestamptz uploaded_at
+    }
+
     invoices {
         uuid id PK
         text invoice_code UK
@@ -235,12 +248,14 @@ erDiagram
         uuid tenant_id FK
         text vehicle_type
         text license_plate UK
-        text brand_and_color
+        text brand
+        text color
         text card_code UK
         text status
         text registration_front_url
         text registration_back_url
         timestamptz created_at
+        timestamptz deleted_at
     }
 ```
 
@@ -349,14 +364,28 @@ Thuộc tính `users.role` đóng vai trò phân định nhánh hồ sơ (Discri
 | `tenant_id` | `uuid` | No | FK | | Tham chiếu `tenants(id)` ON DELETE RESTRICT |
 | `bed_id` | `uuid` | No | FK | | Tham chiếu `beds(id)` ON DELETE RESTRICT |
 | `start_date` | `date` | No | | | Ngày bắt đầu hiệu lực (VD: '01/09/2026') |
-| `end_date` | `date` | No | | | Ngày hết hạn hợp đồng (Mặc định thời hạn 1 năm) |
+| `end_date` | `date` | No | | | Ngày hết hạn hợp đồng: `CHECK (end_date >= start_date)` (Linh hoạt theo thỏa thuận thực tế) |
 | `monthly_rent` | `numeric(12,2)`| No | | | Tiền thuê trọn gói hàng tháng (VNĐ) |
 | `deposit_amount`| `numeric(12,2)`| No | | | Tiền cọc giữ chỗ (chuẩn 1 tháng tiền phòng) |
 | `status` | `text` | No | | `'Hiệu lực'`| `CHECK (status IN ('Hiệu lực', 'Sắp hết hạn', 'Đã thanh lý'))` |
-| `contract_document_url`| `text`| Yes | | `NULL` | URL/Đường dẫn ảnh chụp hoặc file scan hợp đồng giấy đã ký |
+| `contract_document_url`| `text`| Yes | | `NULL` | [Tùy chọn tương thích] URL xem nhanh tài liệu chính |
 | `signed_at` | `timestamptz` | Yes | | `NULL` | Thời điểm ký kết |
 | `created_at` | `timestamptz` | No | | `now()` | Thời điểm tạo hợp đồng |
 | `deleted_at` | `timestamptz` | Yes | | `NULL` | Soft delete |
+
+#### Bảng: `contract_documents` (Tài liệu & Minh chứng Hợp đồng Đa tệp)
+*Cho phép Quản lý upload nhiều trang ảnh chụp hợp đồng giấy, file scan PDF/DOCX, ảnh phụ lục gia hạn cư trú và biên bản bàn giao phòng.*
+
+| Cột | Kiểu dữ liệu | Null | Khóa | Mặc định | Ràng buộc / Mô tả |
+|:---|:---|:---:|:---:|:---|:---|
+| `id` | `uuid` | No | PK | `gen_random_uuid()` | Khóa chính UUID v4 bảo mật |
+| `contract_id` | `uuid` | No | FK | | Tham chiếu `contracts(id)` ON DELETE CASCADE |
+| `file_name` | `text` | No | | | Tên tệp gốc khi tải lên (VD: "hop-dong-p302-trang1.jpg", "phu-luc-gia-han.pdf") |
+| `file_url` | `text` | No | | | Đường dẫn/URL lưu trữ tệp tin trên hệ thống |
+| `file_type` | `text` | No | | | Định dạng tệp tin: "image/jpeg", "image/png", "application/pdf", "application/docx" |
+| `file_size` | `bigint` | Yes | | `NULL` | Dung lượng tệp tin (bytes) |
+| `document_category` | `text` | No | | `'ORIGINAL_CONTRACT'`| Phân loại: `CHECK (document_category IN ('ORIGINAL_CONTRACT', 'RENEWAL_ANNEX', 'CHECKOUT_HANDOVER', 'OTHER'))` |
+| `uploaded_at` | `timestamptz` | No | | `now()` | Thời điểm tải tệp tin lên |
 
 #### Bảng: `invoices` (Hóa đơn Tiền phòng & Dịch vụ Trọn gói Hàng tháng)
 | Cột              | Kiểu dữ liệu    | Null | Khóa | Mặc định       | Ràng buộc / Mô tả                                                                                                      |
@@ -459,14 +488,16 @@ Thuộc tính `users.role` đóng vai trò phân định nhánh hồ sơ (Discri
 |:---|:---|:---:|:---:|:---|:---|
 | `id` | `uuid` | No | PK | `gen_random_uuid()` | Khóa chính UUID v4 bảo mật |
 | `tenant_id` | `uuid` | No | FK | | Chủ xe: Tham chiếu `tenants(id)` ON DELETE RESTRICT |
-| `vehicle_type` | `text` | No | | `'Xe máy'` | `CHECK (vehicle_type IN ('Xe máy', 'Xe điện', 'Xe đạp'))` |
+| `vehicle_type` | `text` | No | | `'SCOOTER'` | Phân loại: `CHECK (vehicle_type IN ('SCOOTER', 'MANUAL_MOTORCYCLE', 'ELECTRIC_MOTORBIKE', 'ELECTRIC_BICYCLE', 'BICYCLE'))` |
 | `license_plate` | `text` | No | UK | | Biển số xe (VD: `59-X1 889.12`, `59-P2 901.44`) |
-| `brand_and_color`| `text` | No | | | Hãng và màu xe (VD: "Honda Vision Trắng", "Yamaha Grande Xanh") |
+| `brand` | `text` | No | | | Hãng và dòng xe (VD: "Honda Air Blade", "Yamaha Grande") |
+| `color` | `text` | No | | | Màu sơn xe (VD: "Đen nhám", "Trắng ngọc trai") |
 | `card_code` | `text` | Yes | UK | `NULL` | Mã thẻ từ gửi xe cấp phát (gán khi duyệt) |
 | `status` | `text` | No | | `'Chưa cấp thẻ'`| `CHECK (status IN ('Đã cấp thẻ', 'Chưa cấp thẻ', 'Đã thu hồi'))` |
 | `registration_front_url`| `text`| Yes | | `NULL` | Ảnh mặt trước Giấy đăng ký xe (Cà vẹt xe) |
 | `registration_back_url` | `text`| Yes | | `NULL` | Ảnh mặt sau Giấy đăng ký xe (Cà vẹt xe) |
 | `created_at` | `timestamptz` | No | | `now()` | Thời điểm đăng ký |
+| `deleted_at` | `timestamptz` | Yes | | `NULL` | Soft delete (khi gỡ xe khỏi hồ sơ) |
 
 ---
 
@@ -551,6 +582,8 @@ CREATE INDEX idx_ticket_parts_ticket_id ON ticket_replacement_parts (ticket_id);
 CREATE INDEX idx_violations_tenant_id ON violations (tenant_id);
 CREATE INDEX idx_violations_issued_by ON violations (issued_by_staff_id);
 CREATE INDEX idx_vehicles_tenant_id ON vehicles (tenant_id);
+CREATE INDEX idx_contract_documents_contract_id ON contract_documents (contract_id);
+CREATE INDEX idx_vehicles_tenant_deleted ON vehicles (tenant_id, deleted_at);
 ```
 
 ### 5.2. Chỉ mục Composite tối ưu hóa bộ lọc giao diện
