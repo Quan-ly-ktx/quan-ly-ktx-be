@@ -64,6 +64,9 @@ public class LocalStorageServiceImpl implements StorageService {
       } else {
         cleanBaseName = fileNameOnly.replaceAll("[^a-zA-Z0-9_-]", "_");
       }
+      if (cleanBaseName.length() > 100) {
+        cleanBaseName = cleanBaseName.substring(0, 100);
+      }
     }
 
     String uniqueFilename = UUID.randomUUID() + "_" + cleanBaseName + extension;
@@ -131,6 +134,12 @@ public class LocalStorageServiceImpl implements StorageService {
       return;
     }
 
+    // Ensure only regular files are deleted, never directories or root directory
+    if (!Files.isRegularFile(targetFilePath)) {
+      log.warn("Target is not a regular file for deletion: {}", targetFilePath);
+      return;
+    }
+
     try {
       boolean deleted = Files.deleteIfExists(targetFilePath);
       if (deleted) {
@@ -147,7 +156,10 @@ public class LocalStorageServiceImpl implements StorageService {
     if (folder == null || folder.isBlank()) {
       return;
     }
-    if (folder.contains("..") || folder.startsWith("/") || folder.startsWith("\\")) {
+    String trimmedFolder = folder.trim();
+    if (trimmedFolder.contains("..")
+        || trimmedFolder.startsWith("/")
+        || trimmedFolder.startsWith("\\")) {
       throw new BaseAppException(
           WebErrorCode.BAD_REQUEST, "Đường dẫn thư mục không hợp lệ: " + folder);
     }

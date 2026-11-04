@@ -51,6 +51,8 @@ public class OciObjectStorageServiceImpl implements StorageService {
       throw new BaseAppException(WebErrorCode.BAD_REQUEST, "Tệp tải lên không được để trống");
     }
 
+    validateFolder(folder);
+
     String originalFilename = file.getOriginalFilename();
     String extension = "";
     String cleanBaseName = "file";
@@ -63,6 +65,9 @@ public class OciObjectStorageServiceImpl implements StorageService {
         cleanBaseName = fileNameOnly.substring(0, dotIndex).replaceAll("[^a-zA-Z0-9_-]", "_");
       } else {
         cleanBaseName = fileNameOnly.replaceAll("[^a-zA-Z0-9_-]", "_");
+      }
+      if (cleanBaseName.length() > 100) {
+        cleanBaseName = cleanBaseName.substring(0, 100);
       }
     }
 
@@ -96,5 +101,18 @@ public class OciObjectStorageServiceImpl implements StorageService {
       return;
     }
     log.info("Simulating OCI file deletion for URL: {}", fileUrl);
+  }
+
+  private void validateFolder(String folder) {
+    if (folder == null || folder.isBlank()) {
+      return;
+    }
+    String trimmedFolder = folder.trim();
+    if (trimmedFolder.contains("..")
+        || trimmedFolder.startsWith("/")
+        || trimmedFolder.startsWith("\\")) {
+      throw new BaseAppException(
+          WebErrorCode.BAD_REQUEST, "Đường dẫn thư mục không hợp lệ: " + folder);
+    }
   }
 }

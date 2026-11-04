@@ -163,4 +163,35 @@ class LocalStorageServiceTest {
       Files.deleteIfExists(outsideFile);
     }
   }
+
+  @Test
+  @DisplayName("deleteFile should not delete directory when passed directory path")
+  void deleteFile_shouldNotDeleteDirectory() throws IOException {
+    Path subDir = tempDir.resolve("contracts");
+    Files.createDirectories(subDir);
+    assertThat(Files.isDirectory(subDir)).isTrue();
+
+    storageService.deleteFile("/uploads/contracts");
+    assertThat(Files.exists(subDir)).isTrue();
+    assertThat(Files.isDirectory(subDir)).isTrue();
+
+    storageService.deleteFile("/uploads");
+    assertThat(Files.exists(tempDir)).isTrue();
+    assertThat(Files.isDirectory(tempDir)).isTrue();
+  }
+
+  @Test
+  @DisplayName("uploadFile should cap cleanBaseName to 100 characters")
+  void uploadFile_shouldCapBaseNameTo100Characters() {
+    String longName = "a".repeat(150) + ".pdf";
+    MockMultipartFile file =
+        new MockMultipartFile("file", longName, "application/pdf", "dummy content".getBytes());
+
+    String url = storageService.uploadFile(file, "contracts");
+    String fileName = url.substring(url.lastIndexOf('/') + 1);
+    // Expected format: UUID (36 chars) + "_" + baseName (capped at 100) + ".pdf" (4 chars)
+    // 36 + 1 + 100 + 4 = 141
+    assertThat(fileName).hasSize(141);
+    assertThat(fileName).contains("_" + "a".repeat(100) + ".pdf");
+  }
 }

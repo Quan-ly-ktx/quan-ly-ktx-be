@@ -76,6 +76,31 @@ class OciObjectStorageServiceImplTest {
   }
 
   @Test
+  @DisplayName("uploadFile should reject path traversal in folder")
+  void uploadFile_shouldRejectPathTraversalInFolder() {
+    MockMultipartFile file =
+        new MockMultipartFile("file", "test.pdf", "application/pdf", "data".getBytes());
+
+    assertThatThrownBy(() -> ociStorageService.uploadFile(file, "../secret"))
+        .isInstanceOf(BaseAppException.class);
+    assertThatThrownBy(() -> ociStorageService.uploadFile(file, " /etc"))
+        .isInstanceOf(BaseAppException.class);
+  }
+
+  @Test
+  @DisplayName("uploadFile should cap cleanBaseName to 100 characters")
+  void uploadFile_shouldCapBaseNameTo100Characters() {
+    String longName = "b".repeat(150) + ".pdf";
+    MockMultipartFile file =
+        new MockMultipartFile("file", longName, "application/pdf", "data".getBytes());
+
+    String url = ociStorageService.uploadFile(file, "contracts");
+    String fileName = url.substring(url.lastIndexOf('/') + 1);
+    assertThat(fileName).hasSize(141);
+    assertThat(fileName).contains("_" + "b".repeat(100) + ".pdf");
+  }
+
+  @Test
   @DisplayName("deleteFile should complete without error")
   void deleteFile_shouldCompleteWithoutError() {
     ociStorageService.deleteFile(
