@@ -20,6 +20,8 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
 
   Optional<Tenant> findByEmail(String email);
 
+  Optional<Tenant> findByPhone(String phone);
+
   Optional<Tenant> findByUserId(UUID userId);
 
   boolean existsByTenantCode(String tenantCode);
@@ -27,6 +29,8 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
   boolean existsByIdCardNumber(String idCardNumber);
 
   boolean existsByEmail(String email);
+
+  boolean existsByPhone(String phone);
 
   boolean existsByIdCardNumberAndResidentStatus(String idCardNumber, ResidentStatus residentStatus);
 
