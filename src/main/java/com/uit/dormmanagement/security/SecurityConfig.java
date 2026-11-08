@@ -90,7 +90,8 @@ public class SecurityConfig {
                         "/docs/**",
                         "/scalar",
                         "/scalar/**",
-                        "/actuator/health")
+                        "/actuator/health",
+                        "/uploads/**")
                     .permitAll()
                     .requestMatchers(
                         "/api/v1/auth/logout",

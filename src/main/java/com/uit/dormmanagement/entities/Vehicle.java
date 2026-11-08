@@ -21,9 +21,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "vehicles")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -43,13 +45,16 @@ public class Vehicle {
   @Column(name = "vehicle_type", nullable = false)
   private VehicleType vehicleType;
 
-  @Column(name = "license_plate", nullable = false, unique = true)
+  @Column(name = "license_plate", nullable = false)
   private String licensePlate;
 
-  @Column(name = "brand_and_color", nullable = false)
-  private String brandAndColor;
+  @Column(name = "brand", nullable = false)
+  private String brand;
 
-  @Column(name = "card_code", unique = true)
+  @Column(name = "color", nullable = false)
+  private String color;
+
+  @Column(name = "card_code")
   private String cardCode;
 
   @Enumerated(EnumType.STRING)
@@ -66,4 +71,7 @@ public class Vehicle {
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
+
+  @Column(name = "deleted_at")
+  private Instant deletedAt;
 }

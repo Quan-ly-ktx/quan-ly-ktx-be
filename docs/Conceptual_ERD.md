@@ -6,7 +6,7 @@
 | Thông tin tài liệu | Chi tiết |
 |:---|:---|
 | **Dự án** | Private Dormitory Management System (PDMS / KTX Hub) |
-| **Phiên bản (Version)** | 3.1 (Rà soát toàn diện & Đối soát 100% Ma trận Bản số với Sơ đồ Thực thể) |
+| **Phiên bản (Version)** | 3.2 (Bổ sung CONTRACT_DOCUMENT lưu trữ đa tệp minh chứng & Chuẩn hóa VEHICLE) |
 | **Trạng thái (Status)** | Đã phê duyệt (Approved for Implementation) |
 | **Tác giả / Biên soạn** | Ban Kỹ thuật & Quản trị Dữ liệu KTX Hub |
 | **Phạm vi lưu trữ** | Thư mục `docs/Conceptual_ERD.md` |
@@ -44,7 +44,7 @@ Mô hình dữ liệu KTX Hub được thiết kế dựa trên thực tế vậ
 
 ## 2. DANH MỤC THỰC THỂ KHÁI NIỆM (CORE BUSINESS ENTITIES)
 
-Hệ thống được tổ chức thành 4 phân vùng nghiệp vụ chính với 14 thực thể cốt lõi:
+Hệ thống được tổ chức thành 4 phân vùng nghiệp vụ chính với 15 thực thể cốt lõi:
 
 | STT | Tên thực thể | Tên tiếng Anh | Vai trò và Ý nghĩa nghiệp vụ |
 |:---:|:---|:---|:---|
@@ -57,7 +57,7 @@ Hệ thống được tổ chức thành 4 phân vùng nghiệp vụ chính vớ
 | 5 | **Hồ sơ Khách thuê** | `TENANT_PROFILE` | Hồ sơ cá nhân của người thuê: CCCD 12 số, họ tên, giới tính, SĐT, email, địa chỉ thường trú, trạng thái cư trú. |
 | 6 | **Hồ sơ Nhân sự** | `STAFF_PROFILE` | Hồ sơ cán bộ quản lý ("Thu Lan") và kỹ thuật viên bảo trì ("Võ Văn Thịnh", "Lâm Quốc Huy"). |
 | **III**| **Hợp đồng & Tài chính** | | |
-| 7 | **Hợp đồng thuê** | `CONTRACT` | Hợp đồng thuê giường (Thời hạn 1 năm, Đơn giá trọn gói, Tiền cọc, File ảnh/scan tài liệu hợp đồng giấy đính kèm). |
+| 7 | **Hợp đồng thuê** | `CONTRACT` | Hợp đồng thuê giường (Thời hạn linh hoạt theo thỏa thuận, Đơn giá trọn gói, Tiền cọc giữ chỗ). |
 | 8 | **Hóa đơn** | `INVOICE` | Yêu cầu đóng tiền phòng trọn gói hàng tháng (all-inclusive). Trạng thái: `Đã thu`, `Chờ xác nhận`, `Nợ`. |
 | 9 | **Giao dịch thanh toán** | `PAYMENT_TRANSACTION` | Giao dịch thu tiền thực tế qua mã VietQR Napas247 động hoặc Tiền mặt có Quản lý xác nhận. |
 | 10| **Chi phí vận hành cơ sở**| `FACILITY_EXPENSE` | Hóa đơn tiền điện tổng EVN, tiền nước tổng, cước Internet hàng tháng để tính **Lợi nhuận ròng**. |
@@ -65,7 +65,8 @@ Hệ thống được tổ chức thành 4 phân vùng nghiệp vụ chính vớ
 | 11| **Phiếu báo hỏng vật tư**| `MAINTENANCE_TICKET` | Phiếu sự cố kỹ thuật có cấp độ ưu tiên (`Khẩn cấp`, `Cao`, `Bình thường`), mô tả hiện trường, thợ xử lý và trạng thái. |
 | 12| **Linh kiện thay thế** | `TICKET_REPLACEMENT_PART`| Chi tiết vật tư, phụ tùng thay thế được xuất dùng cho phiếu sửa chữa kèm đơn giá và số lượng. |
 | 13| **Hồ sơ vi phạm nội quy**| `VIOLATION_RECORD` | Ghi nhận vi phạm gắn với cá nhân: Người thuê, Loại vi phạm, Mức độ (Nhắc nhở, Cảnh cáo, Phạt tiền thu trực tiếp ngoài đời), Tiền phạt. |
-| 14| **Phương tiện gửi xe** | `VEHICLE` | Xe máy, xe điện gửi hầm kèm biển số, mã thẻ từ gửi xe và ảnh chụp cà vẹt xe. |
+| 14| **Phương tiện gửi xe** | `VEHICLE` | Xe máy, xe điện gửi hầm kèm biển số, hãng xe, màu sơn, mã thẻ từ gửi xe và 2 ảnh chụp cà vẹt xe (hỗ trợ Soft Delete). |
+| 15| **Tài liệu minh chứng hợp đồng**| `CONTRACT_DOCUMENT` | Nhiều tệp ảnh chụp/scan hợp đồng giấy đã ký, phụ lục gia hạn cư trú và biên bản bàn giao phòng. |
 
 ---
 
@@ -81,6 +82,7 @@ erDiagram
     
     TENANT_PROFILE ||--o{ CONTRACT : "ký hợp đồng thuê"
     BED ||--o{ CONTRACT : "được thuê trong"
+    CONTRACT ||--o{ CONTRACT_DOCUMENT : "đính kèm nhiều tệp minh chứng"
     
     CONTRACT ||--o{ INVOICE : "phát sinh tiền trọn gói hàng tháng"
     INVOICE ||--o{ PAYMENT_TRANSACTION : "được thanh toán bằng"
@@ -104,7 +106,7 @@ erDiagram
 
 ## 4. CHI TIẾT CÁC MỐI QUAN HỆ KHÁI NIỆM & BẢN SỐ (CARDINALITY MATRIX)
 
-Bảng dưới đây thống kê **đầy đủ 100% toàn bộ 18 mối quan hệ** giữa 14 thực thể khái niệm trong hệ thống:
+Bảng dưới đây thống kê **đầy đủ 100% toàn bộ 19 mối quan hệ** giữa 15 thực thể khái niệm trong hệ thống:
 
 | STT | Thực thể nguồn | Mối quan hệ | Thực thể đích | Bản số | Ý nghĩa và Ràng buộc nghiệp vụ |
 |:---:|:---|:---:|:---|:---:|:---|
@@ -126,6 +128,7 @@ Bảng dưới đây thống kê **đầy đủ 100% toàn bộ 18 mối quan h�
 | 16 | `TENANT_PROFILE` | bị ghi nhận | `VIOLATION_RECORD` | **1 : 0..N** | Khách thuê có thể có nhiều biên bản ghi nhận vi phạm nội quy trong suốt quá trình lưu trú. |
 | 17 | `STAFF_PROFILE` | lập biên bản | `VIOLATION_RECORD` | **1 : 0..N** | Cán bộ quản lý lập hồ sơ vi phạm và quyết định mức độ xử lý (Nhắc nhở, Cảnh cáo, Phạt tiền). |
 | 18 | `TENANT_PROFILE` | đăng ký | `VEHICLE` | **1 : 0..N** | Khách thuê có thể đăng ký gửi một hoặc nhiều phương tiện (xe máy, xe đạp điện) tại hầm KTX (miễn phí trọn gói). |
+| 19 | `CONTRACT` | đính kèm | `CONTRACT_DOCUMENT` | **1 : 0..N** | Một hợp đồng có thể lưu trữ nhiều tệp ảnh chụp trang hợp đồng gốc, phụ lục gia hạn và biên bản bàn giao. |
 
 ---
 
@@ -138,16 +141,16 @@ Bảng dưới đây thống kê **đầy đủ 100% toàn bộ 18 mối quan h�
 Lợi nhuận ròng = Doanh thu thực thu - Chi phí sửa chữa hoàn thành - Chi phí điện nước tổng cơ sở
 ```
 4. **Thứ tự ưu tiên xử lý kỹ thuật:** Danh sách công việc của kỹ thuật viên tự động sắp xếp theo thứ tự: `Khẩn cấp -> Cao -> Bình thường`.
-5. **Ký hợp đồng giấy & Lưu trữ minh chứng:** Hợp đồng được hai bên ký kết bằng văn bản giấy trực tiếp bên ngoài sau khi xem phòng; Quản lý chụp ảnh/scan tải lên hệ thống (`document_url`) làm căn cứ lưu trữ.
+5. **Ký hợp đồng giấy & Lưu trữ đa tệp minh chứng:** Hợp đồng và phụ lục gia hạn được hai bên ký kết bằng văn bản giấy trực tiếp bên ngoài sau khi xem phòng/thỏa thuận thời hạn; Quản lý chụp ảnh nhiều trang hoặc scan tài liệu tải lên hệ thống (`CONTRACT_DOCUMENT`) làm căn cứ pháp lý lưu trữ vĩnh viễn.
 6. **Toàn vẹn dữ liệu:** Không xóa vật lý dữ liệu tài chính và hợp đồng (áp dụng Soft Delete).
 7. **Phân rã Danh tính Độc quyền (Exclusive Identity Subtyping):** Mỗi tài khoản `USER_ACCOUNT` có thuộc tính `role` phân định ranh giới độc quyền:
    - Khi `role = 'TENANT'`: Sở hữu duy nhất 1 `TENANT_PROFILE` (chứa CCCD 12 số, địa chỉ, hợp đồng...), tuyệt đối KHÔNG có `STAFF_PROFILE`.
    - Khi `role IN ('MANAGER', 'TECHNICIAN')`: Sở hữu duy nhất 1 `STAFF_PROFILE` (chỉ chứa họ tên, số điện thoại, trạng thái hoạt động), tuyệt đối KHÔNG có `TENANT_PROFILE`. Vai trò quản lý hay kỹ thuật viên được xác định trực tiếp bởi trường `role`, không lưu các trường rườm rà (phòng ban, chức danh, kỹ năng).
 8. **Quy trình Quản lý Phương tiện Hầm xe (Vehicle Workflow):**
-   - *Bước 1 (Khai báo):* Khách thuê gửi thông tin xe trên mobile: Biển số, loại xe, hãng, màu sơn và tải 2 ảnh cà vẹt xe (mặt trước/mặt sau). Trạng thái ban đầu: `Chưa cấp thẻ`.
+   - *Bước 1 (Khai báo):* Khách thuê gửi thông tin xe trên mobile: Biển số, loại xe, hãng xe, màu sơn và tải 2 ảnh cà vẹt xe (mặt trước/mặt sau). Trạng thái ban đầu: `Chưa cấp thẻ`.
    - *Bước 2 (Kiểm tra & Cấp thẻ):* Quản lý kiểm tra thông tin đối chiếu ảnh cà vẹt xe, gán mã thẻ từ vật lý (`card_code`, VD: `THE-0187`) và chuyển trạng thái sang `Đã cấp thẻ`.
    - *Bước 3 (Miễn phí gửi xe trọn gói):* Phí gửi xe đã bao gồm trọn gói 100% trong tiền thuê phòng; hệ thống hoàn toàn **không thu thêm bất kỳ khoản tiền nào của khách**, không tính phí và không cộng vào hóa đơn.
-   - *Bước 4 (Thu hồi thẻ):* Khi khách thanh lý hợp đồng (checkout), Quản lý thu hồi thẻ từ vật lý và cập nhật trạng thái `Đã thu hồi`.
+   - *Bước 4 (Thu hồi thẻ & Soft Delete):* Khi khách thanh lý hợp đồng (checkout), Quản lý thu hồi thẻ từ vật lý và cập nhật trạng thái `Đã thu hồi`. Khi gỡ phương tiện khỏi hồ sơ, hệ thống áp dụng soft delete (`deleted_at = now()`).
 9. **Chuẩn hóa Loại vi phạm & Hình thức xử lý (Violation Standards):**
    - Loại vi phạm (`violation_type`) là danh mục có cấu trúc gồm 5 nhóm chuẩn trên UI: `'Về muộn'`, `'Gây ồn'`, `'Vệ sinh'`, `'Khách ngoài'`, `'Hút thuốc / cháy nổ'` (và `'Khác'`).
    - Hình thức xử lý (`level`): Gồm 3 mức: `'Nhắc nhở'`, `'Cảnh cáo'`, `'Phạt tiền'` (Tiền phạt được thu trực tiếp ngoài thực tế, không gộp vào hóa đơn trên web; chỉ lưu số tiền vào hồ sơ để theo dõi).

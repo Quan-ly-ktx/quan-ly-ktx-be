@@ -10,6 +10,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
@@ -25,7 +26,11 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.SQLRestriction;
 
 @Entity
-@Table(name = "tenants")
+@Table(
+    name = "tenants",
+    indexes = {
+      @Index(name = "idx_tenants_resident_status", columnList = "resident_status, deleted_at")
+    })
 @SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter

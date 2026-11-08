@@ -331,25 +331,32 @@ Thứ tự sắp xếp = (Đã hoàn thành ? 1 : 0) * 10 + priorityRank[priorit
      - Không bắt buộc / Loại bỏ: `priority_type` (Diện ưu tiên chính sách).
    - Các trường định danh bắt buộc chuẩn hóa cho mọi khách thuê: *Họ và tên, Giới tính, Số điện thoại, Số CCCD (12 chữ số), Địa chỉ email, Địa chỉ thường trú*.
 
-### BR-10: Quản lý phương tiện di chuyển &amp; Quy trình cấp thẻ gửi xe (Vehicle &amp; Parking Management)
+3. **Cấp phát tài khoản đăng nhập Cổng thông tin:**
+   - Ngay sau khi Quản lý nhấn [Tạo và gán phòng] thành công, hệ thống tự động khởi tạo tài khoản người dùng (`users`) với:
+     - Tên đăng nhập: Địa chỉ email của khách thuê.
+     - Mật khẩu ban đầu mặc định: `Password123@`.
+     - Vai trò: `TENANT`.
+   - Hệ thống hiển thị Popup Modal thông báo thông tin tài khoản kèm nút [Sao chép gửi khách] để Quản lý gửi qua Zalo/SMS cho khách đăng nhập trên điện thoại di động.
+### BR-10: Quản lý phương tiện di chuyển & Quy trình cấp thẻ gửi xe (Vehicle & Parking Management)
 
-Quy trình quản lý phương tiện hầm xe KTX được chuẩn hóa thành 4 bước khép kín:
-
-1. **Bước 1 - Khách khai báo phương tiện trên di động:**
-   - Khách thuê truy cập tab *Phương tiện* trên mobile app, bấm [Đăng ký xe mới].
-   - Nhập: Biển số xe (VD: `59-X3 789.12`), Phân loại xe (`Xe tay ga`, `Xe số`, `Xe máy điện`), Hãng xe, Màu sơn.
-   - Tải lên 2 ảnh chụp: Mặt trước &amp; Mặt sau Giấy đăng ký xe (Cà vẹt xe) để chứng minh xe chính chủ.
-   - Trạng thái ban đầu: `Chưa cấp thẻ`.
-2. **Bước 2 - Quản lý duyệt &amp; Cấp thẻ từ gửi xe:**
-   - Ban quản lý mở danh sách phương tiện trên máy tính, kiểm tra thông tin đối chiếu với 2 ảnh chụp cà vẹt xe.
-   - Quản lý lấy thẻ từ vật lý của hầm KTX, nhập Mã thẻ từ (`card_code`, VD: `THE-0187`) gán cho xe.
-   - Chuyển trạng thái sang `Đã cấp thẻ` và bàn giao thẻ từ vật lý cho khách thuê.
-3. **Bước 3 - Quét thẻ ra vào (Bao trọn gói 100%, không thu phí):**
-   - Khách thuê dùng thẻ từ đã cấp để quét ra/vào cổng barrier hầm xe.
-   - Phí gửi xe đã bao trọn gói 100% trong tiền phòng; hệ thống **tuyệt đối không thu thêm bất kỳ khoản tiền nào của khách**, không tính phí và không cộng vào hóa đơn.
-4. **Bước 4 - Thu hồi thẻ từ khi thanh lý phòng (Checkout):**
-   - Khi khách thuê làm thủ tục trả phòng, Quản lý thu hồi lại thẻ từ vật lý và cập nhật trạng thái xe thành `Đã thu hồi` để giải phóng chỗ để xe.
-
+1. **Hạn mức nghiêm ngặt: Mỗi khách thuê chỉ được đăng ký tối đa 01 phương tiện:**
+   - Phí gửi xe được bao trọn gói 100% trong tiền phòng; để bảo đảm an ninh trật tự và sức chứa có hạn của hầm xe, mỗi khách thuê chỉ được cấp tối đa 01 chỗ để xe.
+   - Trên ứng dụng di động, khi khách đã có 01 phương tiện hợp lệ, nút [Đăng ký xe mới] tự động vô hiệu hóa (`[Đã đủ hạn mức (1 xe/người)]`). Nếu có nhu cầu đổi xe hoặc cập nhật biển số mới, khách liên hệ trực tiếp Quản lý để thu hồi thẻ xe cũ trước.
+2. **Quy trình 4 bước quản lý phương tiện hầm KTX:**
+   - **Bước 1 - Khách khai báo phương tiện trên di động:**
+    - Nhập: Biển số xe (VD: `59-X3 789.12`), Phân loại xe (`Xe tay ga`, `Xe số`, `Xe máy điện`, `Xe đạp`), Hãng xe (`brand`), Màu sơn (`color`).
+     - Tải lên 2 ảnh chụp: Mặt trước & Mặt sau Giấy đăng ký xe (Cà vẹt xe) để chứng minh xe chính chủ.
+     - Trạng thái ban đầu: `Chưa cấp thẻ` (`Chờ duyệt`).
+   - **Bước 2 - Quản lý duyệt & Cấp thẻ từ gửi xe:**
+     - Ban quản lý mở danh sách phương tiện trên máy tính, sử dụng bộ lọc trạng thái (`Tất cả`, `Chờ cấp thẻ`, `Đã cấp thẻ`, `Đã thu hồi`).
+     - Bấm nút `[+ Cấp thẻ]`, Popup hiển thị đồng thời thông tin xe và **2 ảnh cà vẹt xe đối soát trực tiếp**.
+     - Quản lý lấy thẻ từ vật lý của hầm KTX, nhập Mã thẻ từ (`card_code`, VD: `THE-0187`) gán cho xe.
+     - Chuyển trạng thái sang `Đã cấp thẻ` và bàn giao thẻ từ vật lý cho khách thuê.
+   - **Bước 3 - Quét thẻ ra vào (Bao trọn gói 100%, không thu phí):**
+     - Khách thuê dùng thẻ từ đã cấp để quét ra/vào cổng barrier hầm xe.
+     - Phí gửi xe đã bao trọn gói 100% trong tiền phòng; hệ thống **tuyệt đối không thu thêm bất kỳ khoản tiền nào của khách**, không tính phí và không cộng vào hóa đơn.
+   - **Bước 4 - Thu hồi thẻ từ khi thanh lý phòng (Checkout):**
+     - Khi khách thuê làm thủ tục trả phòng hoặc thôi gửi xe, Quản lý thu hồi lại thẻ từ vật lý và cập nhật trạng thái xe thành `Đã thu hồi` (Soft Delete) để giải phóng chỗ để xe mà vẫn lưu vết lịch sử bảo an.
 ### BR-11: Mô hình phân quyền quản trị tinh giản (Simplified RBAC)
 
 1. Loại bỏ ma trận tick chọn quyền chi tiết gây rối rắm trong vận hành.
@@ -401,83 +408,98 @@ Hệ thống được cấu trúc thành các nhóm yêu cầu chức năng nghi
 
 ---
 
-### 4.2. Phân hệ Hồ sơ Khách thuê &amp; Phương tiện di chuyển (Tenant &amp; Vehicle Management)
+### 4.2. Phân hệ Hồ sơ Khách thuê & Phương tiện di chuyển (Tenant & Vehicle Management)
 
 #### FR-06: Quản lý hồ sơ định danh khách thuê (Đa đối tượng)
 
 - **Tác nhân:** Quản lý
-- **Đầu vào:** Họ tên, Giới tính, Số CCCD (12 số), Số điện thoại, Email, Địa chỉ thường trú. (Không yêu cầu trường học, khoa, MSSV, diện ưu tiên).
-- **Quy trình xử lý:** Kiểm tra định dạng CCCD 12 số và kiểm tra không trùng lặp số CCCD, Email; lưu trữ hồ sơ định danh; hiển thị lịch sử hợp đồng và tình trạng công nợ.
-- **Đầu ra:** Hồ sơ khách thuê chuẩn hóa phục vụ quản lý lâu dài.
+- **Đầu vào:** Họ tên, Giới tính, Số CCCD (12 số), Số điện thoại, Email, Địa chỉ thường trú. (Không yêu cầu trường học, khoa, MSSV, diện ưu tiên - tuân thủ BR-09).
+    - **Quy trình xử lý:** Kiểm tra định dạng CCCD 12 số và kiểm tra không trùng lặp số CCCD, Email; lưu trữ hồ sơ định danh; cung cấp bộ lọc tức thời theo Phòng và theo Trạng thái cư trú; hiển thị chi tiết hồ sơ kèm lịch sử hợp đồng và tình trạng công nợ hiện thời (Đã đóng đủ / Còn nợ / Chờ xác nhận). Thao tác đóng hồ sơ/trả phòng được thực hiện tập trung duy nhất tại trang Quản lý Hợp đồng (thông qua quy trình thanh lý hợp đồng FR-13).
+- **Cấp phát tài khoản tự động:** Sau khi tạo hồ sơ thành công, hệ thống tự động sinh tài khoản người dùng (`users`) với mật khẩu mặc định `Password123@`, hiển thị Popup thông báo kèm nút [Sao chép gửi khách] qua Zalo/SMS.
+- **Đầu ra:** Hồ sơ khách thuê chuẩn hóa phục vụ quản lý lâu dài; tài khoản đăng nhập được bàn giao tức thì.
 
 #### FR-07: Đóng hồ sơ khách thuê sau khi rời đi (Soft Delete)
 
 - **Tác nhân:** Quản lý
-- **Quy trình xử lý:** Cập nhật trạng thái `resident_status = 'Đã trả phòng'`; lưu trữ lịch sử để đối soát công nợ cũ, không xóa vật lý khỏi CSDL.
+- **Quy trình xử lý:** Được kích hoạt tập trung và tự động khi Quản lý thực hiện thao tác [Thanh lý (Checkout)] tại trang Hợp đồng (FR-13) -> Cập nhật trạng thái `resident_status = 'Đã trả phòng'`; tự động giải phóng vị trí giường tương ứng về trạng thái 'Sẵn sàng' đón khách mới; đồng thời tự động thu hồi thẻ xe; lưu trữ lịch sử để đối soát công nợ cũ, không xóa vật lý khỏi CSDL (tuân thủ BR-08).
+- **Đầu ra:** Hồ sơ chuyển sang trạng thái đã trả phòng, giường được mở khóa an toàn và thẻ xe được thu hồi.
 
 #### FR-08: Đăng ký và quản lý phương tiện di chuyển hầm xe (Miễn phí trọn gói)
 
 - **Tác nhân:** Khách thuê, Quản lý
-- **Đầu vào:** Tên người thuê, Biển số xe, Loại xe (Xe máy, Xe điện, Xe đạp), Hãng xe / Màu sơn, Mã thẻ từ giữ xe, Ảnh chụp 2 mặt Giấy đăng ký xe (Cà vẹt xe).
-- **Quy trình xử lý (BR-11):**
-  1. Khách thuê tự bấm [Đăng ký xe mới] trên ứng dụng di động, điền biển số xe, loại xe và tải 2 ảnh cà vẹt xe.
-  2. Quản lý kiểm tra thông tin, gán Mã thẻ từ gửi xe vật lý và kích hoạt trạng thái "Đã cấp thẻ".
-  3. Hỗ trợ tra cứu nhanh xe bằng biển số và tên người thuê; quản lý an ninh và thu hồi thẻ khi khách checkout; phí giữ xe được bao trọn gói 100% trong tiền phòng không thu thêm.
+- **Đầu vào:** Tên người thuê, Biển số xe, Phân loại xe (`Xe tay ga`, `Xe số`, `Xe máy điện`, `Xe đạp`), Hãng xe (`brand`), Màu sơn (`color`), Mã thẻ từ giữ xe, Ảnh chụp 2 mặt Giấy đăng ký xe (Cà vẹt xe).
+- **Ràng buộc nghiệp vụ:** Mỗi khách thuê chỉ được đăng ký **tối đa 01 phương tiện**. Nút đăng ký trên ứng dụng di động bị vô hiệu hóa khi khách đã có xe; nếu muốn đổi xe thì liên hệ Quản lý để thu hồi thẻ cũ trước.
+- **Quy trình xử lý (BR-10):**
+  1. Khách thuê tự bấm [Đăng ký xe mới] trên ứng dụng di động, điền biển số xe, loại xe, hãng xe, màu sơn và tải 2 ảnh cà vẹt xe (trạng thái: `Chưa cấp thẻ` / `Chờ duyệt`).
+  2. Quản lý mở danh sách phương tiện trên máy tính, sử dụng thanh Tab lọc trạng thái: `Tất cả`, `Chờ cấp thẻ`, `Đã cấp thẻ`, `Đã thu hồi`.
+  3. Quản lý bấm nút nhanh `[+ Cấp thẻ]`, Popup hiển thị đồng thời thông tin xe và **2 ảnh cà vẹt xe đối soát trực tiếp**. Quản lý gán Mã thẻ từ gửi xe vật lý (`card_code`, VD: `THE-0187`) và kích hoạt trạng thái "Đã cấp thẻ".
+  4. Hỗ trợ tra cứu nhanh xe bằng biển số, tên người thuê và mã thẻ từ; quản lý an ninh và thu hồi thẻ khi khách checkout (chuyển trạng thái `Đã thu hồi`); phí giữ xe được bao trọn gói 100% trong tiền phòng không thu thêm.
 - **Đầu ra:** Thẻ xe được cấp phát hợp lệ; kiểm soát an ninh trật tự hầm xe.
 
 ---
 
-### 4.3. Phân hệ Tiếp nhận, Xếp phòng &amp; Hợp đồng (Onboarding &amp; Contracts)
+### 4.3. Phân hệ Tiếp nhận, Xếp phòng & Hợp đồng (Onboarding & Contracts)
 
-#### FR-09: Thêm người thuê, gán vị trí giường &amp; Khởi tạo hợp đồng (Direct Onboarding)
+#### FR-09: Thêm người thuê, gán vị trí giường & Khởi tạo hợp đồng (Direct Onboarding)
 
 - **Tác nhân:** Quản lý
 - **Đầu vào:** Họ tên, Giới tính, Số điện thoại, Số CCCD (12 số), Email, Địa chỉ thường trú, Vị trí giường trống (`slotKey`), Ngày bắt đầu, Ngày kết thúc, Tiền thuê/tháng, Tiền cọc.
 - **Quy trình xử lý tổng hợp:**
-  1. Kiểm tra tính hợp lệ của CCCD (12 số) và kiểm tra không trùng lặp CCCD, Email.
-  2. **Ràng buộc cách ly giới tính 100% (BR-02):** Danh sách giường trống gợi ý bắt buộc phải thỏa mãn phòng có `gender_policy` trùng khớp với giới tính của khách. Tuyệt đối không hiển thị hoặc vô hiệu hóa các phòng khác giới tính.
-  3. **Kiểm tra tính sẵn sàng của giường:** Vị trí giường được chọn phải đang ở trạng thái 'Sẵn sàng' (`AVAILABLE`).
-  4. **Thực thi Transaction CSDL:**
-     - Tạo bản ghi hồ sơ khách thuê trong bảng `tenants` (và tài khoản đăng nhập `users`).
+  1. **Liên kết liền mạch từ Sơ đồ phòng:** Khi Quản lý bấm `[+ Xếp khách]` tại bất kỳ giường trống nào trên Sơ đồ ma trận (`RoomsPage`) hoặc Drawer chi tiết giường, hệ thống tự động điều hướng sang form Thêm người thuê và điền sẵn vị trí phòng/giường đó.
+  2. Kiểm tra tính hợp lệ của CCCD (12 số) và kiểm tra không trùng lặp CCCD, Email.
+  3. **Ràng buộc cách ly giới tính 100% (BR-02):** Danh sách giường trống gợi ý bắt buộc phải thỏa mãn phòng có `gender_policy` trùng khớp với giới tính của khách. Tuyệt đối không hiển thị hoặc vô hiệu hóa các phòng khác giới tính.
+  4. **Kiểm tra tính sẵn sàng của giường:** Vị trí giường được chọn phải đang ở trạng thái 'Sẵn sàng' (`AVAILABLE`).
+  5. **Thực thi Transaction CSDL:**
+     - Tạo bản ghi hồ sơ khách thuê trong bảng `tenants` (và tài khoản đăng nhập `users` mật khẩu mặc định `Password123@`).
      - Tạo bản ghi hợp đồng thuê trong bảng `contracts` với trạng thái `Hiệu lực`, lưu tiền thuê trọn gói và tiền cọc đã thu ngoài.
      - Cập nhật trạng thái vị trí giường trong bảng `beds` thành `Đang thuê` (`OCCUPIED`).
 - **Đầu ra:** Hồ sơ người thuê được tạo, giường được gán và khóa lại, hợp đồng kích hoạt ngay lập tức trên hệ thống.
 
-#### FR-10: Ký hợp đồng giấy bên ngoài &amp; Tải ảnh/scan làm minh chứng lưu trữ
+#### FR-10: Ký hợp đồng giấy bên ngoài & Tải đa tệp ảnh/scan làm minh chứng lưu trữ
 
-- **Tác nhân:** Quản lý
+- **Tác nhân:** Quản lý, Khách thuê
 - **Quy trình xử lý:**
   1. Hai bên ký kết hợp đồng bằng văn bản giấy trực tiếp bên ngoài sau khi xem phòng.
-  2. Quản lý mở danh sách hợp đồng, chọn hợp đồng tương ứng của khách thuê.
-  3. Tại mục "Tài liệu hợp đồng", Quản lý nhấn [Tải tệp lên] để tải ảnh chụp hoặc file scan hợp đồng giấy đã ký.
-  4. Hệ thống lưu vết đường dẫn tệp tài liệu (`contract_document_url`) làm minh chứng pháp lý lưu trữ trên hệ thống. Khách thuê có thể tra cứu mã hợp đồng và thời hạn hiệu lực trên ứng dụng di động.
-- **Đầu ra:** Hợp đồng được lưu trữ minh chứng điện tử an toàn.
+  2. Quản lý mở danh sách hợp đồng, chọn Drawer chi tiết hợp đồng tương ứng của khách thuê.
+  3. Tại mục "Tài liệu & Minh chứng hợp đồng", Quản lý nhấn [Tải thêm tệp] để tải lên **nhiều tệp tài liệu cùng lúc (multi-file upload)** bao gồm nhiều trang ảnh chụp hợp đồng giấy (`.jpg`, `.jpeg`, `.png`, `.webp`) hoặc file scan văn bản (`.pdf`, `.doc`, `.docx`) tối đa 10 MB.
+  4. Hệ thống lưu trữ các tệp vào bảng `contract_documents` kèm phân loại: Hợp đồng gốc (`ORIGINAL_CONTRACT`), Phụ lục gia hạn (`RENEWAL_ANNEX`), hoặc Biên bản bàn giao (`CHECKOUT_HANDOVER`).
+  5. Khách thuê có thể tra cứu mã hợp đồng, thời hạn hiệu lực và mở Popup [Xem tài liệu hợp đồng đã ký] để duyệt danh sách các tệp scan PDF hoặc xem phóng to ảnh chụp hợp đồng giấy có chữ ký trực tiếp trên ứng dụng di động.
+- **Đầu ra:** Hợp đồng được lưu trữ minh chứng điện tử an toàn, minh bạch cho cả hai bên.
 
 #### FR-11: Xử lý yêu cầu chuyển phòng (Room Transfer)
 
 - **Tác nhân:** Khách thuê, Quản lý
-- **Quy trình xử lý:** Khách gửi yêu cầu đổi phòng; Quản lý kiểm tra phòng đích (bắt buộc cùng giới tính và còn giường trống); thực hiện hoán đổi giường trong Transaction CSDL an toàn.
+- **Lưu ý triển khai:** *Tạm hoãn triển khai luồng Đổi phòng trên giao diện người dùng theo lộ trình giai đoạn 2; tập trung hoàn thiện Onboarding, Gia hạn và Checkout.*
+- **Quy trình dự kiến:** Khách gửi yêu cầu đổi phòng; Quản lý kiểm tra phòng đích (bắt buộc cùng giới tính và còn giường trống); thực hiện hoán đổi giường trong Transaction CSDL an toàn.
 
 #### FR-12: Gia hạn hợp đồng cư trú (Contract Renewal)
 
 - **Tác nhân:** Khách thuê, Quản lý
-- **Điều kiện kích hoạt:** Hợp đồng sắp hết hạn (trạng thái `Sắp hết hạn` trên hệ thống và hiển thị thông báo sắp hết hạn trên ứng dụng của khách thuê).
+- **Điều kiện kích hoạt:** Hợp đồng sắp hết hạn (trạng thái `Sắp hết hạn` trên hệ thống và hiển thị thời hạn còn lại trên Thẻ phòng điện tử của khách thuê).
 - **Quy trình xử lý thực tế:**
-  1. **Khởi tạo yêu cầu:** Khách thuê gửi yêu cầu gia hạn trên ứng dụng di động (chọn gia hạn thêm 1 năm) hoặc trực tiếp trao đổi ngoài đời với Chủ cơ sở.
-  2. **Ký kết văn bản gia hạn ngoài thực tế (Offline):** Hai bên tiến hành ký kết **Phụ lục gia hạn hợp đồng (hoặc Hợp đồng thuê mới bằng văn bản giấy)** xác định thời hạn hiệu lực mới (ví dụ thêm 1 năm); toàn bộ số tiền cọc ban đầu được bảo lưu nguyên vẹn.
+  1. **Thỏa thuận ngoài đời:** Khách thuê và Chủ cơ sở trực tiếp gặp mặt trao đổi nguyện vọng ở tiếp (trước 15–30 ngày).
+  2. **Ký kết văn bản gia hạn ngoài thực tế (Offline):** Hai bên tiến hành ký kết **Phụ lục gia hạn hợp đồng (hoặc Hợp đồng thuê mới bằng văn bản giấy)** xác định ngày hết hạn hiệu lực mới theo nhu cầu thực tế của khách (linh hoạt theo thỏa thuận, không ép cứng 1 năm); toàn bộ số tiền cọc ban đầu được bảo lưu nguyên vẹn.
   3. **Cập nhật trên hệ thống:**
-     - Quản lý kiểm tra điều kiện công nợ của khách (không có hóa đơn nợ đọng).
-     - Quản lý cập nhật ngày hết hạn mới (`end_date`) cho hợp đồng.
-     - Quản lý tải ảnh chụp/scan Phụ lục hợp đồng giấy đã ký vào mục tài liệu (`contract_document_url`) để lưu trữ minh chứng pháp lý mới.
-     - Trạng thái hợp đồng tự động chuyển từ `Sắp hết hạn` về lại `Hiệu lực`.
-  4. **Đồng bộ ứng dụng khách thuê:** Thông tin thời hạn cư trú mới (số ngày còn lại) được cập nhật ngay lập tức trên Thẻ phòng điện tử của khách.
+     - Quản lý mở Drawer chi tiết hợp đồng trên `ContractsPage`, bấm nút **`[Gia hạn]`**.
+     - Quản lý chọn Ngày kết thúc mới (`new_end_date`) qua Date Picker linh hoạt theo đúng văn bản phụ lục giấy.
+     - Quản lý tải ảnh chụp/scan Phụ lục hợp đồng giấy đã ký vào mục tài liệu (lưu vào `contract_documents` với loại `RENEWAL_ANNEX`) để lưu trữ minh chứng pháp lý mới.
+     - Trạng thái hợp đồng tự động chuyển từ `Sắp hết hạn` về lại `Hiệu lực`, đồng thời cập nhật ngày hết hạn mới sang hồ sơ người thuê.
+  4. **Đồng bộ ứng dụng khách thuê:** Thông tin thời hạn cư trú mới (số ngày còn lại) được cập nhật ngay lập tức trên Thẻ phòng điện tử của khách. Trong Card Hợp đồng hiển thị ghi chú hướng dẫn khách liên hệ Ban Quản lý trước 15 ngày khi có nhu cầu gia hạn hoặc trả phòng.
 - **Đầu ra:** Hợp đồng được gia hạn thời hiệu pháp lý thành công; lưu vết minh chứng giấy tờ đầy đủ; tiếp tục phát hành hóa đơn tiền phòng định kỳ các kỳ tiếp theo.
 
-#### FR-13: Thanh lý hợp đồng &amp; Mở khóa giường trống (Checkout)
+#### FR-13: Thanh lý hợp đồng & Mở khóa giường trống (Checkout)
 
 - **Tác nhân:** Quản lý
-- **Quy trình xử lý (BR-04):** Sau khi chủ cơ sở và khách hoàn tất việc kiểm tra phòng và hoàn trả cọc trực tiếp ngoài đời, Quản lý mở danh sách hợp đồng và bấm [Thanh lý hợp đồng] -&gt; Trạng thái hợp đồng chuyển thành `Đã thanh lý`, hồ sơ khách chuyển `Đã trả phòng`, vị trí giường tự động giải phóng về trạng thái `Sẵn sàng` đón khách mới.
-
+- **Quy trình xử lý (BR-04):**
+  1. Khách báo trước ngày rời đi tối thiểu 15 ngày.
+  2. Vào ngày trả phòng, Chủ cơ sở và khách thuê hoàn tất việc kiểm tra đồ đạc tại phòng, tự thỏa thuận khấu trừ hư hỏng (nếu có) và hoàn trả cọc trực tiếp ngoài đời. Quản lý thu hồi lại chìa khóa phòng và thẻ từ gửi xe vật lý.
+  3. Quản lý mở danh sách hợp đồng trên `ContractsPage` và bấm nút **`[Thanh lý (Checkout)]`** màu đỏ.
+  4. Hệ thống thực thi đồng bộ 4 hành động:
+     - Trạng thái hợp đồng chuyển thành `Đã thanh lý`.
+     - Hồ sơ khách thuê chuyển sang `Đã trả phòng` (Soft Delete, lưu trữ lịch sử để đối soát công nợ cũ).
+     - Vị trí giường tự động giải phóng về trạng thái `Sẵn sàng` (`AVAILABLE`) trên Sơ đồ ma trận để đón khách mới.
+     - Phương tiện gửi xe của khách được chuyển sang trạng thái `Đã thu hồi`.
+- **Đầu ra:** Hợp đồng được thanh lý dứt điểm; giường được giải phóng ngay lập tức đón khách mới; thẻ xe được thu hồi an toàn.
 ---
 
 ### 4.4. Phân hệ Chi phí Tiện ích Cơ sở &amp; Lợi nhuận Ròng (Facility Operating Expenses)
@@ -623,7 +645,7 @@ Hệ thống được cấu trúc thành các nhóm yêu cầu chức năng nghi
 | **FR-07** | Đóng hồ sơ khách thuê sau checkout (Soft delete)          | Quản lý          | Khách thuê               | `tenants`                                              |
 | **FR-08** | Đăng ký &amp; quản lý phương tiện, thẻ từ, ảnh cà vẹt     | Khách thuê, QL   | Phương tiện              | `vehicles`, `tenants`                                  |
 | **FR-09** | Thêm người thuê, gán giường &amp; khởi tạo hợp đồng       | Quản lý          | Tiếp nhận &amp; Hợp đồng | `tenants`, `rooms`, `beds`, `contracts`                |
-| **FR-10** | Ký hợp đồng giấy ở ngoài &amp; Tải ảnh/scan minh chứng    | Quản lý          | Hợp đồng                 | `contracts`                                            |
+| **FR-10** | Ký hợp đồng giấy ở ngoài & Tải đa tệp ảnh/scan minh chứng | Quản lý, Khách thuê | Hợp đồng                 | `contracts`, `contract_documents`                      |
 | **FR-11** | Xử lý yêu cầu chuyển phòng cư trú                         | Khách thuê, QL   | Hợp đồng                 | `contracts`, `beds`                                    |
 | **FR-12** | Gia hạn hợp đồng cư trú định kỳ                           | Khách thuê, QL   | Hợp đồng                 | `contracts`                                            |
 | **FR-13** | Thanh lý hợp đồng &amp; Mở khóa giường trống              | Quản lý          | Hợp đồng                 | `contracts`, `beds`                                    |
