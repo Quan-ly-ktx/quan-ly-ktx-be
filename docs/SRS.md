@@ -1,848 +1,1280 @@
-# ĐẶC TẢ YÊU CẦU PHẦN MỀM (SOFTWARE REQUIREMENTS SPECIFICATION - SRS)
+# ĐẶC TẢ YÊU CẦU PHẦN MỀM (SOFTWARE REQUIREMENTS SPECIFICATION — SRS)
 
-## DỰ ÁN: HỆ THỐNG QUẢN LÝ KÝ TÚC XÁ TƯ NHÂN &amp; SLEEPBOX (KTX HUB / PDMS)
+## DỰ ÁN: HỆ THỐNG QUẢN LÝ KÝ TÚC XÁ TƯ NHÂN (KTX HUB / PDMS)
 
----
+| Thông tin | Nội dung |
+|---|---|
+| Tên hệ thống | KTX Hub — Private Dormitory Management System (PDMS) |
+| Loại tài liệu | Software Requirements Specification (SRS) |
+| Phiên bản tài liệu | 3.4.1 — FINAL (Amendment giao diện: Tenant 5 tab điều hướng, tách tab Vi phạm riêng và giữ Thông báo chuông) |
+| Ngày cập nhật | 11/11/2026 |
+| Trạng thái | **FINAL — đặc tả đã chốt để triển khai**; chưa xác nhận Backend/Frontend hiện hành đáp ứng |
+| Cấu trúc tham khảo | IEEE 830 / ISO/IEC/IEEE 29148 (cách tổ chức tài liệu, không tuyên bố chứng nhận tuân thủ) |
+| Tệp triển khai dự kiến | `docs/SRS.md` |
 
+> **Thay đổi v3.2 (chỉ các mục liên quan):** (1) **Change Password** yêu cầu phiên đăng nhập hợp lệ và mật khẩu hiện tại, **không dùng OTP**; **Forgot Password** vẫn dùng OTP email 6 số/5 phút qua Redis; (2) email mỗi tài khoản, kể cả Tenant, **duy nhất toàn hệ thống** và dùng nhận OTP, email Tenant **không** dùng đăng nhập; (3) JWT Access/Refresh và quản lý token/OTP bằng Redis, không thêm bảng OTP/Session vào PostgreSQL; (4) tài liệu và ảnh nhạy cảm lưu **private trên OCI Object Storage**, chỉ trả liên kết có chữ ký, hiệu lực tối đa 15 phút, sau kiểm tra quyền. **Giữ nguyên** chính sách mã phòng có điều kiện và phiếu thu của v3.1.
 
-| Thông tin tài liệu           | Chi tiết                                                                                          |
-| :---------------------------- | :------------------------------------------------------------------------------------------------- |
-| **Dự án**                    | Private Dormitory Management System (PDMS / KTX Hub)                                              |
-| **Tiêu chuẩn cấu trúc**      | IEEE Std 830-1998 / ISO/IEC/IEEE 29148:2018                                                       |
-| **Phiên bản (Version)**      | 2.1 (Tối ưu hóa Rich Text Markdown, mở rộng Khách thuê đa đối tượng &amp; Quản lý Lợi nhuận ròng) |
-| **Trạng thái (Status)**      | Đã phê duyệt (Approved for Implementation &amp; Database Migration)                               |
-| **Tác giả / Nhóm biên soạn** | Ban Kỹ thuật &amp; Quản trị Hệ thống KTX Hub                                                      |
-| **Phạm vi lưu trữ**          | Thư mục `docs/SRS.md`                                                                             |
+> **Thay đổi v3.3:** (1) Bổ sung 4 biểu đồ cho Dashboard, giữ đúng 4 KPI; (2) Manager có thể nhập **tổng lương nhân viên tự tính ngoài hệ thống** vào chi phí vận hành, và UI được sử dụng nhãn **“Lợi nhuận ròng (ước tính)”** kèm chú thích rõ giới hạn; (3) Manager có thể **từ chối yêu cầu cấp thẻ xe đang chờ** với lý do bắt buộc, **không cần minh chứng đính kèm**, đồng thời tạo thông báo hệ thống cho Tenant; (4) tăng dữ liệu lịch sử có ngày sự kiện để thử biểu đồ năm. Không tự động thay đổi Backend hay chứng nhận prototype đã hoàn thành.
 
+> **Thay đổi v3.4:** (1) Tenant đang có xe `ISSUED` được **tự gửi yêu cầu đổi xe**; Manager phê duyệt/từ chối yêu cầu với lý do nếu từ chối; khi duyệt, tạo hồ sơ xe mới dùng **chính mã thẻ vật lý hiện tại**, chuyển hồ sơ xe cũ sang `REPLACED`, giữ toàn bộ lịch sử, **không yêu cầu thu hồi/bàn giao lại thẻ**; (2) tại **Prototype/Mock mode**, cho phép bốn biểu đồ Dashboard lấy **bộ số liệu minh họa tách biệt Shared Mock Store**, không cần khớp hóa đơn/phòng/giường/hợp đồng thực tế của các màn khác, với điều kiện **hiển thị nhãn “Dữ liệu biểu đồ minh họa”**; KPI chính vẫn lấy dữ liệu nghiệp vụ mock và không được giả là số liệu thật; (3) giữ nguyên quyết định “Lợi nhuận ròng (ước tính)” và từ chối cấp thẻ **chỉ cần lý do, không cần ảnh minh chứng** từ v3.3. Những quy tắc tích hợp Backend thật, ERD và API cần đồng bộ riêng sau giai đoạn Prototype.
 
----
+> **Thay đổi v3.4.1 (Amendment giao diện Tenant):** (1) Tổ chức giao diện Tenant thành **5 tab điều hướng** (trên cả desktop và mobile): `Phòng`, `Hóa đơn`, `Phương tiện`, `Báo hỏng`, `Vi phạm`; (2) Lịch sử vi phạm nội quy cá nhân được chuyển từ Hộp thư thông báo sang tab điều hướng `Vi phạm` riêng biệt (Tenant chỉ xem biên bản của mình, xem được sau khi checkout, tiền phạt chỉ là thông tin tham khảo không tạo hóa đơn/nút thanh toán); (3) **Thông báo hệ thống** tiếp tục truy cập bằng biểu tượng chuông trên header, không phải tab điều hướng, vẫn hiển thị số thông báo chưa đọc và giữ nguyên các thông báo tự động từ hóa đơn, vi phạm, phương tiện (FR-27); (4) Giữ nguyên FR-19, không tạo vai trò hay workflow mới.
 
-## MỤC LỤC TÀI LIỆU
+> **Quy ước hiệu lực:** Tài liệu này phản ánh các quyết định nghiệp vụ đã thống nhất cho phạm vi Phase 1. Khi có khác biệt giữa SRS này với Conceptual ERD, Logical ERD hoặc mã nguồn hiện hành, phải lập kế hoạch đồng bộ thiết kế và triển khai theo SRS; không xem sự khác biệt là bằng chứng chức năng đã được thực hiện. FR-11 được giữ mã số nhưng hoãn triển khai sang Phase 2.
 
-1. [GIỚI THIỆU (INTRODUCTION)](#1-giới-thiệu-introduction)
-   - 1.1. Mục đích tài liệu (Document Purpose)
-   - 1.2. Phạm vi sản phẩm (Product Scope)
-   - 1.3. Định nghĩa, thuật ngữ và từ viết tắt (Definitions &amp; Acronyms)
-   - 1.4. Tài liệu tham chiếu (References)
-   - 1.5. Cấu trúc tài liệu (Document Overview)
-2. [TỔNG QUAN HỆ THỐNG (OVERALL DESCRIPTION)](#2-tổng-quan-hệ-thống-overall-description)
-   - 2.1. Bối cảnh hệ thống &amp; Các bài toán vận hành cốt lõi (Product Perspective)
-   - 2.2. Các nhóm tác nhân &amp; Phân định nền tảng thiết bị (User Classes &amp; Platform Allocation)
-   - 2.3. Môi trường vận hành (Operating Environment)
-   - 2.4. Ràng buộc thiết kế và triển khai (Design &amp; Implementation Constraints)
-   - 2.5. Giả định và sự phụ thuộc (Assumptions &amp; Dependencies)
-3. [CÁC QUY TẮC NGHIỆP VỤ CỐT LÕI (CORE BUSINESS RULES - BR)](#3-các-quy-tắc-nghiệp-vụ-cốt-lõi-core-business-rules---br)
-   - BR-01: Quản lý theo vị trí giường riêng biệt (Bed-level Tracking &amp; Unique Slot Key)
-   - BR-02: Quy tắc cách ly giới tính nghiêm ngặt 100% (Strict Gender Isolation Policy)
-   - BR-03: Mô hình giá thuê trọn gói &amp; Quản lý chi phí điện nước cơ sở (All-inclusive Rental &amp; Net Profit)
-   - BR-04: Đặt cọc &amp; Trả phòng giải phóng giường (Offline Deposit &amp; Checkout)
-   - BR-05: Chu kỳ phát hành hóa đơn &amp; Hạn thanh toán (Monthly Billing Cycle &amp; Due Date)
-   - BR-06: Quy trình xử lý sự cố &amp; Thứ tự ưu tiên điều phối kỹ thuật (Ticket Prioritization &amp; Workflow)
-   - BR-07: Hồ sơ vi phạm nội quy &amp; Xử phạt (Violations &amp; Disciplinary Actions)
-   - BR-08: Toàn vẹn dữ liệu &amp; Nghiêm cấm xóa vật lý (Soft Delete Policy)
-   - BR-09: Cấp phát tài khoản trực tiếp &amp; Chuẩn hóa hồ sơ khách thuê đa đối tượng
-   - BR-10: Quản lý phương tiện di chuyển &amp; Quy trình cấp thẻ gửi xe hầm
-   - BR-11: Mô hình phân quyền quản trị tinh giản (Simplified RBAC)
-4. [YÊU CẦU CHỨC NĂNG CHI TIẾT (FUNCTIONAL REQUIREMENTS - FR)](#4-yêu-cầu-chức-năng-chi-tiết-functional-requirements---fr)
-   - 4.1. Phân hệ Cơ sở, Phòng &amp; Giường (FR-01 đến FR-05)
-   - 4.2. Phân hệ Hồ sơ Khách thuê &amp; Phương tiện di chuyển (FR-06 đến FR-08)
-   - 4.3. Phân hệ Tiếp nhận, Xếp phòng &amp; Hợp đồng (FR-09 đến FR-13)
-   - 4.4. Phân hệ Chi phí Tiện ích Cơ sở &amp; Lợi nhuận Ròng (FR-14)
-   - 4.5. Phân hệ Quản lý Hóa đơn, Bộ lọc Trạng thái &amp; Thu tiền (FR-15, FR-16)
-   - 4.6. Phân hệ Điều phối Sự cố &amp; Thứ tự ưu tiên kỹ thuật (FR-17, FR-18)
-   - 4.7. Phân hệ Biên bản Vi phạm Nội quy (FR-19)
-   - 4.8. Phân hệ Báo cáo Thống kê &amp; Phân tích KPI (FR-20)
-   - 4.9. Phân hệ Quản trị Hệ thống, Xác thực &amp; Phân quyền (FR-21 đến FR-24)
-   - 4.10. Phân hệ Cổng thông tin Khách thuê trên Di động (FR-25 đến FR-27)
-5. [MA TRẬN TRUY VẾT YÊU CẦU (REQUIREMENTS TRACEABILITY MATRIX - RTM)](#5-ma-trận-truy-vết-yêu-cầu-requirements-traceability-matrix---rtm)
-6. [CÁC LUỒNG TUẦN TỰ HỆ THỐNG ĐẦU CUỐI (END-TO-END SEQUENCE DIAGRAMS)](#6-các-luồng-tuần-tự-hệ-thống-đầu-cuối-end-to-end-sequence-diagrams)
-7. [YÊU CẦU GIAO DIỆN NGOÀI (EXTERNAL INTERFACE REQUIREMENTS)](#7-yêu-cầu-giao-diện-ngoài-external-interface-requirements)
-8. [YÊU CẦU PHI CHỨC NĂNG (NON-FUNCTIONAL REQUIREMENTS - NFR)](#8-yêu-cầu-phi-chức-năng-non-functional-requirements---nfr)
-9. [PHỤ LỤC &amp; TIÊU CHÍ NGHIỆM THU (APPENDICES &amp; ACCEPTANCE CRITERIA)](#9-phụ-lục--tiêu-chí-nghiệm-thu-appendices--acceptance-criteria)
+## MỤC LỤC
+
+1. Giới thiệu
+2. Tổng quan hệ thống
+3. Quy tắc nghiệp vụ (BR-01–BR-11)
+4. Yêu cầu chức năng (FR-01–FR-27)
+5. Ma trận truy vết yêu cầu (RTM)
+6. Các luồng tuần tự nghiệp vụ đầu cuối
+7. Yêu cầu giao diện ngoài
+8. Yêu cầu phi chức năng (NFR)
+9. Phụ lục và tiêu chí hoàn thiện
 
 ---
 
 ## 1. GIỚI THIỆU (INTRODUCTION)
 
-### 1.1. Mục đích tài liệu (Document Purpose)
+### 1.1. Mục đích tài liệu
 
-Tài liệu Đặc tả Yêu cầu Phần mềm (Software Requirements Specification - SRS) này định nghĩa toàn diện, chuẩn hóa theo tiêu chuẩn quốc tế cho dự án **Hệ thống Quản lý Ký túc xá Tư nhân (PDMS - Private Dormitory Management System)**, tên thương mại là **KTX Hub**.
+Tài liệu quy định phạm vi, đối tượng sử dụng, quy tắc nghiệp vụ, yêu cầu chức năng và phi chức năng của **KTX Hub**, làm căn cứ chung cho phân tích nghiệp vụ, thiết kế giao diện, API, cơ sở dữ liệu, triển khai và nghiệm thu. Yêu cầu được trình bày theo hành vi hệ thống cần có, không đồng nhất với trạng thái đã có trong mã nguồn.
 
-Tài liệu là căn cứ kỹ thuật chính thức giữa Chủ cơ sở lưu trú / Đơn vị vận hành, Kỹ sư phân tích nghiệp vụ (BA), Đội ngũ phát triển phần mềm (Frontend, Backend, Database) và Đội ngũ Kiểm thử chất lượng (QA/QC) trong toàn bộ chu kỳ phát triển, đối soát mô hình dữ liệu (ERD), thiết kế API và nghiệm thu chuyển giao.
+### 1.2. Phạm vi sản phẩm
 
-### 1.2. Phạm vi sản phẩm (Product Scope)
+KTX Hub hỗ trợ vận hành **một cơ sở/tòa nhà ký túc xá tư nhân** có nhiều tầng, phòng và vị trí ngủ cho thuê riêng lẻ. Mỗi phòng có 4, 6 hoặc 8 vị trí ngủ. Giường tầng, giường có rèm và sleepbox/pod chỉ là cách bố trí vật lý; hệ thống mô hình hóa thống nhất `Room → Bed`, không tạo thực thể Sleepbox riêng. Tất cả giường trong một phòng dùng cùng giá thuê tiêu chuẩn tại một thời điểm.
 
-#### 1.2.1. Bối cảnh và Định vị sản phẩm
+Đối tượng thuê có thể là người đi làm, sinh viên, học viên, freelancer hoặc cá nhân lưu trú hợp lệ khác. Không bắt buộc thông tin trường học, khoa, mã số sinh viên hoặc diện ưu tiên.
 
-KTX Hub là giải pháp quản trị vận hành tập trung chuyên sâu cho các cơ sở lưu trú phòng tập thể nhiều giường, homestay dorm chia sẻ không gian:
+| Nhóm | Trong phạm vi Phase 1 | Ngoài phạm vi Phase 1 |
+|---|---|---|
+| Cơ sở và chỗ ở | Một tòa nhà; ma trận phòng/giường; giá phòng; tiện nghi; bảo trì giường; lưu trữ/khôi phục phòng | Đa cơ sở; thực thể Sleepbox riêng; thay đổi sức chứa phòng đã tạo; đặt/giữ chỗ |
+| Khách thuê và hợp đồng | Tiếp nhận trực tiếp ngày 01; tài khoản Tenant; hợp đồng giấy và file scan; gia hạn bằng phụ lục; checkout; bảo toàn lịch sử | Tự đăng ký công khai; chuyển phòng (FR-11 ở Phase 2); gia hạn trễ/ở thêm mặc định |
+| Tiền thuê và tài chính | Tiền thuê trọn gói; hóa đơn; VietQR và đối soát thủ công; tiền mặt; chi phí cơ sở; **tổng lương nhân viên do Manager tự tính và nhập theo tháng**; **Lợi nhuận ròng (ước tính từ dữ liệu đã ghi nhận)** | Tự động tính bảng lương từng nhân viên; kê khai thuế, khấu hao và kế toán đầy đủ; đồng bộ ngân hàng; tiền thuê lẻ tháng; thu tiền phạt trên hệ thống |
+| Vận hành | Xe và mã thẻ vật lý (bao gồm **từ chối cấp thẻ kèm lý do** và **Tenant yêu cầu đổi xe giữ nguyên thẻ**); phiếu sự cố; linh kiện sửa chữa; vi phạm; **4 KPI và 4 biểu đồ Dashboard**; thông báo hệ thống | Barrier/đầu đọc thẻ; IoT; workflow mất thẻ riêng; thông báo thủ công/hàng loạt từ Manager; native app |
+| Tài khoản | 3 role cố định; Tenant đăng nhập CCCD; nhân sự đăng nhập email; **đổi mật khẩu bằng mật khẩu cũ, khôi phục bằng OTP email**; email mỗi User duy nhất | Permission editor; đổi email tài khoản Manager; OTP khi đã đăng nhập đổi mật khẩu; xác minh email mới bằng OTP; lịch sử thao tác đổi email/reset mật khẩu riêng |
 
-- Đối tượng khách thuê: Mở rộng phục vụ đa đối tượng lưu trú bao gồm người đi làm, chuyên gia trẻ, freelancer, sinh viên các trường đại học/cao đẳng và học viên thực tập.
-- Tôn chỉ sản phẩm: Tối ưu tỷ lệ lấp đầy giường trống, minh bạch thu chi, kiểm soát an ninh cách ly giới tính 100%, tự động hóa thu ngân qua VietQR Napas247 và cung cấp công cụ theo dõi Lợi nhuận ròng thực tế cho chủ đầu tư.
+### 1.3. Thuật ngữ và từ viết tắt
 
-#### 1.2.2. Phân định Phạm vi (Scope Boundaries)
+| Thuật ngữ | Định nghĩa |
+|---|---|
+| PDMS | Private Dormitory Management System — hệ thống quản lý ký túc xá tư nhân |
+| Room / Bed | Phòng và vị trí ngủ cho thuê riêng; `Bed` bao hàm cả vị trí dạng sleepbox/pod |
+| Room Code / `room_number` | Mã phòng nghiệp vụ (ví dụ `P.302`), khác với UUID khóa chính; mã đang sử dụng hoặc gắn với lịch sử nghiệp vụ phải được bảo vệ |
+| Bed Code / Slot Key | `bed_code` như `G02`; `slot_key = RoomCode-BedCode` như `P.302-G02` |
+| Tenant | Khách thuê; CCCD 12 chữ số là định danh nghiệp vụ duy nhất, UUID là định danh kỹ thuật |
+| Onboarding | Manager tiếp nhận, tạo/tái sử dụng hồ sơ và tài khoản, lập hợp đồng, gán giường, phát hành hóa đơn đầu tiên trong một quy trình nhất quán |
+| Checkout | Bàn giao và thanh lý hợp đồng, giải phóng giường, bảo toàn hồ sơ/hóa đơn/công nợ |
+| Gia hạn / Phụ lục | Văn bản giấy gia hạn hợp đồng gốc; mỗi lần gia hạn lưu thời hạn và mức giá cố định của kỳ gia hạn |
+| Giá tiêu chuẩn phòng | Giá hiện hành chung cho tất cả giường của phòng, dùng khi lập hợp đồng hoặc ký phụ lục mới |
+| Giá hợp đồng | Giá snapshot ở hợp đồng/phụ lục, không tự tăng theo giá tiêu chuẩn phòng sau khi ký |
+| Kỳ hóa đơn (`billing_period`) | Tháng tiền thuê được thu, ví dụ `2026-12`; khác ngày Manager xác nhận tiền |
+| `Nợ` / `Chờ xác nhận` / `Đã thu` | Ba trạng thái thanh toán hóa đơn. Quá hạn là chỉ báo tính từ hạn thanh toán, không phải trạng thái thứ tư |
+| Bản ghi thu tiền (`PAYMENT_TRANSACTION`) | Bằng chứng hệ thống xác nhận một hóa đơn đã được Manager thu đủ bằng tiền mặt hoặc chuyển khoản VietQR; không phải lệnh/giao dịch ngân hàng và chỉ có sau xác nhận `Đã thu` |
+| VietQR | Mã QR cung cấp tài khoản nhận, số tiền và nội dung chuyển khoản gắn mã hóa đơn; không tự xác nhận tiền đã đến |
+| RBAC | Kiểm soát quyền theo 3 vai trò `MANAGER`, `TENANT`, `TECHNICIAN` |
+| Yêu cầu đổi xe (`VehicleChangeRequest`) | Yêu cầu do Tenant đang có xe `ISSUED` khởi tạo; chứa thông tin xe mới, tham chiếu xe hiện tại và trạng thái duyệt, **không phải xe thứ hai đang có hiệu lực**; mã thẻ vật lý giữ nguyên nếu Manager chấp nhận |
+| Xe `REPLACED` | Hồ sơ xe **đã được thay thế** bởi xe mới sau khi duyệt đổi xe; vẫn giữ lịch sử và mã thẻ trước đây nhưng **không đồng nghĩa đã thu hồi thẻ vật lý** |
+| Lợi nhuận ròng (ước tính) | **Nhãn vận hành có điều kiện** cho doanh thu thuê đã xác nhận thu theo kỳ hóa đơn trừ các chi phí đã ghi nhận trong kỳ, bao gồm tổng lương Manager nhập thủ công; **không phải số liệu lợi nhuận ròng đã được kiểm toán hay báo cáo kế toán/thuế đầy đủ** |
 
+### 1.4. Tài liệu tham chiếu
 
-| Hạng mục                      | Trong phạm vi hệ thống (In-Scope)                                                                                                                                                                                                                                                   | Ngoài phạm vi hệ thống (Out-of-Scope)                                                                                   |
-| :----------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- |
-| **Quản lý Lưu trú**           | - Quản lý đến từng vị trí giường cụ thể (`Bed-level`).; Quy tắc cách ly giới tính sinh học 100%.; Ma trận phòng &amp; giường trực quan theo tầng (01 tòa nhà).                                                                                                                      | - Quản lý chuỗi đa pháp nhân độc lập.; Thuê căn hộ gia đình nguyên căn.                                                 |
-| **Khách thuê &amp; Hợp đồng** | - Đơn vị vận hành tạo hồ sơ khách thuê và gán phòng trực tiếp sau khi xem phòng offline.; Loại bỏ các trường học vị (trường, khoa, MSSV, diện ưu tiên).; Ký hợp đồng giấy bên ngoài, chụp ảnh/scan tải lên lưu trữ minh chứng.                                                      | - Tích hợp hệ thống quản lý đào tạo/tuyển sinh trường đại học.; Cổng đăng ký tìm phòng công khai trên web.              |
-| **Tài chính &amp; Lợi nhuận** | - Thu tiền phòng trọn gói (all-inclusive).; Cho phép Chủ cơ sở nhập hóa đơn tiền điện/nước tổng của cơ sở để tính Lợi nhuận ròng thực tế.; Sinh mã VietQR Napas247 động gắn sẵn số tiền và mã hóa đơn.; Xác nhận thu tiền mặt; không tính phí phạt khi khách nộp trễ tiền.          | - Tích hợp cổng thanh toán quốc tế Visa/Mastercard.; Tự động trích nợ tài khoản ngân hàng (Auto-debit).                 |
-| **Vận hành &amp; Kỹ thuật**   | - Khách thuê gửi phiếu báo hỏng kèm ảnh chụp.; Phân cấp ưu tiên xử lý: Khẩn cấp (Rank 0) &gt; Cao (Rank 1) &gt; Bình thường (Rank 2).; Kỹ thuật viên thao tác trên di động, cập nhật tiến độ và nghiệm thu vật tư.; Quản lý biên bản vi phạm nội quy và phương tiện gửi xe tại hầm. | - Lắp đặt phần cứng công tơ điện tử IoT gửi dữ liệu tự động qua Wi-Fi.; Phần cứng cổng xoay kiểm soát FaceID / vân tay. |
+- Bản SRS nền: `SRS(3).md` và bản trích đặc tả `SRS_FR01_FR13_Chot_Nghiep_Vu.md`.
+- `Conceptual_ERD.md` (bản nền v3.2), được đối chiếu và cập nhật thành `KTX_Hub_Conceptual_ERD_v3.4_Final.md` trong cùng đợt; thiết kế mức khái niệm không thay thế Logical ERD.
+- `KTX_Hub_Logical_ERD_v3.5_Final.md` — mô hình dữ liệu logic cuối cùng, gồm 19 bảng PostgreSQL; bản `Logical-ERD.md` cũ chỉ để đối chiếu.
+- Các quyết định nghiệp vụ đã được thống nhất trong quá trình review FR-01 đến FR-27.
 
+### 1.5. Cấu trúc tài liệu
 
-### 1.3. Định nghĩa, thuật ngữ và từ viết tắt (Definitions &amp; Acronyms)
-
-
-| Thuật ngữ / Từ viết tắt     | Định nghĩa nghiệp vụ / Kỹ thuật                                                                                                                                  |
-| :--------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **PDMS**                    | Private Dormitory Management System - Hệ thống Quản lý Ký túc xá Tư nhân.                                                                                        |
-| **Bed-level Tracking**      | Phương thức quản lý phân rã đến từng vị trí giường/hộp ngủ độc lập. Mỗi giường có đơn giá, hợp đồng và khách thuê riêng biệt.                                    |
-| **Khách thuê (Tenant)**     | Người cư trú tại KTX, bao gồm người đi làm, sinh viên, người lưu trú tự do. Định danh cốt lõi bằng CCCD 12 số, họ tên, giới tính, số điện thoại, email. |
-| **Gender Isolation Policy** | Chính sách bắt buộc: Một phòng chỉ cho phép khách cùng một giới tính sinh học cư trú (Nam hoặc Nữ). Tuyệt đối cấm phòng hỗn hợp.                                 |
-| **Prorated Allocation**     | Thuật toán phân bổ chi phí tiện ích điện nước dùng chung của phòng dựa trên tỷ lệ ngày thực tế lưu trú của từng cá nhân trong chu kỳ chốt số.                    |
-| **All-inclusive Rent**      | Mô hình giá thuê trọn gói: Tiền phòng đã bao gồm chi phí sinh hoạt điện nước cơ bản; Chủ cơ sở ghi nhận hóa đơn tổng để hạch toán Lợi nhuận ròng.                |
-| **VietQR Napas247**         | Chuẩn mã QR thanh toán nhanh liên ngân hàng Việt Nam, tích hợp sẵn số tài khoản, số tiền chính xác và cú pháp nội dung đối soát.                                 |
-| **RBAC**                    | Role-Based Access Control - Kiểm soát truy cập dựa trên vai trò: Quản lý (Manager), Kỹ thuật viên (Technician), Khách thuê (Tenant).                             |
-| **Soft Delete**             | Đánh dấu xóa bằng cờ thời gian (`deleted_at`) thay vì xóa vật lý khỏi cơ sở dữ liệu (`No Hard Delete`).                                                          |
-| **Unique Slot Key**         | Khóa định danh duy nhất của vị trí giường: `RoomCode-BedCode` (Ví dụ: `P.302-G02`).                                                                              |
-
-
-### 1.4. Tài liệu tham chiếu (References)
-
-1. **Mô hình Dữ liệu Mức Khái niệm:** `docs/Conceptual_ERD.md` (Đặc tả 14 thực thể nghiệp vụ tinh gọn).
-2. **Mô hình Dữ liệu Mức Logic:** `docs/Logical-ERD.md` (Đặc tả 12 bảng PostgreSQL 3NF chuẩn hóa UUID, View tài chính tính Lợi nhuận ròng).
-3. **Mã nguồn Prototype:** `src/App.tsx`, `src/admin.tsx`, `src/student.tsx`, `src/technician.tsx`, `src/data.ts`, `src/domain.ts`.
-
-### 1.5. Cấu trúc tài liệu (Document Overview)
-
-Tài liệu gồm 9 chương lớn bao quát toàn bộ yêu cầu phần mềm: từ bối cảnh kinh doanh, quy tắc nghiệp vụ toán học, yêu cầu chức năng 11 phân hệ, ma trận truy vết RTM, sơ đồ tương tác tuần tự, giao diện ngoài, yêu cầu phi chức năng đến tiêu chí nghiệm thu.
+Chương 2 định vị hệ thống và tác nhân; Chương 3 chuẩn hóa BR; Chương 4 định nghĩa 27 FR; Chương 5 ánh xạ BR–FR–dữ liệu; Chương 6 mô tả các luồng đầu cuối; Chương 7–8 quy định giao diện ngoài và NFR; Chương 9 làm rõ phạm vi và các phần cần đồng bộ thiết kế.
 
 ---
 
 ## 2. TỔNG QUAN HỆ THỐNG (OVERALL DESCRIPTION)
 
-### 2.1. Bối cảnh hệ thống &amp; Các bài toán vận hành cốt lõi (Product Perspective)
+### 2.1. Bài toán vận hành
 
-Khác biệt với ký túc xá đại học công lập và chung cư nguyên căn, mô hình **Ký túc xá tư nhân** giải quyết 6 bài toán vận hành thực tế:
+Hệ thống giải quyết sáu nhu cầu cốt lõi: (1) quản lý chiếm chỗ theo từng Bed; (2) theo dõi chi phí cơ sở, tổng lương nhập thủ công và lợi nhuận ròng ước tính từ dữ liệu ghi nhận; (3) cách ly giới tính phòng; (4) thu tiền thuê trọn gói bằng VietQR/tiền mặt với xác nhận thủ công; (5) điều phối sự cố theo mức khẩn cấp; (6) quản lý phương tiện và thẻ gửi xe vật lý.
 
-```text
-+----------------------------------------------------------------------------------------------------+
-|                             6 BÀI TOÁN VẬN HÀNH CỐT LÕI CỦA KTX TƯ NHÂN                            |
-+----------------------------------------------------------------------------------------------------+
-|  [Bài toán 1]  Quản lý trực quan theo từng vị trí giường tiêu chuẩn trong phòng.                    |
-|  [Bài toán 2]  Theo dõi chi phí điện nước tổng cơ sở và phân bổ chi phí để tính đúng Lợi nhuận ròng.|
-|  [Bài toán 3]  Kiểm soát an ninh tuyệt đối và cách ly giới tính nghiêm ngặt 100%.                 |
-|  [Bài toán 4]  Thu hồi công nợ phân mảnh, hỗ trợ cả mã VietQR động lẫn xác nhận tiền mặt thủ công. |
-|  [Bài toán 5]  Thứ tự ưu tiên xử lý sự cố kỹ thuật (Khẩn cấp > Cao > Bình thường).                 |
-|  [Bài toán 6]  Quản lý phương tiện di chuyển, thẻ từ gửi xe và bảo đảm trật tự hầm xe KTX.        |
-+----------------------------------------------------------------------------------------------------+
-```
+### 2.2. Nhóm tác nhân
 
-### 2.2. Các nhóm tác nhân &amp; Phân định nền tảng thiết bị (User Classes &amp; Platform Allocation)
+| Tác nhân | Thiết bị ưu tiên | Phạm vi chính |
+|---|---|---|
+| Manager / Chủ KTX (`MANAGER`) | Desktop Web, laptop | Toàn bộ quản lý phòng/giường, khách thuê, hợp đồng, hóa đơn, thu tiền, tài chính, nhân viên, xe, sự cố, vi phạm và Dashboard |
+| Khách thuê (`TENANT`) | Mobile Web | Thẻ phòng, hồ sơ được phép, hóa đơn, VietQR, minh chứng, xe, báo hỏng, thông báo và lịch sử cá nhân |
+| Kỹ thuật viên (`TECHNICIAN`) | Mobile/Tablet Web | Các phiếu sự cố được phân công; cập nhật trạng thái, kết quả, ảnh nghiệm thu và linh kiện sử dụng |
 
-Hệ thống phân định ranh giới rõ ràng về thiết bị sử dụng cho từng nhóm đối tượng để tối ưu hóa trải nghiệm thực tế:
+Tenant đã checkout vẫn mang role `TENANT` nhưng quyền theo trạng thái cư trú bị giới hạn: xem hợp đồng/hóa đơn/giao dịch/vi phạm cũ và gửi minh chứng cho khoản `Nợ`; không đăng ký xe hay báo hỏng mới.
 
-```mermaid
-graph TD
-    System((Hệ thống KTX Hub))
-    Manager[1. Quản lý / Chủ KTX Nền tảng: Máy tính để bàn / Desktop Web] -->|Quản trị toàn diện, Hóa đơn, Phòng giường, Tài chính| System
-    Tenant[2. Khách thuê / Người ở Nền tảng: Điện thoại di động / Mobile Web] -->|Xem thẻ phòng, Hóa đơn VietQR, Đăng ký xe, Báo hỏng| System
-    Tech[3. Nhân viên Kỹ thuật Nền tảng: Điện thoại di động / Mobile App] -->|Nhận phiếu sửa chữa theo ưu tiên, Nghiệm thu vật tư| System
-    Bank[4. Cổng Ngân hàng VietQR] -->|Gạch nợ tự động qua Webhook| System
-```
+### 2.3. Hệ thống ngoài
 
-#### 2.2.1. Ban Quản lý / Chủ KTX (Manager / Owner)
+- Ứng dụng ngân hàng của khách thực hiện chuyển khoản bằng VietQR. Manager tự đối chiếu tiền thực nhận trong ngân hàng **ngoài KTX Hub**; không có webhook và tự động gạch nợ.
+- Dịch vụ email **chỉ gửi OTP khôi phục mật khẩu**; không tự động xác minh quyền sở hữu email mới khi Manager cập nhật hồ sơ.
+- Dịch vụ lưu trữ tệp phục vụ hợp đồng, ảnh đăng ký xe, minh chứng thanh toán và ảnh sự cố/nghiệm thu.
 
-- **Thiết bị sử dụng:** Máy tính để bàn / Laptop (Desktop Web, độ phân giải từ 1280px trở lên).
-- **Giao diện chuyên biệt:** Bảng điều khiển SaaS toàn diện với Sidebar điều hướng, bảng dữ liệu lớn, bộ lọc đa tầng, biểu đồ phân tích KPI và ngăn kéo trượt (Slide-over Drawer).
-- **Trách nhiệm chính:** Quản trị phòng ốc; tạo hồ sơ khách thuê và gán giường; ghi nhận hóa đơn điện nước cơ sở; phát hành hóa đơn; đối soát VietQR và xác nhận thu tiền mặt; phân công kỹ thuật viên; quản lý phương tiện và theo dõi Lợi nhuận ròng.
+### 2.4. Môi trường vận hành
 
-#### 2.2.2. Khách thuê / Người ở (Tenant / Resident)
+Frontend sử dụng React/TypeScript, trình duyệt Chrome, Edge, Firefox và Safari; Backend Java Spring Boot cung cấp REST/JSON; dữ liệu nghiệp vụ lưu PostgreSQL; **JWT Access/Refresh** kết hợp **Redis** để quản lý thu hồi token/OTP tạm thời; tệp nhạy cảm lưu **OCI Object Storage ở chế độ private**. Giao diện responsive cho Desktop, Mobile và Tablet.
 
-- **Thiết bị sử dụng:** Điện thoại thông minh cá nhân (Mobile-First Web Responsive, tối ưu từ 360px đến 430px).
-- **Giao diện chuyên biệt:** Thanh điều hướng 4 tab cố định ở cạnh đáy màn hình (Bottom Navigation Bar): *Phòng của tôi, Hóa đơn, Phương tiện, Sự cố*.
-- **Trách nhiệm chính:** Sử dụng thẻ phòng điện tử; tra cứu hóa đơn và quét mã VietQR thanh toán; đăng ký phương tiện gửi xe kèm ảnh chụp cà vẹt xe; gửi phiếu báo hỏng vật tư kèm mức độ ưu tiên và ảnh chụp hiện trường; theo dõi lịch sử vi phạm nội quy.
+### 2.5. Ràng buộc và giả định
 
-#### 2.2.3. Nhân viên Kỹ thuật (Technician)
-
-- **Thiết bị sử dụng:** Điện thoại thông minh / Máy tính bảng tại hiện trường (Mobile App Viewport).
-- **Giao diện chuyên biệt:** Thiết kế tối ưu cho màn hình cảm ứng di động (`max-w-md`), thẻ tác vụ lớn, nút thao tác chụp ảnh và bấm nghiệm thu to rõ, dễ bấm khi đang thao tác sửa chữa.
-- **Trách nhiệm chính:** Tiếp nhận công việc theo thứ tự ưu tiên (ưu tiên xử lý việc khẩn cấp nhấp nháy trên đầu trang); cập nhật tiến độ đang xử lý; ghi nhận vật tư/linh kiện thay thế và chi phí phát sinh; chụp ảnh nghiệm thu hoàn thành.
-
-#### 2.2.4. Cổng Ngân hàng / VietQR Napas247 (External System)
-
-- Tiếp nhận chuyển khoản 24/7 từ ứng dụng Mobile Banking của khách thuê; tự động gửi Webhook về hệ thống để gạch nợ tức thời.
-
-### 2.3. Môi trường vận hành (Operating Environment)
-
-- **Phía Máy khách (Client):** Trình duyệt Web hiện đại (Google Chrome, Apple Safari, Microsoft Edge, Mozilla Firefox) trên cả Desktop và Mobile.
-- **Phía Máy chủ (Server &amp; Database):** Node.js 20+ LTS / Bun runtime; PostgreSQL 15+ hỗ trợ B-tree/GIN index và JSONB; Lưu trữ ảnh trên Cloud Object Storage (S3 API).
-
-### 2.4. Ràng buộc thiết kế và triển khai (Design &amp; Implementation Constraints)
-
-1. **Kiến trúc cơ sở dữ liệu:** Tuân thủ chuẩn hóa 3NF/BCNF theo tài liệu `docs/Logical-ERD.md`. Khóa chính sử dụng `uuid DEFAULT gen_random_uuid()` bảo mật cao kết hợp mã nghiệp vụ tự nhiên thân thiện người dùng (`text UNIQUE`).
-2. **Quy tắc không xóa vật lý (No Hard Delete):** Tuyệt đối cấm xóa vật lý trên các bảng pháp lý/tài chính (`contracts`, `invoices`, `payment_transactions`, `facility_expenses`, `violations`). Chỉ dùng cập nhật cờ `deleted_at` hoặc trạng thái hủy.
-3. **Quy chuẩn Design Tokens:** Màu thương hiệu Xanh dương (`--brand-600: #1D4ED8`), nền trang xám nhạt (`--slate-50`), font chữ chuyên biệt `Plus Jakarta Sans` (Tiêu đề), `Inter` (Nội dung), `JetBrains Mono` (Mã số, tiền tệ, tài khoản).
-4. **Bảo mật mật khẩu:** Băm mật khẩu bằng thuật toán an toàn `Bcrypt` (cost factor &gt;= 12).
-
-### 2.5. Giả định và sự phụ thuộc (Assumptions &amp; Dependencies)
-
-1. Cơ sở lưu trú nhận hóa đơn tiền điện, nước tổng do cơ quan nhà nước / công ty cung cấp dịch vụ phát hành định kỳ hàng tháng.
-2. Tài khoản ngân hàng của cơ sở hỗ trợ nhận tiền và tra cứu theo chuẩn VietQR Napas247.
+1. Phase 1 phục vụ một cơ sở. Mỗi phòng chỉ có 4/6/8 giường và chính sách giới tính `Nam`/`Nữ`.
+2. Không có tự đặt/giữ chỗ. **Khách mới chỉ tạo hồ sơ, User và hợp đồng khi thực hiện onboarding ngày 01**; ngày bắt đầu cư trú cũng là ngày 01. Hợp đồng tính theo tháng đầy đủ, kết thúc vào ngày cuối của kỳ thuê; lần gia hạn tiếp nối từ ngày 01 tháng tiếp theo.
+3. Ngày ký/thỏa thuận giấy và bàn giao được Manager thực hiện trực tiếp theo quy trình; upload bản scan có thể làm sau. Phần mềm không ký số hợp đồng.
+4. Tiền cọc và bàn giao/khấu trừ được xử lý ngoài thực tế; hệ thống lưu giá trị cần tra cứu, không thực hiện nghiệp vụ quyết toán cọc tự động phức tạp.
+5. Backend chịu trách nhiệm về toàn vẹn dữ liệu, ngăn gán giường trùng và kiểm tra quyền; giao diện ẩn nút không thay thế điều kiện nghiệp vụ phía máy chủ.
+6. Việc cập nhật Conceptual ERD, Logical ERD, API và Backend được thực hiện **sau** bước xác nhận đặc tả; không ép SRS giữ nguyên các hạn chế của schema cũ.
 
 ---
 
-## 3. CÁC QUY TẮC NGHIỆP VỤ CỐT LÕI (CORE BUSINESS RULES - BR)
+## 3. QUY TẮC NGHIỆP VỤ CỐT LÕI (BUSINESS RULES)
 
-```text
-+----------------------------------------------------------------------------------------------------+
-|                                BẢNG TỔNG HỢP CÁC QUY TẮC NGHIỆP VỤ (BR)                            |
-+--------+-----------------------------------------------------+-------------------------------------+
-| Mã BR  | Tên quy tắc nghiệp vụ                               | Phạm vi áp dụng                     |
-+--------+-----------------------------------------------------+-------------------------------------+
-| BR-01  | Quản lý theo vị trí giường riêng biệt               | Cơ sở, Phòng, Giường, Hợp đồng      |
-| BR-02  | Quy tắc cách ly giới tính nghiêm ngặt 100%          | Xếp phòng, Đổi phòng, Cư trú        |
-| BR-03  | Giá thuê trọn gói & Quản lý điện nước tổng cơ sở    | Hạch toán Lợi nhuận ròng, Doanh thu |
-| BR-04  | Đặt cọc & Trả phòng giải phóng giường (Offline)     | Hợp đồng, Cọc giữ chỗ, Checkout     |
-| BR-05  | Chu kỳ phát hành hóa đơn & Hạn nộp (Không phạt trễ)  | Hóa đơn, VietQR, Hạn thanh toán     |
-| BR-06  | Xử lý sự cố & Thứ tự ưu tiên điều phối kỹ thuật     | Khẩn cấp > Cao > Bình thường        |
-| BR-07  | Hồ sơ vi phạm nội quy & Xử phạt (Nhắc nhở, Cảnh cáo)| Vi phạm nội quy, Tiền phạt          |
-| BR-08  | Toàn vẹn dữ liệu & Nghiêm cấm xóa vật lý (Soft)     | CSDL, Hóa đơn, Hợp đồng             |
-| BR-09  | Cấp tài khoản trực tiếp & Khách thuê đa đối tượng   | Tạo hồ sơ người thuê, Không ép MSSV |
-| BR-10  | Quản lý phương tiện di chuyển & Thẻ gửi xe hầm      | Xe máy, Xe điện, Thẻ từ, Cà vẹt xe  |
-| BR-11  | Phân quyền quản trị tinh giản (Simplified RBAC)     | Quản lý (Manager), Thợ (Technician) |
-+--------+-----------------------------------------------------+-------------------------------------+
-```
+### BR-01 — Vị trí ngủ, trạng thái và mã định danh
 
-### BR-01: Quản lý theo vị trí giường riêng biệt (Bed-level Tracking &amp; Unique Slot Key)
+1. Mỗi phòng có đúng 4, 6 hoặc 8 Bed. Cấu hình tầng và sức chứa không được chỉnh sửa sau khi tạo. Các Bed trong phòng dùng một giá tiêu chuẩn chung.
+2. `rooms.id` và `beds.id` là khóa chính nội bộ bất biến. Room Code (`room_number`) là mã nghiệp vụ, Bed Code (`bed_code`) là mã giường; `slot_key = RoomCode-BedCode` duy nhất. Khi Room Code được đổi hợp lệ, phải cập nhật mọi Slot Key tương ứng đồng bộ, không thay đổi UUID và các snapshot hợp đồng cũ.
+3. Trạng thái Bed: `AVAILABLE`, `OCCUPIED`, `MAINTENANCE`. Không có `RESERVED`. Manager chỉ trực tiếp chuyển `AVAILABLE ↔ MAINTENANCE` ở giường trống; `OCCUPIED` chỉ thay đổi qua onboarding/checkout.
+4. **Mã phòng chỉ được tái sử dụng khi chưa từng gắn với dữ liệu nghiệp vụ cần bảo toàn.** Mã phòng của Room còn tồn tại (kể cả Room đã Archive) luôn được giữ riêng, không cấp đồng thời cho Room khác. Mã đã xuất hiện trong hợp đồng, lịch sử cư trú, phiếu sự cố hoặc hồ sơ nghiệp vụ cần giữ **không được tái sử dụng**, kể cả sau khi Room đổi mã. Riêng Room tạo nhầm đã xóa vật lý an toàn mà chưa phát sinh dữ liệu nghiệp vụ, hoặc mã cũ của Room được đổi tên khi chưa phát sinh dữ liệu nghiệp vụ, có thể được cấp lại. Cấu hình phòng/giường/tiện nghi chưa sử dụng không tính là lịch sử nghiệp vụ cần bảo toàn.
+5. Phòng không còn khách và không có hợp đồng chiếm chỗ hiệu lực mới được đổi mã, đổi chính sách giới tính hoặc lưu trữ. Phòng lưu trữ không nhận khách mới; có thể khôi phục, giữ nguyên Bed/Room ID và trạng thái giường.
+6. Tỷ lệ lấp đầy = số giường `OCCUPIED` / tổng giường vật lý **của các phòng đang vận hành**; giường `MAINTENANCE` vẫn thuộc mẫu số.
 
-1. Mỗi phòng chứa danh sách các giường cố định được đánh số từ `G01, G02, ..., G0n` (với N là sức chứa tối đa của phòng).
-2. Đơn vị cho thuê và định danh là từng vị trí giường tiêu chuẩn. Đơn giá thuê là đồng nhất cho toàn bộ các vị trí giường trong cùng một phòng, được xác định bởi đơn giá tiêu chuẩn của phòng (`rooms.base_price`). Toàn bộ các giường trong phòng đều áp dụng chung mức giá này khi khởi tạo hợp đồng thuê.
-3. Khóa định danh vị trí giường trong hệ thống là duy nhất:
+### BR-02 — Chính sách giới tính phòng
 
-```text
-slotKey = RoomCode + "-" + BedCode
-```
+1. Một phòng chỉ cho người thuê cùng giới tính `Nam` hoặc `Nữ` cư trú; không xếp người không phù hợp.
+2. Chỉ đổi chính sách giới tính khi phòng **không còn người đang cư trú và không có hợp đồng chiếm chỗ còn hiệu lực**.
+3. Backend bắt buộc kiểm tra tại thời điểm gán giường/chỉnh chính sách; không tự đổi giới tính Tenant hoặc di chuyển khách để hợp thức hóa.
 
-*(Ví dụ: `P.302-G02` định danh cho Giường số 02 tại Phòng 302).*
-4. Một giường tại một thời điểm chỉ thuộc 1 trong 3 trạng thái:
+### BR-03 — Tiền thuê trọn gói, chi phí vận hành và lợi nhuận ròng ước tính
 
-- `AVAILABLE` (Sẵn sàng đón khách mới).
-- `OCCUPIED` (Đang có khách ở với hợp đồng có hiệu lực).
-- `MAINTENANCE` (Đang hỏng hóc hoặc bảo trì vật tư).
+1. Tiền thuê mỗi Bed theo giá đã khóa trong hợp đồng/phụ lục, gồm tiền phòng và dịch vụ cơ bản: điện, nước, Internet, gửi xe theo chính sách cơ sở. Không xuất hóa đơn tiện ích phân bổ riêng từng Tenant.
+2. Giá tiêu chuẩn chung của phòng có thể được Manager thay đổi; mức mới được sử dụng cho **hợp đồng mới hoặc phụ lục gia hạn ký sau khi thay đổi**, không cập nhật giá hợp đồng/phụ lục đã ký và không chỉnh hóa đơn đã phát hành.
+3. Doanh thu thực thu của một **kỳ hóa đơn** chỉ gồm số tiền của các hóa đơn kỳ đó đã được Manager xác nhận `Đã thu`. Hóa đơn thanh toán muộn vẫn được phản ánh vào kỳ hóa đơn gốc, không chuyển sang kỳ của ngày nhận tiền. Doanh thu kỳ vọng gồm toàn bộ giá trị hóa đơn của kỳ, không phụ thuộc trạng thái thu.
+4. Manager tự tính lương nhân viên **ngoài hệ thống** và nhập **một khoản tổng lương của tháng** vào nhóm chi phí `Lương nhân viên`, kèm ngày chi phí, tiêu đề và chứng từ/ghi chú khi có. Hệ thống **không** tính lương theo nhân viên, chấm công, các khoản trích theo lương hoặc khấu trừ thuế. Nếu cần điều chỉnh số lương tháng đã nhập, Manager sửa khoản ghi nhận thay vì nhập trùng.
+5. **Lợi nhuận ròng (ước tính theo dữ liệu ghi nhận) của kỳ** = doanh thu tiền thuê đã xác nhận thu thuộc kỳ hóa đơn − chi phí vật tư của phiếu sửa chữa hoàn thành trong kỳ − chi phí cơ sở (điện, nước, Internet) theo ngày chi phí − tổng lương nhân viên nhập thủ công theo tháng − các chi phí vận hành khác theo ngày ghi nhận. Không tính trùng chi phí vật tư đã tổng hợp từ Ticket; không tính tiền cọc vào doanh thu hoặc tiền phạt vi phạm vào doanh thu thuê.
+6. **Điều kiện sử dụng nhãn “Lợi nhuận ròng (ước tính)”**: Dashboard/Finance và báo cáo phải kèm giải thích “Chỉ dựa trên doanh thu và chi phí đã nhập/ghi nhận; có thể chưa bao gồm mọi nghĩa vụ và chi phí thực tế”. Doanh thu nhóm theo `billing_period` còn chi phí nhóm theo `expense_date` hoặc ngày Ticket hoàn thành; đây là **chỉ số vận hành quy ước**, không phải lợi nhuận ròng kế toán được kiểm toán, báo cáo thuế hoặc dòng tiền. Khi thiếu khoản chi chưa được nhập, số ước tính có thể cao hơn thực tế.
 
-5. **Quy tắc bảo trì giường (Bed Maintenance Invariant):** Trạng thái bảo trì được quản lý độc lập theo từng vị trí giường cụ thể (không áp dụng bảo trì cào bằng cả phòng). Một giường chỉ được phép chuyển sang trạng thái `Bảo trì` (`MAINTENANCE`) khi đang không có khách cư trú (`status !== OCCUPIED`). Tuyệt đối ngăn chặn việc đưa giường đang có người ở vào trạng thái bảo trì nhằm bảo vệ quyền lợi cư trú của khách.
-6. Tuyệt đối không cho phép tạo 2 hợp đồng có hiệu lực trùng cùng một vị trí giường tại cùng một thời điểm.
+### BR-04 — Cọc, thời hạn hợp đồng và checkout
 
-### BR-02: Quy tắc cách ly giới tính nghiêm ngặt 100% (Strict Gender Isolation Policy)
+1. Cọc tiêu chuẩn bằng một tháng tiền thuê giường; điều khoản cụ thể, thu và hoàn/trừ cọc được thực hiện ngoài thực tế theo hợp đồng giấy. KTX Hub không tự quyết toán cọc phức tạp.
+2. Khách thông báo ý định rời đi tối thiểu 15 ngày. Nếu không gia hạn, khách phải rời phòng chậm nhất ngày cuối hợp đồng; Manager chủ động kiểm tra phòng, bàn giao, xử lý cọc và thu hồi chìa khóa/thẻ xe **trong ngày cuối**. Không có quyền ở thêm mặc định hoặc quy trình gia hạn trễ Phase 1.
+3. Chỉ Manager xác nhận checkout sau bàn giao. Manager phải chọn giường trở lại `AVAILABLE` hoặc `MAINTENANCE`; hệ thống cập nhật hợp đồng, cư trú, giường và thu hồi xe/thẻ một cách nhất quán.
+4. Checkout vẫn được thực hiện khi có hóa đơn `Nợ` hoặc `Chờ xác nhận`; giữ nguyên các trạng thái đó cho việc đối soát sau. Khách đã checkout vẫn đăng nhập và gửi minh chứng cho hóa đơn `Nợ`.
+5. Không tự xóa hồ sơ, hợp đồng, hóa đơn, giao dịch, công nợ, lịch sử cư trú, phiếu sự cố hay vi phạm. Không tự giải phóng giường chỉ vì đến ngày hết hạn khi chưa xác nhận bàn giao.
+6. **Không cho gia hạn hoặc ký hợp đồng mới nếu Tenant còn hóa đơn `Nợ` hoặc `Chờ xác nhận`**. Thu nợ ngoài thực tế do Manager thực hiện; không có workflow đòi nợ riêng.
 
-1. Mỗi phòng khi tạo lập bắt buộc phải được gắn chính sách giới tính cố định: `Nam` hoặc `Nữ`. Hệ thống tuyệt đối không hỗ trợ phòng hỗn hợp.
-2. Khách thuê có giới tính sinh học xác định trên CCCD: `Nam` hoặc `Nữ`.
-3. **Nguyên tắc bất biến:** Một khách thuê chỉ được phép xếp vào hoặc chuyển sang phòng có chính sách giới tính trùng khớp 100% với giới tính của khách:
+### BR-05 — Chu kỳ thuê, phát hành hóa đơn và thanh toán
 
-```text
-canAssignToRoom = (tenant.gender == room.gender_policy)
-```
+1. Ngày **tạo hồ sơ Tenant mới = ngày onboarding = ngày bắt đầu cư trú = ngày 01 của tháng**. Không tiếp nhận bắt đầu thuê giữa tháng, không tạo hồ sơ Tenant độc lập trước khi có hợp đồng, không tính tiền thuê lẻ tháng.
+2. Khi onboarding thành công ngày 01, hệ thống phát hành ngay hóa đơn **tháng đầu** với giá thuê trọn tháng từ hợp đồng. Việc tạo Tenant/User (nếu mới), hợp đồng, gán giường và hóa đơn đầu tiên phải nhất quán; không xác nhận onboarding hoàn tất một nửa.
+3. Các tháng tiếp theo, hệ thống phát hành hóa đơn cho kỳ tháng sau vào **00:00 ngày 25 tháng hiện tại**, theo múi giờ cơ sở (`Asia/Ho_Chi_Minh`). Chỉ phát hành nếu kỳ được thu nằm trong thời hạn thuê có hiệu lực của hợp đồng/phụ lục và chưa checkout. Không tạo hóa đơn cho kỳ sau thời hạn thuê.
+4. Một hợp đồng có tối đa **một hóa đơn tiền thuê cho mỗi kỳ**. Có thể chạy lại tác vụ để tạo hóa đơn còn thiếu, nhưng không được trùng. Hạn thanh toán là ngày **05 của kỳ hóa đơn**, kể cả hóa đơn tháng đầu; không phạt trễ hạn.
+5. Trạng thái thanh toán: `Nợ` (ban đầu), `Chờ xác nhận` (đã gửi minh chứng, chưa đối soát), `Đã thu` (Manager xác nhận đủ tiền). `Quá hạn` chỉ là dấu hiệu tính trên hóa đơn `Nợ` quá ngày 05, không phải trạng thái thứ tư; `Chờ xác nhận` không nằm trong nợ quá hạn.
+6. VietQR hiển thị tài khoản nhận, số tiền và mã tham chiếu; Tenant chuyển khoản, tải ảnh minh chứng để chuyển `Nợ → Chờ xác nhận`; Manager kiểm tra tiền thực nhận rồi xác nhận `Đã thu` hoặc từ chối để quay về `Nợ`.
+7. Tiền mặt được Manager xác nhận sau khi thực nhận đủ, chỉ từ hóa đơn `Nợ → Đã thu`; không thu tiền mặt cho hóa đơn `Chờ xác nhận` và không ghi nhận lần thu thứ hai cho hóa đơn `Đã thu`.
+8. Khi và chỉ khi Manager xác nhận **đã nhận đủ** tiền (tiền mặt hoặc chuyển khoản VietQR), hệ thống tạo **một bản ghi thu tiền `PAYMENT_TRANSACTION`** cho hóa đơn, lưu số tiền, phương thức, thời gian và người xác nhận. Một hóa đơn có tối đa một bản ghi thu tiền hoàn tất trong Phase 1. Ảnh minh chứng ở trạng thái `Chờ xác nhận` chưa phải bản ghi thu tiền hoàn tất. `PAYMENT_TRANSACTION` chỉ ghi nhận tiền KTX đã thu, **không phải giao dịch ngân hàng**, không có webhook hay tự động gạch nợ. Thanh toán một phần, trả dư, hoàn tiền và chuyển khoản không có minh chứng không được mở rộng thành luồng Phase 1.
 
-4. Trên giao diện, hệ thống tự động lọc và khóa chết các phòng khác giới tính; ngăn chặn triệt để thao tác người dùng cố tình xếp nhầm.
+### BR-06 — Ưu tiên và vòng đời sự cố
 
-### BR-03: Mô hình giá thuê trọn gói &amp; Quản lý chi phí điện nước cơ sở (All-inclusive Rental &amp; Facility Utilities)
+1. Tenant đang cư trú tạo phiếu báo hỏng, chọn loại trong `Điện`, `Nước`, `Internet`, `Nội thất`, `Tiện ích`, `Khác`; đề xuất mức ưu tiên `Khẩn cấp`, `Cao`, `Bình thường`, kèm mô tả/ảnh hiện trường.
+2. Phiếu đi theo `Chưa phân công → Mới giao → Đang xử lý → Hoàn thành`. Manager phân công và có thể điều chỉnh mức ưu tiên, hạn hoàn thành; có thể đổi Technician khi phiếu chưa hoàn thành.
+3. Technician chỉ xử lý phiếu hiện đang được giao. Trong danh sách, phiếu chưa hoàn thành đứng trước; sau đó theo mức ưu tiên Khẩn cấp → Cao → Bình thường và thời điểm tạo tăng dần.
+4. Khi hoàn thành, Technician ghi kết quả, ảnh nghiệm thu và linh kiện đã dùng (tên, số lượng, đơn giá); tổng chi phí được tính tự động. Không dùng linh kiện thì chi phí bằng 0. Không có luồng mở lại hoặc nghiệm thu nhiều cấp.
 
-1. **Thu tiền phòng trọn gói (All-inclusive):** Lúc cho khách thuê, đơn vị vận hành thu tiền phòng trọn gói cố định hàng tháng (đã bao gồm tiền phòng, điện sinh hoạt, nước sinh hoạt, wifi cáp quang, vệ sinh khu vực chung). Khách thuê không phải chi trả thêm các khoản điện nước lặt vặt hàng tháng.
-2. **Ghi nhận hóa đơn tiện ích cơ sở để tính Lợi nhuận ròng:**
-   - Để chủ cơ sở nắm bắt chính xác lợi nhuận thực tế thu về, hệ thống cung cấp giao diện cho phép Quản lý nhập thông tin các hóa đơn chi phí vận hành định kỳ phát sinh trong tháng của cả cơ sở:
-     - Hóa đơn tiền điện tổng cơ sở (trả cho Điện lực EVN).
-     - Hóa đơn tiền nước tổng cơ sở (trả cho Công ty cấp nước).
-     - Cước phí mạng Internet cáp quang tòa nhà.
-     - Chi phí phát sinh khác (tiền rác, dịch vụ vệ sinh).
-   - **Công thức tính Lợi nhuận ròng thực tế (Net Profit):**
+### BR-07 — Biên bản vi phạm
 
-```text
-Lợi nhuận ròng = Doanh thu tiền phòng thực thu 
-                - Chi phí sửa chữa hoàn thành 
-                - Hóa đơn điện tổng cơ sở 
-                - Hóa đơn nước tổng cơ sở 
-                - Cước Internet & Chi phí dịch vụ khác
-```
+1. Manager được lập biên bản cho khách **đang cư trú**; mỗi biên bản gắn trực tiếp Tenant, không bắt buộc gắn Room ID.
+2. Loại: `Về muộn`, `Gây ồn`, `Vệ sinh`, `Khách ngoài`, `Hút thuốc / cháy nổ`, `Khác`; hình thức: `Nhắc nhở`, `Cảnh cáo`, `Phạt tiền`.
+3. Nếu phạt tiền, chỉ lưu số tiền và ghi chú vi phạm; **không** tạo hóa đơn, công nợ, giao dịch thu tiền phạt hoặc cộng vào doanh thu thuê phòng.
+4. Tenant chỉ được xem biên bản của chính mình; lịch sử được giữ sau checkout.
 
-### BR-04: Đặt cọc &amp; Trả phòng giải phóng giường (Security Deposit &amp; Checkout)
+### BR-08 — Toàn vẹn dữ liệu và bảo toàn lịch sử
 
-1. **Mức tiền cọc:** Mức tiền cọc tiêu chuẩn bằng đúng **01 tháng tiền thuê giường** tương ứng, được thỏa thuận và thu trực tiếp bên ngoài lúc ký hợp đồng giấy.
-2. **Quy trình hoàn cọc &amp; Trả phòng thực tế (Offline):**
-   - Khách thuê báo trước ngày rời đi tối thiểu **15 ngày**.
-   - Khi trả phòng, Chủ cơ sở và khách thuê trực tiếp kiểm tra đồ đạc tại phòng, tự thỏa thuận khấu trừ hư hỏng hoặc tiền phòng còn thiếu (nếu có) và thanh toán hoàn tiền cọc trực tiếp ngoài đời (tiền mặt hoặc chuyển khoản cá nhân).
-   - Hệ thống phần mềm **tuyệt đối KHÔNG cần quản lý công thức tính toán hoàn cọc chi tiết**.
-   - Sau khi bàn giao phòng xong ngoài thực tế, Quản lý chỉ cần chuyển trạng thái hợp đồng sang `Đã thanh lý` (và hồ sơ người thuê sang `Đã trả phòng`) để giải phóng giường về trạng thái `Sẵn sàng` đón khách mới.
+1. Toàn vẹn giao dịch áp dụng cho tạo Room/Bed, đổi Room Code/Slot Key, onboarding và hóa đơn đầu tiên, checkout và các cập nhật khác có quan hệ chặt chẽ.
+2. Không có hai hợp đồng chiếm chỗ hiện hành trên cùng Bed; một Tenant không có hai hợp đồng chiếm chỗ hiện hành. Backend phải xử lý an toàn các yêu cầu đồng thời.
+3. Bảo toàn hồ sơ định danh, hợp đồng, phụ lục giá/thời hạn, hóa đơn, thu tiền, phiếu sửa chữa và vi phạm. Chỉ xóa vật lý phòng tạo nhầm khi hoàn toàn chưa có nghiệp vụ cần giữ; phòng có lịch sử thì lưu trữ/khôi phục. Không giải phóng mã Room đã gắn với lịch sử, nhưng được dùng lại mã đã giải phóng hợp lệ sau xóa/đổi mã khi chưa từng có dữ liệu nghiệp vụ.
+4. Không áp dụng máy móc Soft Delete hoặc cùng một quy tắc xóa khóa ngoại cho mọi bảng; Logical ERD và Backend phải được đồng bộ với điều kiện từng nghiệp vụ đã chốt.
 
-### BR-05: Chu kỳ phát hành hóa đơn cố định &amp; Hạn nộp ngày 05 hàng tháng (Monthly Billing Cycle)
+### BR-09 — Hồ sơ khách thuê và xác thực
 
-Hệ thống áp dụng mốc thời gian cố định, minh bạch và xác định tuyệt đối (không để khoảng thời gian mơ hồ):
+1. Không có tự đăng ký. Manager tạo Tenant/User mới **duy nhất trong onboarding ngày 01**; khách quay lại dùng Tenant/User cũ theo CCCD sau khi đã tất toán các khoản thuê cũ.
+2. Tenant đăng nhập bằng **CCCD 12 chữ số + mật khẩu**; Manager và Technician đăng nhập bằng **email + mật khẩu**. CCCD không phải khóa chính; mỗi tài khoản và hồ sơ vẫn có UUID riêng. **Mỗi tài khoản User có một email duy nhất trong toàn hệ thống** (chuẩn hóa chữ hoa/thường); email Tenant chỉ dùng liên hệ/nhận OTP, **không dùng đăng nhập**. SĐT không phải định danh đăng nhập và không bắt buộc duy nhất.
+3. Mật khẩu ban đầu sinh ngẫu nhiên và chỉ hiển thị một lần để bàn giao; Backend chỉ lưu mật khẩu băm. Không bắt buộc đổi ở lần đăng nhập đầu tiên.
+4. Manager được đổi email Tenant và Technician sau khi tự xác minh danh tính ngoài thực tế; không có OTP xác minh email mới hay yêu cầu tạo lịch sử đổi email/reset mật khẩu riêng. Tenant/Technician không tự đổi email. **Không xây dựng chức năng đổi email của Manager**; email đăng nhập Manager được cấu hình cố định.
+5. **Change Password:** cả ba role khi đã đăng nhập phải cung cấp mật khẩu hiện tại và mật khẩu mới hợp lệ; **không gửi/kiểm tra OTP**. **Forgot Password:** dùng OTP email 6 chữ số, hiệu lực 5 phút, dùng một lần và giới hạn thử; Tenant xác định tài khoản bằng CCCD, nhân sự bằng email. Khi Tenant/Technician mất quyền truy cập email, liên hệ Manager để xác minh và hỗ trợ thay email hoặc cấp lại mật khẩu; không tạo quy trình nhiều cấp.
+6. Sau checkout, Tenant giữ tài khoản, tra cứu tài liệu/hóa đơn/lịch sử và gửi minh chứng nợ cũ; không dùng chức năng cư trú hiện hành. Không tạo role `FORMER_TENANT`.
 
-1. **Thời điểm phát hành hóa đơn cố định:** **Đúng 00:00 ngày 25 hàng tháng**, hệ thống tự động phát hành đồng loạt (hoặc Quản lý bấm duyệt phát hành) hóa đơn tiền phòng trọn gói cho tháng tiếp theo với trạng thái ban đầu là `Nợ`. Mốc ngày 25 giúp khách thuê có trọn vẹn 10 - 11 ngày chuẩn bị tiền sau khi nhận lương cuối tháng.
-2. **Hạn thanh toán cố định (Due Date):** Hạn chót đóng tiền phòng cố định là **ngày 05 của tháng tiếp theo** (`due_date` là ngày 05 của tháng, ví dụ: hóa đơn kỳ tháng 11 phát hành ngày 25/10, hạn nộp là `05/11/2026`).
-3. **Quy tắc theo dõi công nợ:**
-   - Từ ngày 25 đến hết ngày 05 tháng sau: Khách quét mã VietQR hoặc nộp tiền mặt.
-   - Từ ngày 06 trở đi: Hóa đơn nào chưa thanh toán sẽ tự động hiển thị quá hạn trên bộ lọc `Nợ` để Quản lý theo dõi và đôn đốc thu tiền.
-   - Tuyệt đối KHÔNG tính phí phạt nộp trễ tiền.
-4. **Trường hợp khách vào ở lệch ngày:** Tiền phòng lẻ của tháng đầu tiên (từ ngày vào ở đến ngày cuối tháng) được thanh toán trực tiếp lúc ký hợp đồng giấy ở ngoài. Từ tháng tiếp theo, khách đóng tiền phòng đều đặn vào đợt ngày 01 đến ngày 05 như mọi người khác.
+### BR-10 — Phương tiện, yêu cầu đổi xe và thẻ gửi xe
 
-### BR-06: Quy trình xử lý sự cố &amp; Thứ tự ưu tiên điều phối kỹ thuật (Ticket Prioritization &amp; Workflow)
+1. Mỗi Tenant **đang cư trú** có tối đa **một hồ sơ xe đang có hiệu lực hoặc chờ cấp thẻ** (`ISSUED` hoặc `PENDING_CARD`). Xe `REJECTED` (Bị từ chối), `REVOKED` (Đã thu hồi thẻ), `REPLACED` (Đã thay thế xe) và `CANCELLED` (Đã hủy đăng ký chưa cấp thẻ) **không chiếm hạn mức**; tất cả đều được giữ lịch sử, trừ chính sách xóa dữ liệu hợp pháp không thuộc nghiệp vụ này.
+2. Xe tay ga, xe số, xe máy điện có đăng ký cần biển số và ảnh hai mặt giấy đăng ký; xe đạp điện không có giấy đăng ký và xe đạp thường được để trống biển số/ảnh giấy tờ theo bảng FR-08. Kiểm tra ở cả UI và tầng nghiệp vụ, không chỉ trong form.
+3. Với đăng ký mới `PENDING_CARD`, Manager được **cấp thẻ** (`ISSUED`, phải nhập mã thẻ vật lý và xác nhận bàn giao) hoặc **từ chối** (`REJECTED`, lý do văn bản bắt buộc, không yêu cầu ảnh/tệp minh chứng). Khi từ chối lưu người/thời điểm, thông báo tự động trong ứng dụng cho Tenant; Tenant được đăng ký lại bằng **hồ sơ mới**, không sửa lịch sử từ chối.
+4. **Đổi xe khi đã được cấp thẻ:** Tenant có xe `ISSUED` chọn `[Yêu cầu đổi xe]` và cung cấp **thông tin, giấy tờ của xe mới**. Hệ thống tạo `VehicleChangeRequest` ở trạng thái `PENDING`, tham chiếu xe hiện tại và dữ liệu xe mới; **xe cũ vẫn `ISSUED`, mã thẻ vẫn có hiệu lực** trong lúc chờ. Yêu cầu đổi xe **không tạo xe `ISSUED` thứ hai**, không chiếm thêm hạn mức. Mỗi Tenant có tối đa một yêu cầu đổi xe `PENDING` tại một thời điểm.
+5. **Manager duyệt yêu cầu đổi xe:** sau khi kiểm tra dữ liệu và giấy tờ xe mới, hệ thống thực hiện **một cập nhật nhất quán**: chuyển hồ sơ xe cũ `ISSUED → REPLACED`; tạo hồ sơ xe mới ID khác, trạng thái `ISSUED`, gắn **đúng mã thẻ vật lý đang dùng**; đánh dấu yêu cầu `APPROVED`, liên kết ID xe cũ/mới, lưu người và thời điểm duyệt. **Không thu hồi, không bàn giao lại và không sinh mã thẻ mới**. Lịch sử cả hai xe và thời điểm thay thế được giữ.
+6. **Manager từ chối yêu cầu đổi xe:** bắt buộc ghi **lý do văn bản**, không yêu cầu minh chứng; yêu cầu `PENDING → REJECTED`, tạo thông báo cho Tenant kèm lý do. **Xe cũ vẫn `ISSUED`, thẻ vật lý vẫn hoạt động**; Tenant có thể gửi yêu cầu mới sau khi yêu cầu cũ kết thúc. Không sử dụng thao tác `REVOKED` để từ chối.
+7. `REPLACED` chỉ có nghĩa **hồ sơ xe cũ được thay thế**, không có nghĩa thẻ vật lý đã trả. `REVOKED` chỉ dùng khi Manager thực sự nhận lại/thu hồi thẻ đã cấp (ví dụ Tenant thôi gửi xe, checkout). Xe chưa từng cấp thẻ khi bị hủy đăng ký/checkout dùng `CANCELLED`, không gắn hành vi thu hồi thẻ. Không tạo quy trình riêng xử lý mất thẻ.
+8. **Duy nhất mã thẻ đang có hiệu lực:** tại cùng một thời điểm chỉ tối đa một xe `ISSUED` sở hữu mỗi mã thẻ; các bản ghi `REPLACED`/`REVOKED` có thể giữ mã đó trong lịch sử. Manager có thể cấp lại mã thẻ sau **thu hồi vật lý hợp lệ**, hoặc tiếp tục mã đang dùng trong **giao dịch thay xe** đã được duyệt; không được cấp cùng mã cho hai xe `ISSUED` đồng thời. Trình tự duyệt phải được bảo vệ khỏi thao tác đồng thời/lặp yêu cầu.
+9. Khi checkout, hệ thống hủy yêu cầu đổi xe `PENDING` (`CANCELLED`), hủy đăng ký `PENDING_CARD` (`CANCELLED`) và Manager thu hồi vật lý thẻ của xe `ISSUED` (`REVOKED`) đồng bộ với nghiệp vụ checkout. Không để quyền gửi xe còn hiệu lực sau checkout; giữ lịch sử.
+10. Gửi xe đã gồm trong tiền thuê trọn gói; không tích hợp đầu đọc thẻ, barrier, lượt quét, thanh toán thẻ xe hay quy trình khiếu nại riêng trong Phase 1.
 
-1. **Phân cấp 3 mức độ ưu tiên:**
-   - **Mức 1 - Khẩn cấp (Urgent - Rank 0):** Nguy cơ chập cháy điện, vỡ ống nước ngập sàn, kẹt khóa cửa phòng. Cờ đỏ nhấp nháy (pulse badge) kèm banner đỏ cảnh báo trên màn hình thợ.
-   - **Mức 2 - Cao (High - Rank 1):** Hỏng máy lạnh, mất nguồn tủ lạnh chung. Cờ màu cam.
-   - **Mức 3 - Bình thường (Normal - Rank 2):** Quạt trần kêu to, đèn hành lang chập chờn, kẹt hộc tủ. Cờ màu xanh.
-2. **Thuật toán sắp xếp công việc của Kỹ thuật viên:**
+### BR-11 — Ba vai trò và phạm vi truy cập
 
-```text
-Thứ tự sắp xếp = (Đã hoàn thành ? 1 : 0) * 10 + priorityRank[priority]
-```
+1. Ba vai trò cố định: `MANAGER`, `TENANT`, `TECHNICIAN`. Không có trình chỉnh quyền tùy biến.
+2. Manager quản lý dữ liệu vận hành và tài khoản Technician; Tenant chỉ thao tác với dữ liệu cá nhân trong phạm vi cư trú; Technician chỉ thấy/xử lý phiếu đang được giao.
+3. Backend kiểm tra vai trò, chủ sở hữu dữ liệu và trạng thái cư trú trên mọi thao tác được bảo vệ; ẩn nút ở UI không đủ. Technician bị khóa phải bị thu hồi phiên còn hiệu lực.
+4. Theo FR-27, hộp thư Tenant chỉ hiển thị **thông báo tự động do hệ thống sinh từ nghiệp vụ**; không có giao diện Manager soạn/gửi thông báo chung.
 
-- Công việc chưa xong luôn hiển thị lên trước.
-- Trong các việc chưa xong: Ưu tiên tuyệt đối xử lý theo thứ tự: **Khẩn cấp -&gt; Cao -&gt; Bình thường**.
-
-3. **Vòng đời phiếu sự cố:** `Mới giao` -&gt; `Đang xử lý` -&gt; `Hoàn thành` (chụp ảnh nghiệm thu và ghi nhận chi phí phụ tùng).
-
-### BR-07: Hồ sơ vi phạm nội quy &amp; Xử phạt (Violations &amp; Disciplinary Actions)
-
-1. Hồ sơ vi phạm nội quy được gắn trực tiếp với cá nhân khách thuê vi phạm (không bắt buộc và không quản lý `room_id`).
-2. **Chuẩn hóa danh mục vi phạm:** Gồm 5 loại vi phạm chuẩn: `'Về muộn'`, `'Gây ồn'`, `'Vệ sinh'`, `'Khách ngoài'`, `'Hút thuốc / cháy nổ'` (và `'Khác'`).
-3. **Hình thức xử lý:** Gồm 3 mức:
-   - `'Nhắc nhở'`
-   - `'Cảnh cáo'`
-   - `'Phạt tiền'` (Nếu áp dụng phạt tiền, tiền phạt được thu trực tiếp ngoài thực tế giữa Quản lý và khách thuê; Quản lý chỉ nhập số tiền vào ô phạt tiền để lưu vết hồ sơ, tuyệt đối KHÔNG kết chuyển hay gộp vào hóa đơn tiền phòng trên web).
-4. Cột `note` là văn bản tự do lưu trữ chi tiết thời gian, diễn biến vi phạm làm bằng chứng.
-
-### BR-08: Toàn vẹn dữ liệu &amp; Nghiêm cấm xóa vật lý (Soft Delete Policy)
-
-1. Các bảng dữ liệu kế toán và pháp lý (`contracts`, `invoices`, `payment_transactions`, `facility_expenses`, `violations`) tuyệt đối không dùng câu lệnh SQL `DELETE`.
-2. Mọi quan hệ khóa ngoại thiết lập `ON DELETE RESTRICT`. Thao tác xóa khách thuê hoặc xóa phòng được thực hiện bằng cách cập nhật cờ `deleted_at = NOW()`.
-
-### BR-09: Cấp phát tài khoản trực tiếp &amp; Chuẩn hóa hồ sơ khách thuê đa đối tượng
-
-1. **Đơn vị vận hành tạo tài khoản trực tiếp:**
-   - Khách thuê không tự đăng ký tài khoản từ bên ngoài.
-   - Khi ký hợp đồng hoặc khách đồng ý thuê, Quản lý nhấn [Thêm người thuê và gán phòng] trong trang quản lý để tạo hồ sơ và cấp tài khoản.
-2. **Loại bỏ các trường học vị/trường đại học:**
-   - Để phục vụ mọi đối tượng khách thuê (người đi làm, freelancer, học viên, sinh viên), hệ thống loại bỏ các trường đặc thù sinh viên đại học khỏi form nhập bắt buộc:
-     - Không bắt buộc / Loại bỏ: `university` (Trường ĐH).
-     - Không bắt buộc / Loại bỏ: `faculty` (Khoa/Ngành).
-     - Không bắt buộc / Loại bỏ: `student_code` (Mã số sinh viên).
-     - Không bắt buộc / Loại bỏ: `priority_type` (Diện ưu tiên chính sách).
-   - Các trường định danh bắt buộc chuẩn hóa cho mọi khách thuê: *Họ và tên, Giới tính, Số điện thoại, Số CCCD (12 chữ số), Địa chỉ email, Địa chỉ thường trú*.
-
-3. **Cấp phát tài khoản đăng nhập Cổng thông tin:**
-   - Ngay sau khi Quản lý nhấn [Tạo và gán phòng] thành công, hệ thống tự động khởi tạo tài khoản người dùng (`users`) với:
-     - Tên đăng nhập: Địa chỉ email của khách thuê.
-     - Mật khẩu ban đầu mặc định: `Password123@`.
-     - Vai trò: `TENANT`.
-   - Hệ thống hiển thị Popup Modal thông báo thông tin tài khoản kèm nút [Sao chép gửi khách] để Quản lý gửi qua Zalo/SMS cho khách đăng nhập trên điện thoại di động.
-### BR-10: Quản lý phương tiện di chuyển & Quy trình cấp thẻ gửi xe (Vehicle & Parking Management)
-
-1. **Hạn mức nghiêm ngặt: Mỗi khách thuê chỉ được đăng ký tối đa 01 phương tiện:**
-   - Phí gửi xe được bao trọn gói 100% trong tiền phòng; để bảo đảm an ninh trật tự và sức chứa có hạn của hầm xe, mỗi khách thuê chỉ được cấp tối đa 01 chỗ để xe.
-   - Trên ứng dụng di động, khi khách đã có 01 phương tiện hợp lệ, nút [Đăng ký xe mới] tự động vô hiệu hóa (`[Đã đủ hạn mức (1 xe/người)]`). Nếu có nhu cầu đổi xe hoặc cập nhật biển số mới, khách liên hệ trực tiếp Quản lý để thu hồi thẻ xe cũ trước.
-2. **Quy trình 4 bước quản lý phương tiện hầm KTX:**
-   - **Bước 1 - Khách khai báo phương tiện trên di động:**
-    - Nhập: Biển số xe (VD: `59-X3 789.12`), Phân loại xe (`Xe tay ga`, `Xe số`, `Xe máy điện`, `Xe đạp`), Hãng xe (`brand`), Màu sơn (`color`).
-     - Tải lên 2 ảnh chụp: Mặt trước & Mặt sau Giấy đăng ký xe (Cà vẹt xe) để chứng minh xe chính chủ.
-     - Trạng thái ban đầu: `Chưa cấp thẻ` (`Chờ duyệt`).
-   - **Bước 2 - Quản lý duyệt & Cấp thẻ từ gửi xe:**
-     - Ban quản lý mở danh sách phương tiện trên máy tính, sử dụng bộ lọc trạng thái (`Tất cả`, `Chờ cấp thẻ`, `Đã cấp thẻ`, `Đã thu hồi`).
-     - Bấm nút `[+ Cấp thẻ]`, Popup hiển thị đồng thời thông tin xe và **2 ảnh cà vẹt xe đối soát trực tiếp**.
-     - Quản lý lấy thẻ từ vật lý của hầm KTX, nhập Mã thẻ từ (`card_code`, VD: `THE-0187`) gán cho xe.
-     - Chuyển trạng thái sang `Đã cấp thẻ` và bàn giao thẻ từ vật lý cho khách thuê.
-   - **Bước 3 - Quét thẻ ra vào (Bao trọn gói 100%, không thu phí):**
-     - Khách thuê dùng thẻ từ đã cấp để quét ra/vào cổng barrier hầm xe.
-     - Phí gửi xe đã bao trọn gói 100% trong tiền phòng; hệ thống **tuyệt đối không thu thêm bất kỳ khoản tiền nào của khách**, không tính phí và không cộng vào hóa đơn.
-   - **Bước 4 - Thu hồi thẻ từ khi thanh lý phòng (Checkout):**
-     - Khi khách thuê làm thủ tục trả phòng hoặc thôi gửi xe, Quản lý thu hồi lại thẻ từ vật lý và cập nhật trạng thái xe thành `Đã thu hồi` (Soft Delete) để giải phóng chỗ để xe mà vẫn lưu vết lịch sử bảo an.
-### BR-11: Mô hình phân quyền quản trị tinh giản (Simplified RBAC)
-
-1. Loại bỏ ma trận tick chọn quyền chi tiết gây rối rắm trong vận hành.
-2. Hệ thống phân quyền rõ ràng theo 2 vai trò nhân sự cơ bản:
-   - `MANAGER` (Ban Quản trị / Chủ KTX): Sử dụng trên máy tính (Desktop Web), toàn quyền quản lý vận hành, tài chính, phòng ốc, hợp đồng, xe cộ và nhân sự.
-   - `TECHNICIAN` (Kỹ thuật viên): Sử dụng trên điện thoại di động (Mobile App), chỉ tiếp nhận và xử lý phiếu báo hỏng kỹ thuật.
+| Chức năng | `MANAGER` | `TENANT` | `TECHNICIAN` |
+|---|---|---|---|
+| Phòng/giường | Quản lý | Xem thẻ phòng khi đang ở | Không |
+| Hồ sơ/hợp đồng | Quản lý | Xem của mình; cập nhật thông tin được cấp quyền | Không |
+| Hóa đơn/thu tiền | Phát hành/đối soát/xác nhận | Xem và gửi minh chứng của mình | Không |
+| Phương tiện | Duyệt cấp/từ chối thẻ, duyệt/từ chối yêu cầu đổi xe, thu hồi | Đăng ký và xem xe; tự gửi yêu cầu đổi xe khi đã được cấp thẻ | Không |
+| Sự cố | Phân công/điều chỉnh | Tạo/xem phiếu của mình khi đang ở | Chỉ xử lý phiếu được giao |
+| Vi phạm | Lập/xem | Chỉ xem của mình | Không |
+| Tài chính và KPI | Toàn quyền | Không | Không |
+| Tài khoản Technician | Tạo/sửa/khóa/kích hoạt | Không | Không |
+| Xác thực cá nhân | Đăng nhập; đổi bằng mật khẩu cũ; quên dùng OTP | Đăng nhập; đổi bằng mật khẩu cũ; quên dùng OTP | Đăng nhập; đổi bằng mật khẩu cũ; quên dùng OTP |
 
 ---
+## 4. YÊU CẦU CHỨC NĂNG CHI TIẾT (FUNCTIONAL REQUIREMENTS — FR)
 
-## 4. YÊU CẦU CHỨC NĂNG CHI TIẾT (FUNCTIONAL REQUIREMENTS - FR)
+### 4.0. Nguyên tắc áp dụng chung
 
-Hệ thống được cấu trúc thành các nhóm yêu cầu chức năng nghiệp vụ độc lập, mạch lạc, bám sát toàn bộ quy trình vận hành thực tế:
+- Mọi thao tác của `MANAGER`, `TENANT`, `TECHNICIAN` phải kiểm tra quyền phía Backend; dữ liệu lịch sử luôn thuộc đúng chủ thể.
+- Đối tượng cơ sở: một tòa nhà, phòng 4/6/8 Bed, trạng thái Bed `AVAILABLE`, `OCCUPIED`, `MAINTENANCE`, không giữ chỗ.
+- Kỳ thuê trọn tháng: onboarding chỉ ngày 01; phát hành hóa đơn tháng đầu ngay khi onboarding, tháng sau theo lịch ngày 25.
+- Tài khoản Tenant đăng nhập **CCCD + mật khẩu**; Manager và Technician đăng nhập **email + mật khẩu**; email liên kết User duy nhất toàn hệ thống. Đổi mật khẩu khi đã đăng nhập dùng mật khẩu cũ (**không OTP**); quên mật khẩu dùng OTP email qua Redis.
+- SRS xác định **hành vi cần triển khai**, không khẳng định Backend/DB hiện có đã đáp ứng.
 
-### 4.1. Phân hệ Cơ sở, Phòng &amp; Giường (Room &amp; Bed Management)
+### 4.1. Phân hệ Cơ sở, Phòng và Giường (Room & Bed Management)
 
-#### FR-01: Hiển thị sơ đồ ma trận trực quan Phòng &amp; Giường (Room-Bed Matrix Grid)
+#### FR-01: Hiển thị sơ đồ ma trận phòng và giường (Room–Bed Matrix Grid)
 
-- **Tác nhân:** Quản lý
-- **Đầu vào:** Bộ lọc tầng (linh hoạt theo các tầng thực tế của tòa nhà, ví dụ Tầng 1, 2, 3...), chính sách giới tính (Tất cả, Nam, Nữ).
-- **Quy trình xử lý:**
-  1. Hiển thị danh sách phòng theo tầng; mỗi phòng hiển thị thước đo sức chứa (`occupied_beds / total_beds`).
-  2. Hiển thị ma trận các slot giường nhỏ bên trong thẻ phòng: Màu xanh (Đang ở), Viền nét đứt (Trống sẵn sàng), Cờ lê cam (Bảo trì).
-  3. Khi nhấp vào một phòng, mở ngăn kéo chi tiết (Drawer) hiển thị danh sách từng vị trí giường, thông tin khách đang ở và danh mục tiện nghi trang bị. Cho phép Quản lý chuyển đổi trạng thái Bảo trì / Sẵn sàng độc lập cho từng vị trí giường trống (vô hiệu hóa nếu giường đang có khách ở).
-- **Đầu ra:** Sơ đồ phòng giường trực quan, cập nhật tỷ lệ lấp đầy theo thời gian thực.
+**Tác nhân:** Manager.  
+**Mục tiêu:** Quan sát sức chứa, tình trạng chiếm chỗ và tình trạng bảo trì theo từng phòng và giường.
+
+**Đầu vào và điều kiện:**
+- Bộ lọc tầng theo các tầng thực tế đang quản lý.
+- Bộ lọc chính sách giới tính phòng: `Tất cả`, `Nam`, `Nữ`.
+- Dữ liệu phòng và giường đang được khai thác; phòng đã lưu trữ không xuất hiện trong ma trận vận hành thông thường.
+
+**Quy trình xử lý:**
+1. Hệ thống hiển thị danh sách phòng theo tầng; mỗi phòng thể hiện mã phòng, giới tính phòng, sức chứa 4/6/8, số giường đang thuê và số giường còn sẵn sàng.
+2. Mỗi giường thể hiện mã giường và trạng thái trực quan: `OCCUPIED` (xanh), `AVAILABLE` (viền nét đứt), `MAINTENANCE` (biểu tượng cờ lê/màu cam).
+3. Tỷ lệ lấp đầy được tính theo `số giường OCCUPIED / tổng số giường vật lý × 100%`. Giường đang bảo trì vẫn thuộc mẫu số tổng sức chứa; số giường sẵn sàng cho thuê được hiển thị riêng.
+4. Khi Manager chọn phòng, mở Drawer thể hiện các giường, khách đang cư trú tương ứng và tiện nghi kèm số lượng.
+5. Manager được chuyển giường **`AVAILABLE ↔ MAINTENANCE`** khi giường không bị chiếm chỗ bởi hợp đồng hiện hành. Chuyển sang hoặc ra khỏi `OCCUPIED` chỉ thực hiện thông qua onboarding/checkout hợp lệ, không cho sửa thủ công trong Drawer.
+6. Ở giường `AVAILABLE`, giao diện có thao tác `[+ Xếp khách]` dẫn tới FR-09 và điền sẵn phòng/giường được chọn.
+7. Dữ liệu ma trận được tải từ Backend khi mở/làm mới trang và sau các thao tác thành công; Phase 1 **không yêu cầu WebSocket** hoặc đồng bộ tức thời giữa các trình duyệt.
+
+**Ràng buộc và trường hợp từ chối:**
+- Từ chối chuyển giường `OCCUPIED` sang `AVAILABLE` hoặc `MAINTENANCE` bằng thao tác trạng thái thủ công.
+- Từ chối xếp khách vào giường `MAINTENANCE`, `OCCUPIED` hoặc phòng đã lưu trữ.
+- Backend phải ngăn hai yêu cầu đồng thời chiếm cùng một giường.
+
+**Đầu ra:** Ma trận phòng–giường đúng dữ liệu Backend, có tỷ lệ lấp đầy và Drawer chi tiết; mọi thay đổi trạng thái hợp lệ được cập nhật nhất quán.
+
+**Quy tắc liên quan:** BR-01, BR-02, BR-08; FR-03, FR-09, FR-13.
 
 #### FR-02: Thêm mới phòng và tự động sinh danh mục giường
 
-- **Tác nhân:** Quản lý
-- **Đầu vào:** Số phòng (ví dụ `P.302`), Tầng (linh hoạt theo quy mô tòa nhà), Loại phòng (4 giường, 6 giường, 8 giường), Chính sách giới tính (`Nam` hoặc `Nữ`), Đơn giá thuê tiêu chuẩn/tháng (áp dụng đồng nhất cho toàn bộ giường trong phòng), Danh mục tiện nghi kèm số lượng.
-- **Quy trình xử lý:** Kiểm tra tính duy nhất của số phòng; tạo bản ghi `rooms` và tự động sinh các bản ghi con trong `beds` từ `G01` đến `G0n` với trạng thái `Sẵn sàng` (`AVAILABLE`), đơn giá kế thừa đồng nhất từ đơn giá tiêu chuẩn của phòng.
+**Tác nhân:** Manager.  
+**Mục tiêu:** Đăng ký một phòng vật lý mới trong hệ thống cùng đầy đủ các vị trí ngủ.
 
-#### FR-03: Cập nhật thông tin phòng &amp; Tiện nghi
+**Đầu vào:**
+- Mã phòng (`room_number`/Room Code), ví dụ `P.302`.
+- Tầng (`floor`) thuộc các tầng hợp lệ của cơ sở.
+- Sức chứa/loại phòng: **4, 6 hoặc 8** vị trí ngủ.
+- Chính sách giới tính: `Nam` hoặc `Nữ`.
+- Giá thuê tiêu chuẩn hằng tháng (`base_price`), áp dụng đồng nhất cho các giường.
+- Danh mục tiện nghi và số lượng từng loại (nếu có).
 
-- **Tác nhân:** Quản lý
-- **Đầu vào:** ID phòng, đơn giá phòng mới, danh sách tiện nghi cập nhật kèm số lượng.
-- **Quy trình xử lý:** Cập nhật đơn giá phòng và tiện nghi. Đơn giá phòng mới áp dụng đồng nhất cho các hợp đồng phát sinh tiếp theo của các giường trong phòng. Ràng buộc bất biến: Tuyệt đối không cho phép thay đổi chính sách giới tính (`gender_policy`) khi phòng đang có ít nhất 01 khách cư trú. Sức chứa phòng không được phép giảm dưới số lượng người đang cư trú thực tế. Thao tác bảo trì được quản lý theo từng vị trí giường trống cụ thể trong Drawer chi tiết.
+**Quy trình xử lý:**
+1. Manager nhập thông tin phòng và yêu cầu tạo mới.
+2. Backend kiểm tra dữ liệu bắt buộc, mã phòng chưa thuộc Room đang tồn tại/đã lưu trữ và không nằm trong tập mã gắn với lịch sử nghiệp vụ phải bảo vệ; mã được giải phóng hợp lệ từ một Room tạo nhầm chưa có nghiệp vụ có thể dùng lại. Đồng thời kiểm tra sức chứa hợp lệ, giá thuê lớn hơn 0 và số lượng tiện nghi hợp lệ (số nguyên dương đối với tiện nghi được chọn).
+3. Hệ thống tạo một Room và đúng số Bed tương ứng, đánh mã giường `G01` đến `G04`/`G06`/`G08`, với `slot_key = RoomCode-BedCode` duy nhất; mọi giường ban đầu là `AVAILABLE`.
+4. Phòng, giường và quan hệ tiện nghi được ghi nhận nhất quán trong cùng đơn vị xử lý dữ liệu. Không được để tồn tại phòng chỉ tạo được một phần số giường.
 
-#### FR-04: Xóa phòng khỏi danh mục
+**Ràng buộc:**
+- Không có đặt chỗ/giữ chỗ trước (`RESERVED`).
+- Sức chứa và tầng được xác lập tại lúc tạo phòng và không hỗ trợ chỉnh sửa trong FR-03.
+- Mã phòng còn thuộc Room đang tồn tại (kể cả đã lưu trữ) hoặc từng gắn với lịch sử hợp đồng/cư trú/sự cố không được cấp cho Room mới. Chỉ cho tái sử dụng mã đã được giải phóng hợp lệ từ phòng tạo nhầm chưa có dữ liệu nghiệp vụ hoặc mã cũ sau đổi tên trước khi phát sinh nghiệp vụ; cơ chế kiểm tra mã bảo vệ được đồng bộ tại thiết kế dữ liệu.
 
-- **Tác nhân:** Quản lý
-- **Quy trình xử lý (BR-09):** Nút xóa phòng bị vô hiệu hóa nếu phòng đang có khách ở hoặc còn hợp đồng còn hiệu lực (`ACTIVE`, `EXPIRING_SOON`). Thực hiện Soft Delete (`deleted_at = NOW()`).
-- **Đầu ra:** Phòng được đánh dấu xóa an toàn.
+**Đầu ra:** Room mới cùng chính xác 4/6/8 Bed, các mã vị trí hợp lệ, giá tiêu chuẩn đồng nhất và trạng thái `AVAILABLE`.
 
-#### FR-05: Tìm kiếm và lọc danh mục phòng đa tiêu chí
+**Quy tắc liên quan:** BR-01, BR-02, BR-08; FR-01, FR-03, FR-04.
 
-- **Tác nhân:** Quản lý
-- **Đầu vào:** Từ khóa tìm kiếm số phòng, bộ lọc tầng, giới tính quy định.
-- **Quy trình xử lý:** Truy vấn và hiển thị danh sách phòng phù hợp.
+#### FR-03: Cập nhật thông tin phòng, mã phòng và tiện nghi
 
----
+**Tác nhân:** Manager.  
+**Mục tiêu:** Hiệu chỉnh những thuộc tính được phép của phòng mà không làm sai vị trí, chiếm chỗ hay lịch sử hợp đồng.
 
-### 4.2. Phân hệ Hồ sơ Khách thuê & Phương tiện di chuyển (Tenant & Vehicle Management)
+**Đầu vào:** Room ID; mã phòng mới (nếu có); giá tiêu chuẩn mới; chính sách giới tính mới (nếu có); danh mục tiện nghi và số lượng.
 
-#### FR-06: Quản lý hồ sơ định danh khách thuê (Đa đối tượng)
+**Quy trình xử lý:**
+1. Manager chọn phòng đang được quản lý và mở giao diện cập nhật.
+2. Hệ thống cho phép cập nhật **giá tiêu chuẩn** và **tiện nghi** theo dữ liệu hợp lệ. Khi đổi giá tiêu chuẩn, giá niêm yết của toàn bộ giường trong phòng được đồng bộ; giá đã ghi trên hợp đồng hoặc phụ lục còn hiệu lực, cũng như hóa đơn đã phát hành, không thay đổi.
+3. **Đổi `room_number` (Room Code)** chỉ được chấp nhận nếu đồng thời không có khách đang cư trú trong phòng và không có hợp đồng chiếm chỗ còn hiệu lực đối với bất kỳ giường nào trong phòng.
+4. Khi đổi Room Code, Backend kiểm tra mã mới không thuộc Room khác đang tồn tại/đã lưu trữ và không nằm trong các mã cần bảo vệ do đã có lịch sử nghiệp vụ; mã cũ đã được giải phóng hợp lệ có thể dùng lại. Cập nhật `rooms.room_number` và toàn bộ `beds.slot_key` liên quan trong cùng một thao tác nhất quán. **Không thay đổi** `rooms.id`, `beds.id`, `beds.room_id` hay snapshot trên các hợp đồng đã ký. Nếu mã cũ đã có lịch sử, tiếp tục bảo lưu không cho phòng khác sử dụng; nếu chưa có lịch sử, mã cũ được giải phóng.
+5. **Đổi chính sách giới tính** cũng chỉ được chấp nhận khi phòng không có khách cư trú **và** không có hợp đồng chiếm chỗ còn hiệu lực. Backend kiểm tra độc lập điều kiện này.
+6. Không cung cấp thao tác sửa `floor`, `total_beds` hoặc loại phòng làm thay đổi số lượng giường sau khi tạo.
+7. Thao tác chuyển trạng thái bảo trì/sẵn sàng của từng giường trống thực hiện theo FR-01, không dùng chức năng sửa trực tiếp trạng thái `OCCUPIED`.
 
-- **Tác nhân:** Quản lý
-- **Đầu vào:** Họ tên, Giới tính, Số CCCD (12 số), Số điện thoại, Email, Địa chỉ thường trú. (Không yêu cầu trường học, khoa, MSSV, diện ưu tiên - tuân thủ BR-09).
-    - **Quy trình xử lý:** Kiểm tra định dạng CCCD 12 số và kiểm tra không trùng lặp số CCCD, Email; lưu trữ hồ sơ định danh; cung cấp bộ lọc tức thời theo Phòng và theo Trạng thái cư trú; hiển thị chi tiết hồ sơ kèm lịch sử hợp đồng và tình trạng công nợ hiện thời (Đã đóng đủ / Còn nợ / Chờ xác nhận). Thao tác đóng hồ sơ/trả phòng được thực hiện tập trung duy nhất tại trang Quản lý Hợp đồng (thông qua quy trình thanh lý hợp đồng FR-13).
-- **Cấp phát tài khoản tự động:** Sau khi tạo hồ sơ thành công, hệ thống tự động sinh tài khoản người dùng (`users`) với mật khẩu mặc định `Password123@`, hiển thị Popup thông báo kèm nút [Sao chép gửi khách] qua Zalo/SMS.
-- **Đầu ra:** Hồ sơ khách thuê chuẩn hóa phục vụ quản lý lâu dài; tài khoản đăng nhập được bàn giao tức thì.
+**Ràng buộc và trường hợp từ chối:**
+- Từ chối mã phòng trống, sai quy ước, đang được dùng bởi Room khác hoặc từng gắn với dữ liệu nghiệp vụ cần bảo toàn; không từ chối một mã chỉ vì nó từng thuộc phòng cấu hình nhầm đã được xóa/đổi mã trước khi phát sinh nghiệp vụ.
+- Từ chối đổi mã phòng/chính sách giới tính nếu còn khách hay hợp đồng chiếm chỗ hiệu lực.
+- Từ chối sửa tầng, sức chứa hoặc tạo số giường không khớp cấu hình ban đầu.
+- Nếu cập nhật Room Code/Slot Key thất bại giữa chừng, toàn bộ thay đổi phải được hủy.
 
-#### FR-07: Đóng hồ sơ khách thuê sau khi rời đi (Soft Delete)
+**Đầu ra:** Thông tin phòng mới hợp lệ; hợp đồng/hóa đơn lịch sử vẫn phản ánh điều kiện tại thời điểm ký/phát hành.
 
-- **Tác nhân:** Quản lý
-- **Quy trình xử lý:** Được kích hoạt tập trung và tự động khi Quản lý thực hiện thao tác [Thanh lý (Checkout)] tại trang Hợp đồng (FR-13) -> Cập nhật trạng thái `resident_status = 'Đã trả phòng'`; tự động giải phóng vị trí giường tương ứng về trạng thái 'Sẵn sàng' đón khách mới; đồng thời tự động thu hồi thẻ xe; lưu trữ lịch sử để đối soát công nợ cũ, không xóa vật lý khỏi CSDL (tuân thủ BR-08).
-- **Đầu ra:** Hồ sơ chuyển sang trạng thái đã trả phòng, giường được mở khóa an toàn và thẻ xe được thu hồi.
+**Quy tắc liên quan:** BR-01, BR-02, BR-08; FR-02, FR-09, FR-12.
 
-#### FR-08: Đăng ký và quản lý phương tiện di chuyển hầm xe (Miễn phí trọn gói)
+#### FR-04: Xóa phòng tạo nhầm; lưu trữ và khôi phục phòng
 
-- **Tác nhân:** Khách thuê, Quản lý
-- **Đầu vào:** Tên người thuê, Biển số xe, Phân loại xe (`Xe tay ga`, `Xe số`, `Xe máy điện`, `Xe đạp`), Hãng xe (`brand`), Màu sơn (`color`), Mã thẻ từ giữ xe, Ảnh chụp 2 mặt Giấy đăng ký xe (Cà vẹt xe).
-- **Ràng buộc nghiệp vụ:** Mỗi khách thuê chỉ được đăng ký **tối đa 01 phương tiện**. Nút đăng ký trên ứng dụng di động bị vô hiệu hóa khi khách đã có xe; nếu muốn đổi xe thì liên hệ Quản lý để thu hồi thẻ cũ trước.
-- **Quy trình xử lý (BR-10):**
-  1. Khách thuê tự bấm [Đăng ký xe mới] trên ứng dụng di động, điền biển số xe, loại xe, hãng xe, màu sơn và tải 2 ảnh cà vẹt xe (trạng thái: `Chưa cấp thẻ` / `Chờ duyệt`).
-  2. Quản lý mở danh sách phương tiện trên máy tính, sử dụng thanh Tab lọc trạng thái: `Tất cả`, `Chờ cấp thẻ`, `Đã cấp thẻ`, `Đã thu hồi`.
-  3. Quản lý bấm nút nhanh `[+ Cấp thẻ]`, Popup hiển thị đồng thời thông tin xe và **2 ảnh cà vẹt xe đối soát trực tiếp**. Quản lý gán Mã thẻ từ gửi xe vật lý (`card_code`, VD: `THE-0187`) và kích hoạt trạng thái "Đã cấp thẻ".
-  4. Hỗ trợ tra cứu nhanh xe bằng biển số, tên người thuê và mã thẻ từ; quản lý an ninh và thu hồi thẻ khi khách checkout (chuyển trạng thái `Đã thu hồi`); phí giữ xe được bao trọn gói 100% trong tiền phòng không thu thêm.
-- **Đầu ra:** Thẻ xe được cấp phát hợp lệ; kiểm soát an ninh trật tự hầm xe.
+**Tác nhân:** Manager.  
+**Mục tiêu:** Phân biệt sửa lỗi nhập dữ liệu với ngừng khai thác phòng có thật; bảo toàn các quan hệ lịch sử và chỉ giải phóng mã phòng khi chưa từng gắn với nghiệp vụ.
 
----
+**A. Xóa phòng tạo nhầm (Delete)**
+1. Cho phép yêu cầu xóa phòng đã tạo nhầm **chỉ khi** phòng và toàn bộ giường của phòng chưa từng phát sinh hồ sơ nghiệp vụ cần bảo toàn, bao gồm hợp đồng, cư trú, hóa đơn, phiếu sự cố và quan hệ lịch sử khác.
+2. Backend kiểm tra toàn bộ dữ liệu liên kết; không chỉ dựa trên điều kiện hiện tại không có khách.
+3. Khi đủ điều kiện, xóa phòng và các giường/dữ liệu cấu hình phụ thuộc chưa sử dụng một cách nhất quán; **mã phòng được giải phóng và có thể sử dụng lại** vì chưa từng phát sinh hồ sơ nghiệp vụ. Khi không đủ điều kiện, từ chối xóa và đề xuất lưu trữ sau khi phòng hết quan hệ thuê hiện hành.
+4. Phòng đã có lịch sử thuê, phiếu sự cố hoặc hồ sơ nghiệp vụ cần giữ không được xóa vật lý dù toàn bộ khách đã checkout; mã phòng liên quan vẫn được bảo lưu.
 
-### 4.3. Phân hệ Tiếp nhận, Xếp phòng & Hợp đồng (Onboarding & Contracts)
+**B. Lưu trữ phòng (Archive)**
+1. Manager được lưu trữ phòng nếu **không có khách đang cư trú và không có hợp đồng chiếm chỗ còn hiệu lực**.
+2. Phòng lưu trữ được loại khỏi danh sách phòng đang vận hành và khỏi nguồn chọn để xếp khách; giữ nguyên Room ID, Bed ID, lịch sử hợp đồng, hóa đơn và sự cố.
+3. Có thể lưu trữ phòng có hợp đồng hoặc công nợ lịch sử, hoặc có các giường đang `MAINTENANCE`, miễn không vi phạm điều kiện tại mục B.1.
+4. Mã phòng của phòng lưu trữ tiếp tục được bảo lưu; không được cấp cho phòng khác.
 
-#### FR-09: Thêm người thuê, gán vị trí giường & Khởi tạo hợp đồng (Direct Onboarding)
+**C. Khôi phục phòng (Restore)**
+1. Manager có thể khôi phục một phòng đã lưu trữ để đưa lại vào danh sách đang vận hành.
+2. Giữ nguyên mã phòng, ID và danh sách giường; không tạo bản ghi phòng/giường mới và không xóa lịch sử.
+3. Việc khôi phục **không tự động** chuyển giường `MAINTENANCE` thành `AVAILABLE`; Manager chỉ được tiếp nhận khách tại giường đủ điều kiện.
 
-- **Tác nhân:** Quản lý
-- **Đầu vào:** Họ tên, Giới tính, Số điện thoại, Số CCCD (12 số), Email, Địa chỉ thường trú, Vị trí giường trống (`slotKey`), Ngày bắt đầu, Ngày kết thúc, Tiền thuê/tháng, Tiền cọc.
-- **Quy trình xử lý tổng hợp:**
-  1. **Liên kết liền mạch từ Sơ đồ phòng:** Khi Quản lý bấm `[+ Xếp khách]` tại bất kỳ giường trống nào trên Sơ đồ ma trận (`RoomsPage`) hoặc Drawer chi tiết giường, hệ thống tự động điều hướng sang form Thêm người thuê và điền sẵn vị trí phòng/giường đó.
-  2. Kiểm tra tính hợp lệ của CCCD (12 số) và kiểm tra không trùng lặp CCCD, Email.
-  3. **Ràng buộc cách ly giới tính 100% (BR-02):** Danh sách giường trống gợi ý bắt buộc phải thỏa mãn phòng có `gender_policy` trùng khớp với giới tính của khách. Tuyệt đối không hiển thị hoặc vô hiệu hóa các phòng khác giới tính.
-  4. **Kiểm tra tính sẵn sàng của giường:** Vị trí giường được chọn phải đang ở trạng thái 'Sẵn sàng' (`AVAILABLE`).
-  5. **Thực thi Transaction CSDL:**
-     - Tạo bản ghi hồ sơ khách thuê trong bảng `tenants` (và tài khoản đăng nhập `users` mật khẩu mặc định `Password123@`).
-     - Tạo bản ghi hợp đồng thuê trong bảng `contracts` với trạng thái `Hiệu lực`, lưu tiền thuê trọn gói và tiền cọc đã thu ngoài.
-     - Cập nhật trạng thái vị trí giường trong bảng `beds` thành `Đang thuê` (`OCCUPIED`).
-- **Đầu ra:** Hồ sơ người thuê được tạo, giường được gán và khóa lại, hợp đồng kích hoạt ngay lập tức trên hệ thống.
+**D. Phân biệt với bảo trì**
+- Phòng/giường hư hỏng tạm thời phải được xử lý bằng trạng thái bảo trì giường và phiếu kỹ thuật, không xóa phòng hoặc lưu trữ chỉ vì đang sửa chữa.
+- Việc cải tạo từ 4 lên 6/8 giường hoặc ngược lại **không thuộc Phase 1**; không dùng Xóa/Lưu trữ/Khôi phục để lách quy tắc sức chứa bất biến.
 
-#### FR-10: Ký hợp đồng giấy bên ngoài & Tải đa tệp ảnh/scan làm minh chứng lưu trữ
+**Đầu ra:** Phòng tạo nhầm được xóa khi an toàn, mã phòng chưa từng gắn nghiệp vụ được giải phóng hợp lệ; phòng đã hoạt động được lưu trữ, có thể khôi phục mà vẫn giữ định danh/lịch sử và mã phòng.
 
-- **Tác nhân:** Quản lý, Khách thuê
-- **Quy trình xử lý:**
-  1. Hai bên ký kết hợp đồng bằng văn bản giấy trực tiếp bên ngoài sau khi xem phòng.
-  2. Quản lý mở danh sách hợp đồng, chọn Drawer chi tiết hợp đồng tương ứng của khách thuê.
-  3. Tại mục "Tài liệu & Minh chứng hợp đồng", Quản lý nhấn [Tải thêm tệp] để tải lên **nhiều tệp tài liệu cùng lúc (multi-file upload)** bao gồm nhiều trang ảnh chụp hợp đồng giấy (`.jpg`, `.jpeg`, `.png`, `.webp`) hoặc file scan văn bản (`.pdf`, `.doc`, `.docx`) tối đa 10 MB.
-  4. Hệ thống lưu trữ các tệp vào bảng `contract_documents` kèm phân loại: Hợp đồng gốc (`ORIGINAL_CONTRACT`), Phụ lục gia hạn (`RENEWAL_ANNEX`), hoặc Biên bản bàn giao (`CHECKOUT_HANDOVER`).
-  5. Khách thuê có thể tra cứu mã hợp đồng, thời hạn hiệu lực và mở Popup [Xem tài liệu hợp đồng đã ký] để duyệt danh sách các tệp scan PDF hoặc xem phóng to ảnh chụp hợp đồng giấy có chữ ký trực tiếp trên ứng dụng di động.
-- **Đầu ra:** Hợp đồng được lưu trữ minh chứng điện tử an toàn, minh bạch cho cả hai bên.
+**Quy tắc liên quan:** BR-01, BR-08; FR-01, FR-02, FR-03, FR-09.
 
-#### FR-11: Xử lý yêu cầu chuyển phòng (Room Transfer)
+#### FR-05: Tìm kiếm và lọc danh mục phòng
 
-- **Tác nhân:** Khách thuê, Quản lý
-- **Lưu ý triển khai:** *Tạm hoãn triển khai luồng Đổi phòng trên giao diện người dùng theo lộ trình giai đoạn 2; tập trung hoàn thiện Onboarding, Gia hạn và Checkout.*
-- **Quy trình dự kiến:** Khách gửi yêu cầu đổi phòng; Quản lý kiểm tra phòng đích (bắt buộc cùng giới tính và còn giường trống); thực hiện hoán đổi giường trong Transaction CSDL an toàn.
+**Tác nhân:** Manager.  
+**Đầu vào:** Từ khóa mã phòng; bộ lọc tầng; bộ lọc giới tính `Tất cả`/`Nam`/`Nữ`.
 
-#### FR-12: Gia hạn hợp đồng cư trú (Contract Renewal)
+**Quy trình xử lý:**
+1. Tìm kiếm theo toàn bộ hoặc một phần mã phòng; việc so khớp không phân biệt chữ hoa/chữ thường.
+2. Kết hợp các điều kiện tìm kiếm, tầng và giới tính khi cùng được áp dụng.
+3. Theo mặc định, chỉ trả về phòng đang vận hành. Manager có thể truy cập danh sách phòng đã lưu trữ riêng để tra cứu và thực hiện khôi phục theo FR-04.
+4. Khi không có kết quả, hiển thị trạng thái danh sách trống và cho phép thay đổi/xóa bộ lọc; không coi đây là lỗi hệ thống.
 
-- **Tác nhân:** Khách thuê, Quản lý
-- **Điều kiện kích hoạt:** Hợp đồng sắp hết hạn (trạng thái `Sắp hết hạn` trên hệ thống và hiển thị thời hạn còn lại trên Thẻ phòng điện tử của khách thuê).
-- **Quy trình xử lý thực tế:**
-  1. **Thỏa thuận ngoài đời:** Khách thuê và Chủ cơ sở trực tiếp gặp mặt trao đổi nguyện vọng ở tiếp (trước 15–30 ngày).
-  2. **Ký kết văn bản gia hạn ngoài thực tế (Offline):** Hai bên tiến hành ký kết **Phụ lục gia hạn hợp đồng (hoặc Hợp đồng thuê mới bằng văn bản giấy)** xác định ngày hết hạn hiệu lực mới theo nhu cầu thực tế của khách (linh hoạt theo thỏa thuận, không ép cứng 1 năm); toàn bộ số tiền cọc ban đầu được bảo lưu nguyên vẹn.
-  3. **Cập nhật trên hệ thống:**
-     - Quản lý mở Drawer chi tiết hợp đồng trên `ContractsPage`, bấm nút **`[Gia hạn]`**.
-     - Quản lý chọn Ngày kết thúc mới (`new_end_date`) qua Date Picker linh hoạt theo đúng văn bản phụ lục giấy.
-     - Quản lý tải ảnh chụp/scan Phụ lục hợp đồng giấy đã ký vào mục tài liệu (lưu vào `contract_documents` với loại `RENEWAL_ANNEX`) để lưu trữ minh chứng pháp lý mới.
-     - Trạng thái hợp đồng tự động chuyển từ `Sắp hết hạn` về lại `Hiệu lực`, đồng thời cập nhật ngày hết hạn mới sang hồ sơ người thuê.
-  4. **Đồng bộ ứng dụng khách thuê:** Thông tin thời hạn cư trú mới (số ngày còn lại) được cập nhật ngay lập tức trên Thẻ phòng điện tử của khách. Trong Card Hợp đồng hiển thị ghi chú hướng dẫn khách liên hệ Ban Quản lý trước 15 ngày khi có nhu cầu gia hạn hoặc trả phòng.
-- **Đầu ra:** Hợp đồng được gia hạn thời hiệu pháp lý thành công; lưu vết minh chứng giấy tờ đầy đủ; tiếp tục phát hành hóa đơn tiền phòng định kỳ các kỳ tiếp theo.
+**Đầu ra:** Danh sách phòng phù hợp với điều kiện, có phân biệt phòng đang vận hành và phòng đã lưu trữ.
 
-#### FR-13: Thanh lý hợp đồng & Mở khóa giường trống (Checkout)
-
-- **Tác nhân:** Quản lý
-- **Quy trình xử lý (BR-04):**
-  1. Khách báo trước ngày rời đi tối thiểu 15 ngày.
-  2. Vào ngày trả phòng, Chủ cơ sở và khách thuê hoàn tất việc kiểm tra đồ đạc tại phòng, tự thỏa thuận khấu trừ hư hỏng (nếu có) và hoàn trả cọc trực tiếp ngoài đời. Quản lý thu hồi lại chìa khóa phòng và thẻ từ gửi xe vật lý.
-  3. Quản lý mở danh sách hợp đồng trên `ContractsPage` và bấm nút **`[Thanh lý (Checkout)]`** màu đỏ.
-  4. Hệ thống thực thi đồng bộ 4 hành động:
-     - Trạng thái hợp đồng chuyển thành `Đã thanh lý`.
-     - Hồ sơ khách thuê chuyển sang `Đã trả phòng` (Soft Delete, lưu trữ lịch sử để đối soát công nợ cũ).
-     - Vị trí giường tự động giải phóng về trạng thái `Sẵn sàng` (`AVAILABLE`) trên Sơ đồ ma trận để đón khách mới.
-     - Phương tiện gửi xe của khách được chuyển sang trạng thái `Đã thu hồi`.
-- **Đầu ra:** Hợp đồng được thanh lý dứt điểm; giường được giải phóng ngay lập tức đón khách mới; thẻ xe được thu hồi an toàn.
----
-
-### 4.4. Phân hệ Chi phí Tiện ích Cơ sở &amp; Lợi nhuận Ròng (Facility Operating Expenses)
-
-#### FR-14: Ghi nhận Hóa đơn Tiện ích Cơ sở &amp; Tính Lợi nhuận ròng thực tế
-
-- **Tác nhân:** Quản lý, Chủ KTX
-- **Đầu vào:** Loại chi phí (Điện EVN, Nước, Internet, Khác), Tiêu đề, Số tiền hóa đơn, Ngày trên hóa đơn (`expense_date`), Mã hóa đơn, Ảnh chụp hóa đơn đối soát, Ghi chú.
-- **Quy trình xử lý (BR-03):**
-  1. Quản lý nhập thông tin các hóa đơn chi phí tổng phát sinh của cả cơ sở trong tháng.
-  2. Hệ thống lưu vào bảng `facility_expenses`.
-  3. CSDL tự động tổng hợp báo cáo tài chính qua SQL View:
-   `Lợi nhuận ròng = Doanh thu tiền phòng thực thu - Chi phí sửa chữa hoàn thành - Chi phí điện nước tổng cơ sở`.
-  4. Cho phép xuất báo cáo tài chính định dạng Excel (`.xlsx`) và PDF trong thời gian dưới 2 giây.
-- **Đầu ra:** Hóa đơn tiện ích được ghi nhận; số liệu Lợi nhuận ròng được cập nhật chính xác vào báo cáo tài chính.
+**Quy tắc liên quan:** FR-01, FR-04.
 
 ---
 
-### 4.5. Phân hệ Quản lý Hóa đơn, Bộ lọc Trạng thái &amp; Thu tiền (Billing &amp; Payments)
+### 4.2. Phân hệ Hồ sơ Khách thuê và Phương tiện (Tenant & Vehicle Management)
 
-#### FR-15: Phát hành hóa đơn tiền phòng định kỳ &amp; Bộ lọc trạng thái
+#### FR-06: Quản lý hồ sơ định danh và thông tin liên hệ khách thuê
 
-- **Tác nhân:** Quản lý
-- **Quy trình xử lý (BR-05):**
-  1. Hóa đơn tiền phòng trọn gói hàng tháng được phát hành đồng loạt cố định vào **ngày 25 hàng tháng** cho kỳ tháng tiếp theo với trạng thái ban đầu là `Nợ`.
-  2. Hóa đơn có hạn nộp chót cố định `due_date` là **ngày 05 của tháng tiếp theo** (ví dụ: phát hành ngày 25/10/2026, hạn nộp là `05/11/2026`). Sau ngày 05, nếu chưa nộp thì hóa đơn tự động hiển thị quá hạn trên bộ lọc để Quản lý đôn đốc thu tiền.
-  3. Không tính phí phạt tiền nộp trễ.
-  4. Bộ lọc trạng thái trên giao diện Quản lý: Cho phép lọc tức thời theo `Tất cả trạng thái`, `Đã thu`, `Chờ xác nhận`, và **`Nợ`** (lọc ra danh sách những người chưa đóng tiền phòng).
-  5. Hộp tìm kiếm thông minh: Tìm nhanh theo mã hóa đơn, tên người thuê, số phòng, số CCCD hoặc email.
-- **Đầu ra:** Hóa đơn được phát hành rộng rãi; bộ lọc quản trị hoạt động chuẩn xác.
+**Tác nhân:** Manager; Tenant đối với thông tin của chính mình trong phạm vi được cho phép.  
+**Mục tiêu:** Duy trì một hồ sơ định danh lâu dài cho mỗi khách thuê, không phụ thuộc vào email/số điện thoại thay đổi.
 
-#### FR-16: Xác nhận thanh toán tiền mặt &amp; Duyệt biên lai chuyển khoản
+**Thông tin hồ sơ:**
+- Họ tên, giới tính, CCCD gồm 12 chữ số, số điện thoại, email, địa chỉ thường trú.
+- Ngày sinh và người liên hệ khẩn cấp/SĐT liên hệ khẩn cấp khi được cung cấp; không yêu cầu trường học, khoa, MSSV hay diện ưu tiên.
+- Tenant ID và User ID nội bộ dùng UUID; CCCD được quản lý duy nhất, dùng để đối chiếu khách quay lại và làm thông tin đăng nhập của Tenant. **Email của mỗi User cũng phải duy nhất trên toàn hệ thống** (so sánh không phân biệt hoa/thường), dù Tenant không dùng email để đăng nhập.
 
-- **Tác nhân:** Quản lý, Khách thuê
-- **Quy trình xử lý:**
-  - *Trường hợp 1 - Khách chuyển khoản và gửi minh chứng:* Khách chuyển khoản bằng app ngân hàng của mình, chụp ảnh biên lai tải lên app di động -&gt; Hóa đơn chuyển trạng thái `Chờ xác nhận`. Quản lý kiểm tra tiền vào tài khoản, bấm [Xác nhận Đã nhận tiền] -&gt; Hóa đơn chuyển sang `Đã thu`, ghi nhận người xác nhận.
-  - *Trường hợp 2 - Quản lý thu tiền mặt:* Tại hàng hóa đơn trạng thái `Nợ`, Quản lý nhấn nút [Xác nhận] -&gt; Mở Modal "Xác nhận thanh toán tiền mặt", hiển thị mã hóa đơn, tên người thuê, số tiền nhận -&gt; Quản lý bấm [Xác nhận đã nhận tiền] -&gt; Hóa đơn cập nhật `status = 'Đã thu'`, tạo giao dịch `payment_transactions` gắn `confirmed_by_staff_id`.
-- **Đầu ra:** Hóa đơn được gạch nợ hoàn tất; số liệu tài chính được cập nhật vào báo cáo.
+**Tạo hồ sơ:**
+1. **Không có chức năng tạo hồ sơ Tenant độc lập trước khi ký hợp đồng.** Hồ sơ Tenant mới và tài khoản User mới chỉ được tạo như một phần của luồng tiếp nhận và lập hợp đồng đầu tiên tại FR-09.
+2. Khi tiếp nhận, Backend kiểm tra định dạng CCCD 12 chữ số và xung đột định danh; không tạo Tenant/User trùng.
+3. Nếu khách quay lại, Manager xác minh CCCD và sử dụng lại Tenant/User hiện có. Không tự gộp hồ sơ chỉ dựa vào email hoặc số điện thoại, vì đây là thông tin liên hệ có thể thay đổi; CCCD là căn cứ tìm hồ sơ khách cũ.
 
----
+**Tra cứu và quản lý:**
+1. Manager được tìm/lọc khách thuê theo phòng và trạng thái cư trú, mở hồ sơ chi tiết để xem lịch sử hợp đồng và công nợ.
+2. Tenant chỉ được xem hoặc cập nhật các trường thuộc hồ sơ của chính mình theo bảng quyền dưới đây. Backend kiểm tra phạm vi dữ liệu; không dựa riêng vào UI.
+3. Cập nhật hồ sơ liên hệ không tự thay đổi nội dung hợp đồng giấy hoặc snapshot đã ký.
 
-### 4.6. Phân hệ Điều phối Sự cố &amp; Thứ tự ưu tiên kỹ thuật (Maintenance &amp; Incidents)
+**Quyền chỉnh sửa hồ sơ:**
 
-#### FR-17: Báo hỏng thiết bị &amp; Phân loại cấp độ ưu tiên
+| Thuộc tính | Tenant | Manager | Quy tắc |
+|---|---|---|---|
+| Họ tên | Xem | Hiệu chỉnh | Kiểm tra danh tính khi hiệu chỉnh; không sửa hợp đồng lịch sử |
+| CCCD | Xem | Hiệu chỉnh có xác minh | Bắt buộc 12 chữ số, duy nhất; cập nhật thông tin đăng nhập Tenant tương ứng, không tạo User mới |
+| Giới tính | Xem | Hiệu chỉnh có kiểm soát | Không được vi phạm chính sách giới tính của phòng đang cư trú |
+| Ngày sinh | Xem | Hiệu chỉnh | Theo thông tin định danh thực tế |
+| Email liên hệ/khôi phục mật khẩu | Xem, liên hệ Manager nếu muốn đổi | Chỉnh sửa sau khi xác minh danh tính ngoài thực tế | **Duy nhất toàn hệ thống**, so khớp không phân biệt hoa/thường; không OTP xác minh email mới; không phải tên đăng nhập Tenant |
+| Số điện thoại | Tự sửa | Sửa | Không phải tên đăng nhập |
+| Địa chỉ thường trú | Tự sửa | Sửa | Không thay đổi dữ liệu hợp đồng đã ký |
+| Người liên hệ khẩn cấp và SĐT liên hệ | Tự sửa | Sửa | Áp dụng trên hồ sơ chính mình |
+| Mật khẩu | Tự đổi/khôi phục qua FR-24 | Hỗ trợ reset sau khi xác minh | Không xem lại mật khẩu hiện tại |
+| Tenant ID, User ID, mã hồ sơ Tenant nội bộ | Xem theo quyền | Không chỉnh sửa thông thường | ID bất biến |
+| Phòng, giường, giá thuê, cọc, thời hạn, trạng thái cư trú | Xem theo quyền | Chỉ thay đổi qua các FR nghiệp vụ tương ứng | Không sửa tùy ý trực tiếp trên hồ sơ |
+| Hợp đồng/hóa đơn/giao dịch lịch sử | Xem của mình | Xử lý theo nghiệp vụ | Không xóa lịch sử vì đổi thông tin liên hệ |
 
-- **Tác nhân:** Khách thuê
-- **Đầu vào:** Phân loại sự cố (Điện nước, Điều hòa, Điện, Nội thất, Khóa cửa), Cấp độ ưu tiên (`Khẩn cấp`, `Cao`, `Bình thường`), Mô tả hiện tượng và Ảnh chụp hiện trường.
-- **Quy trình xử lý:** Khách gửi phiếu từ điện thoại; nếu chọn mức `Khẩn cấp`, hệ thống gắn cờ đỏ nhấp nháy phát thông báo ưu tiên cao đến Ban quản lý.
-- **Đầu ra:** Phiếu báo hỏng được ghi nhận với mã ticket (ví dụ `SC-1049`).
+**Tài khoản và khôi phục:**
+1. Tenant đăng nhập bằng **CCCD + mật khẩu**; Manager và Technician bằng **email + mật khẩu** theo FR-21.
+2. Mật khẩu khởi tạo phải ngẫu nhiên, riêng từng tài khoản, chỉ lưu hash tại Backend và chỉ được hiển thị một lần để Manager bàn giao. Khuyến khích đổi sau đăng nhập, không bắt buộc đổi ngay lần đầu.
+3. **Đổi mật khẩu** khi đã đăng nhập dùng mật khẩu hiện tại, không gửi OTP; **khôi phục mật khẩu** dùng OTP qua Redis gửi tới email duy nhất liên kết User theo FR-24. Khi Tenant muốn đổi email hoặc mất quyền truy cập email, Tenant liên hệ Manager; Manager xác minh danh tính ngoài thực tế rồi cập nhật email/cấp lại mật khẩu. **Không triển khai quy trình duyệt nhiều cấp, OTP xác minh email mới hay tính năng lịch sử thay đổi email/reset mật khẩu riêng**.
 
-#### FR-18: Điều phối thợ &amp; Sắp xếp thứ tự ưu tiên xử lý của Kỹ thuật viên
+**Đầu ra:** Hồ sơ duy nhất theo CCCD, có thông tin liên hệ cập nhật và lịch sử cư trú được bảo toàn; không có đăng ký tài khoản công khai.
 
-- **Tác nhân:** Quản lý, Kỹ thuật viên
-- **Quy trình xử lý (BR-07):**
-  1. Quản lý xem danh sách sự cố kèm cờ ưu tiên (Đỏ, Cam, Xanh), giao việc cho thợ phụ trách và đặt hạn hoàn thành.
-  2. Trên màn hình di động của Kỹ thuật viên:
-     - Header hiển thị banner cảnh báo đỏ nổi bật: `X việc khẩn cấp đang chờ`.
-     - Danh sách công việc tự động sắp xếp ưu tiên việc chưa xong lên trước, và việc khẩn cấp xử lý trước: `Khẩn cấp -> Cao -> Bình thường`.
-     - Thợ bấm [Bắt đầu xử lý] (`IN_PROGRESS`); sửa xong chụp ảnh nghiệm thu, ghi nhận chi phí linh kiện thay thế và bấm [Xác nhận Hoàn thành] (`COMPLETED`).
-- **Đầu ra:** Sự cố được xử lý kịp thời theo mức độ nguy cấp; chi phí phụ tùng được lưu vết vào báo cáo tài chính.
+**Quy tắc liên quan:** BR-08, BR-09, BR-11; FR-07, FR-09, FR-21, FR-24, FR-25.
 
----
+#### FR-07: Bảo toàn hồ sơ và giới hạn quyền sau checkout (Historical Tenant Record)
 
-### 4.7. Phân hệ Biên bản Vi phạm Nội quy (Discipline &amp; Violations)
+**Tác nhân:** Manager thực hiện checkout; Tenant truy cập dữ liệu sau checkout.  
+**Điều kiện kích hoạt:** Checkout hợp lệ theo FR-13.
 
-#### FR-19: Lập biên bản vi phạm nội quy &amp; Xử phạt
+**Quy trình xử lý:**
+1. Hệ thống cập nhật `resident_status = 'Đã trả phòng'` và trạng thái hợp đồng tương ứng; không xóa Tenant, User, CCCD hoặc lịch sử cư trú.
+2. Tài khoản Tenant tiếp tục đăng nhập được bằng CCCD + mật khẩu để xem hợp đồng cũ, hóa đơn, lịch sử thanh toán, các khoản `Nợ`/`Chờ xác nhận` còn tồn tại và tài liệu thuộc hợp đồng của mình.
+3. Tenant sau checkout vẫn được gửi ảnh minh chứng chuyển khoản cho hóa đơn của chính mình đang ở trạng thái `Nợ`; hóa đơn sang `Chờ xác nhận`, Manager tiếp tục đối soát theo quy trình thanh toán đã chốt.
+4. Không cho Tenant sau checkout thực hiện chức năng chỉ dành cho người **đang cư trú**, như đăng ký xe gửi hầm mới hoặc tạo phiếu báo hỏng mới.
+5. Manager vẫn tra cứu được hồ sơ khách cũ; khi khách quay lại, FR-09 tái sử dụng hồ sơ/tài khoản cũ sau khi đáp ứng điều kiện tiếp nhận.
+6. Không tạo thêm role `FORMER_TENANT`; quyền truy cập phụ thuộc role `TENANT` kết hợp trạng thái cư trú/hợp đồng.
 
-- **Tác nhân:** Quản lý
-- **Đầu vào:** Người thuê vi phạm, Loại vi phạm (Về muộn, Gây ồn, Vệ sinh, Khách ngoài, Hút thuốc / cháy nổ, Khác), Hình thức xử lý (Nhắc nhở, Cảnh cáo, Phạt tiền), Tiền phạt (nếu có) và Ghi chú chi tiết. (Không gắn với phòng `room_id`).
-- **Quy trình xử lý:** Quản lý lập biên bản gắn trực tiếp với cá nhân người thuê. Nếu áp dụng hình thức "Phạt tiền", tiền phạt được xử lý và thu trực tiếp ngoài thực tế; Quản lý chỉ nhập số tiền phạt vào hệ thống để lưu vết lịch sử cư trú, tuyệt đối không gộp hay kết chuyển vào hóa đơn tiền phòng trên web; đồng thời gửi thông báo vi phạm vào ứng dụng di động của khách thuê để cảnh cáo.
-- **Đầu ra:** Hồ sơ vi phạm được ghi nhận chuẩn xác.
+**Đầu ra:** Hồ sơ và công nợ lịch sử được giữ, tài khoản truy cập được với quyền phù hợp sau checkout.
 
----
+**Quy tắc liên quan:** BR-04, BR-05, BR-08, BR-11; FR-06, FR-09, FR-13, FR-16 (ngoài phạm vi phần trích này).
 
-### 4.8. Phân hệ Báo cáo Thống kê &amp; Phân tích KPI (Analytics &amp; Dashboard)
+#### FR-08: Đăng ký, cấp thẻ, từ chối, yêu cầu đổi xe và quản lý phương tiện hầm xe
 
-#### FR-20: Bảng điều khiển phân tích tổng quan &amp; KPI vận hành
+**Tác nhân:** Tenant đang cư trú; Manager.  
+**Mục tiêu:** Quản lý một xe có hiệu lực/chờ cấp thẻ trên mỗi Tenant; hỗ trợ Tenant chủ động đề nghị đổi xe trong khi giữ nguyên thẻ vật lý, không mất lịch sử và không nhầm lẫn việc thay xe với thu hồi thẻ.
 
-- **Tác nhân:** Quản lý
-- **Đầu ra:** 4 Thẻ KPI: Tỷ lệ lấp đầy giường, Doanh thu kỳ vọng/thực thu, Cảnh báo nợ quá hạn (màu đỏ), Sự cố đang mở cần xử lý.
+**Đầu vào:** Tenant ID, loại xe, biển số (khi áp dụng), hãng, màu, ảnh hai mặt giấy đăng ký xe (khi áp dụng), mã thẻ vật lý khi cấp mới; lý do văn bản khi từ chối đăng ký hoặc yêu cầu đổi xe.
 
----
+**Quy tắc nhập liệu theo loại xe:**
 
-### 4.9. Phân hệ Quản trị Hệ thống, Xác thực &amp; Phân quyền (System Administration &amp; Auth)
+| Loại xe | Biển số | Ảnh hai mặt giấy đăng ký xe |
+|---|---|---|
+| Xe tay ga | Bắt buộc | Bắt buộc |
+| Xe số | Bắt buộc | Bắt buộc |
+| Xe máy điện có đăng ký | Bắt buộc | Bắt buộc |
+| Xe đạp điện không có giấy đăng ký | Không bắt buộc (`NULL`) | Không bắt buộc (`NULL`) |
+| Xe đạp thông thường | Không bắt buộc (`NULL`) | Không bắt buộc (`NULL`) |
 
-#### FR-21: Đăng nhập hệ thống an toàn &amp; Cấp quyền phiên làm việc
+**Trạng thái hồ sơ xe:**
 
-- **Tác nhân:** Mọi tác nhân
-- **Quy trình xử lý:** Xác thực mật khẩu băm Argon2id/Bcrypt; khóa tài khoản 15 phút nếu nhập sai quá 5 lần liên tiếp; cấp phát phiên làm việc an toàn và chuyển hướng giao diện theo vai trò.
+| Trạng thái | Ý nghĩa |
+|---|---|
+| `PENDING_CARD` | Đã đăng ký, đang chờ Manager cấp/từ chối thẻ lần đầu |
+| `ISSUED` | Xe hiện tại có thẻ vật lý hợp lệ |
+| `REJECTED` | Đăng ký ban đầu bị Manager từ chối; chưa được cấp thẻ |
+| `REVOKED` | Đã thu hồi thẻ vật lý và kết thúc quyền gửi xe |
+| `REPLACED` | Xe cũ đã được thay bởi xe mới **với cùng thẻ vật lý**; là lịch sử, không phải thu hồi thẻ |
+| `CANCELLED` | Đăng ký chưa được cấp thẻ bị hủy/kết thúc, ví dụ do checkout |
 
-#### FR-22: Đăng xuất an toàn khỏi hệ thống
+**Trạng thái yêu cầu đổi xe (`VehicleChangeRequest`):** `PENDING` (Chờ duyệt), `APPROVED` (Đã duyệt), `REJECTED` (Từ chối), `CANCELLED` (Hủy do checkout). Trạng thái của **yêu cầu** và trạng thái của **hồ sơ xe** là hai khái niệm riêng.
 
-- **Tác nhân:** Người dùng
-- **Quy trình xử lý:** Hủy phiên làm việc và xóa token an toàn.
+**A. Đăng ký xe và cấp/từ chối thẻ lần đầu**
+1. Tenant đang cư trú chọn `[Đăng ký xe mới]` nếu chưa có hồ sơ `PENDING_CARD` hoặc `ISSUED`. Nhập thông tin hợp lệ theo loại xe. Hệ thống kiểm tra ở cả UI và Mock Service/Backend.
+2. Hồ sơ mới ở trạng thái `PENDING_CARD`, chưa có mã thẻ. Manager có thể xem chi tiết, lọc theo trạng thái và tìm theo biển số, tên Tenant, mã thẻ.
+3. Manager xác nhận `[Cấp thẻ]` và nhập mã thẻ vật lý đã bàn giao; nếu hợp lệ, hồ sơ chuyển `ISSUED`. Mã thẻ không được thuộc một xe `ISSUED` khác.
+4. Manager có thể chọn `[Từ chối đăng ký]` đối với hồ sơ `PENDING_CARD`, **nhập lý do bắt buộc**, không cần tệp/ảnh minh chứng; hệ thống lưu người/thời điểm, chuyển hồ sơ `REJECTED`, tạo notification cho Tenant. `REJECTED` không chiếm hạn mức; đăng ký lại là hồ sơ mới.
 
-#### FR-23: Quản lý tài khoản nhân sự &amp; Phân quyền tinh giản (Simplified RBAC)
+**B. Tenant tự yêu cầu đổi xe khi vẫn giữ thẻ vật lý**
+1. Tenant có **một xe `ISSUED` và đang cư trú** chọn `[Yêu cầu đổi xe]` trong chi tiết phương tiện. Hệ thống mở form với loại, biển số, hãng, màu và ảnh giấy tờ của **xe mới**, theo cùng quy tắc validation của đăng ký mới.
+2. Khi gửi thành công, tạo bản ghi `VehicleChangeRequest` có ID riêng, `tenantId`, `currentVehicleId`, thông tin/ảnh xe mới, thời điểm tạo, trạng thái `PENDING`. **Không thay đổi dữ liệu xe cũ**, không tạo xe đang hiệu lực mới và không yêu cầu Tenant trả thẻ. Chỉ một yêu cầu `PENDING`/Tenant; không cho gửi trùng.
+3. Manager xem danh sách **Yêu cầu đổi xe**, mở chi tiết so sánh **xe hiện tại và xe đề nghị**, kiểm tra giấy tờ, rồi chọn `[Chấp nhận đổi xe]` hoặc `[Từ chối]`.
+4. Nếu **chấp nhận**, kiểm tra lại xe cũ vẫn `ISSUED` của chính Tenant và yêu cầu còn `PENDING`. Trong cùng một thao tác nhất quán: cập nhật xe cũ thành `REPLACED` (lưu thời điểm thay thế/ID xe kế tiếp); tạo **xe mới có ID mới, trạng thái `ISSUED` và `cardCode` bằng mã thẻ cũ**; cập nhật yêu cầu thành `APPROVED`, lưu người/thời điểm và liên kết hai xe. Tenant giữ thẻ vật lý cũ; **không thao tác thu hồi/cấp lại**. Gửi thông báo đổi xe được duyệt.
+5. Nếu **từ chối**, Manager **nhập lý do bắt buộc**, không đính kèm minh chứng; yêu cầu chuyển `REJECTED` và thông báo tới Tenant. Xe và mã thẻ hiện tại **giữ nguyên**. Tenant có thể gửi yêu cầu đổi xe mới sau khi yêu cầu cũ kết thúc, không ghi đè lịch sử.
+6. Tenant được xem trạng thái/lý do/yêu cầu đổi xe của chính mình và lịch sử cả xe `REPLACED` lẫn xe `ISSUED`, bao gồm mã thẻ mà xe đã sử dụng. Không có luồng khiếu nại riêng.
 
-- **Tác nhân:** Quản lý
-- **Quy trình xử lý (BR-11):**
-  1. Quản lý tạo tài khoản nhân sự `TECHNICIAN` (Họ tên, Email, Số điện thoại, Mật khẩu ban đầu, Trạng thái hoạt động).
-  2. Quản lý tra cứu danh sách phân trang kỹ thuật viên kèm tìm kiếm và lọc trạng thái hoạt động.
-  3. Quản lý xem chi tiết hồ sơ kỹ thuật viên.
-  4. Quản lý cập nhật thông tin hồ sơ kỹ thuật viên (Họ tên, Email, Số điện thoại).
-  5. Quản lý cập nhật trạng thái kích hoạt/khóa tài khoản kỹ thuật viên (khi khóa tài khoản sẽ lập tức thu hồi toàn bộ phiên đăng nhập đang hoạt động).
-  6. Không mở rộng ma trận tick chọn quyền chi tiết (tuân thủ nguyên tắc phân quyền tinh giản BR-11).
-#### FR-24: Đổi mật khẩu định kỳ &amp; Khôi phục mật khẩu qua OTP
+**C. Thu hồi, checkout và ngoại lệ**
+1. Khi Tenant thôi đăng ký gửi xe hoặc checkout, Manager nhận thẻ vật lý và thực hiện `ISSUED → REVOKED`; mã thẻ được giải phóng để cấp lại.
+2. Nếu checkout xảy ra khi có yêu cầu đổi xe `PENDING`, hệ thống hủy yêu cầu (`CANCELLED`) và thu hồi thẻ của xe đang `ISSUED` trong quy trình checkout. Đăng ký `PENDING_CARD` khi checkout chuyển `CANCELLED` mà **không giả lập thu hồi thẻ**.
+3. Nếu yêu cầu được gửi hoặc duyệt nhiều lần, dữ liệu đồng thời thay đổi, thẻ không còn hợp lệ, xe hiện tại đã đổi hoặc Tenant đã checkout, hệ thống từ chối xử lý và **không ghi dở**. Không có hai xe `ISSUED` cùng mã thẻ hoặc cùng một Tenant tại cùng thời điểm.
 
-- **Tác nhân:** Người dùng
-- **Quy trình xử lý:** Gửi mã OTP 6 số qua email có hiệu lực 5 phút để xác thực trước khi đổi mật khẩu mới.
+**Ràng buộc:**
+- Phí gửi xe nằm trong tiền thuê trọn gói, không lập phí riêng; không hỗ trợ đầu đọc thẻ/barrier/lịch sử lượt quét.
+- Tenant chỉ xem/đăng ký/đổi xe của mình; Manager mới được quyết định cấp/từ chối/duyệt đổi/thu hồi. Kiểm tra quyền tại service/Backend.
+- Yêu cầu đổi xe là bản ghi chờ duyệt **riêng**, không phải hồ sơ xe thứ hai đã cấp thẻ; không sửa đè thông tin xe cũ.
+- Mã thẻ chỉ duy nhất giữa các xe `ISSUED` hiện hành; được phép xuất hiện trên xe `REPLACED`/`REVOKED` để tra cứu lịch sử.
+- Thông báo trong app từ FR-27, không yêu cầu upload bằng chứng khi Manager từ chối; không email/SMS/Zalo hay workflow mất thẻ riêng.
 
----
+**Đầu ra:** Hồ sơ xe và lịch sử được giữ; Tenant chủ động yêu cầu đổi xe, Manager quyết định; nếu duyệt thì tiếp tục dùng đúng thẻ vật lý; nếu từ chối thì xe cũ không bị ảnh hưởng và Tenant biết lý do.
 
-### 4.10. Phân hệ Cổng thông tin Khách thuê trên Di động (Tenant Mobile Portal)
-
-#### FR-25: Trang chủ Thẻ phòng điện tử (Digital Room Card)
-
-- **Tác nhân:** Khách thuê
-- **Hiển thị:** Số phòng, Số giường, Tầng, Thời hạn hợp đồng còn lại, Tình trạng công nợ hiện thời và Danh sách bạn cùng phòng.
-
-#### FR-26: Menu Tab Hóa đơn chuyên biệt trên thanh điều hướng di động
-
-- **Tác nhân:** Khách thuê
-- **Hiển thị:** Truy cập trực tiếp qua menu tab "Hóa đơn" ở thanh điều hướng đáy màn hình; tự động gom nhóm 3 phần: Các khoản cần thanh toán (kèm VietQR động), Các khoản chờ xác nhận và Lịch sử đã thanh toán.
-
-#### FR-27: Hộp thư thông báo &amp; Lịch sử vi phạm cá nhân
-
-- **Tác nhân:** Khách thuê
-- **Hiển thị:** Nhận thông báo chung từ Ban quản lý (lịch bảo trì, nhắc nợ) và danh sách biên bản vi phạm kỷ luật của cá nhân.
-
----
-
-## 5. MA TRẬN TRUY VẾT YÊU CẦU (REQUIREMENTS TRACEABILITY MATRIX - RTM)
-
-
-| Mã FR     | Tên Yêu Cầu Chức Năng                                     | Tác nhân chính   | Phân hệ nghiệp vụ        | Bảng CSDL liên quan                                    |
-| :--------- | :--------------------------------------------------------- | :---------------- | :------------------------ | :------------------------------------------------------ |
-| **FR-01** | Sơ đồ ma trận phòng &amp; giường trực quan theo tầng      | Quản lý          | Quản lý phòng            | `rooms`, `beds`, `tenants`, `contracts`                |
-| **FR-02** | Thêm mới phòng &amp; tự động sinh danh mục giường         | Quản lý          | Quản lý phòng            | `rooms`, `beds`, `amenities`, `room_amenities`         |
-| **FR-03** | Cập nhật thông tin phòng, tiện nghi &amp; trạng thái      | Quản lý          | Quản lý phòng            | `rooms`, `room_amenities`                              |
-| **FR-04** | Xóa phòng khỏi danh mục (Ràng buộc không có khách)        | Quản lý          | Quản lý phòng            | `rooms`, `beds`                                        |
-| **FR-05** | Tìm kiếm &amp; lọc danh mục phòng đa tiêu chí             | Quản lý          | Quản lý phòng            | `rooms`                                                |
-| **FR-06** | Quản lý hồ sơ định danh khách thuê đa đối tượng           | Quản lý          | Khách thuê               | `tenants`, `users`                                     |
-| **FR-07** | Đóng hồ sơ khách thuê sau checkout (Soft delete)          | Quản lý          | Khách thuê               | `tenants`                                              |
-| **FR-08** | Đăng ký &amp; quản lý phương tiện, thẻ từ, ảnh cà vẹt     | Khách thuê, QL   | Phương tiện              | `vehicles`, `tenants`                                  |
-| **FR-09** | Thêm người thuê, gán giường &amp; khởi tạo hợp đồng       | Quản lý          | Tiếp nhận &amp; Hợp đồng | `tenants`, `rooms`, `beds`, `contracts`                |
-| **FR-10** | Ký hợp đồng giấy ở ngoài & Tải đa tệp ảnh/scan minh chứng | Quản lý, Khách thuê | Hợp đồng                 | `contracts`, `contract_documents`                      |
-| **FR-11** | Xử lý yêu cầu chuyển phòng cư trú                         | Khách thuê, QL   | Hợp đồng                 | `contracts`, `beds`                                    |
-| **FR-12** | Gia hạn hợp đồng cư trú định kỳ                           | Khách thuê, QL   | Hợp đồng                 | `contracts`                                            |
-| **FR-13** | Thanh lý hợp đồng &amp; Mở khóa giường trống              | Quản lý          | Hợp đồng                 | `contracts`, `beds`                                    |
-| **FR-14** | Ghi nhận hóa đơn tiện ích cơ sở &amp; Tính Lợi nhuận ròng | Quản lý, Chủ KTX | Tài chính                | `facility_expenses`, `invoices`, `maintenance_tickets` |
-| **FR-15** | Phát hành hóa đơn tiền phòng hàng loạt &amp; Bộ lọc nợ    | Quản lý          | Hóa đơn                  | `invoices`, `contracts`                                |
-| **FR-16** | Xác nhận tiền mặt &amp; Duyệt biên lai chuyển khoản       | Khách thuê, QL   | Hóa đơn &amp; Thu tiền   | `payment_transactions`, `invoices`                     |
-| **FR-17** | Báo hỏng thiết bị &amp; Phân loại cấp độ ưu tiên          | Khách thuê       | Kỹ thuật &amp; Sự cố     | `maintenance_tickets`, `rooms`, `beds`                 |
-| **FR-18** | Điều phối &amp; Sắp xếp công việc theo thứ tự ưu tiên     | Quản lý, Thợ     | Kỹ thuật &amp; Sự cố     | `maintenance_tickets`, `ticket_replacement_parts`      |
-| **FR-19** | Lập biên bản vi phạm nội quy &amp; Xử phạt                | Quản lý          | Kỷ luật                  | `violations`, `tenants`                                |
-| **FR-20** | Bảng điều khiển phân tích tổng quan &amp; KPI vận hành    | Quản lý          | Thống kê &amp; KPI       | `beds`, `invoices`, `maintenance_tickets`              |
-| **FR-21** | Đăng nhập hệ thống an toàn &amp; Cấp quyền phiên          | Mọi tác nhân     | Quản trị hệ thống        | `users`                                                |
-| **FR-22** | Đăng xuất an toàn khỏi hệ thống                           | Mọi tác nhân     | Quản trị hệ thống        | `users`                                                |
-| **FR-23** | Quản lý tài khoản nhân sự &amp; Phân quyền tinh giản      | Quản lý          | Quản trị hệ thống        | `users`, `staff_profiles`                              |
-| **FR-24** | Đổi mật khẩu định kỳ &amp; Khôi phục qua OTP              | Mọi tác nhân     | Quản trị hệ thống        | `users`                                                |
-| **FR-25** | Thẻ phòng điện tử &amp; Danh sách bạn cùng phòng          | Khách thuê       | Cổng khách thuê          | `tenants`, `rooms`, `beds`                             |
-| **FR-26** | Menu Tab Hóa đơn chuyên biệt trên thanh điều hướng        | Khách thuê       | Cổng khách thuê          | `invoices`, `payment_transactions`                     |
-| **FR-27** | Hộp thư thông báo &amp; Lịch sử vi phạm cá nhân           | Khách thuê       | Cổng khách thuê          | `notifications`, `violations`                          |
-
+**Quy tắc liên quan:** BR-03, BR-08, BR-10, BR-11; FR-07, FR-13, FR-27.
 
 ---
 
-## 6. CÁC LUỒNG TUẦN TỰ HỆ THỐNG ĐẦU CUỐI (END-TO-END SEQUENCE DIAGRAMS)
+### 4.3. Phân hệ Tiếp nhận, Xếp phòng và Hợp đồng (Onboarding & Contracts)
 
-### Luồng 1: Xem phòng trực tiếp, Ký hợp đồng giấy &amp; Tải ảnh minh chứng
+#### FR-09: Tiếp nhận khách, cấp tài khoản, gán giường và lập hợp đồng
+
+**Tác nhân:** Manager.  
+**Mục tiêu:** Hoàn tất một lần tiếp nhận khách đang bắt đầu cư trú, đồng thời bảo đảm hồ sơ, tài khoản, hợp đồng và chiếm chỗ nhất quán.
+
+**Điều kiện trước:**
+- Khách đã xem phòng, thống nhất thuê và ký hợp đồng giấy ngoài thực tế; việc tải bản scan có thể thực hiện sau theo FR-10.
+- Giường đích thuộc phòng đang khai thác, ở trạng thái `AVAILABLE`, phù hợp chính sách giới tính.
+- Tenant không có hợp đồng chiếm chỗ hiện hành khác và không còn khoản tiền thuê chưa được Manager xác nhận đã thu khi ký hợp đồng mới.
+- Ngày tạo hồ sơ Tenant mới, ngày onboarding và ngày bắt đầu cư trú đều là **ngày 01 hằng tháng**. Kỳ thuê tính theo tháng đầy đủ; không tiếp nhận ngày giữa tháng, không đặt chỗ hay tạo hợp đồng chiếm chỗ tương lai.
+
+**Đầu vào:** CCCD 12 chữ số; họ tên, giới tính, ngày sinh (nếu có), số điện thoại, email, địa chỉ thường trú; giường đích, ngày bắt đầu là ngày 01 và ngày kết thúc là ngày cuối của kỳ thuê; giá thuê tháng theo giá phòng tại thời điểm ký; tiền cọc và thông tin hợp đồng.
+
+**Quy trình xử lý:**
+1. Vào **ngày 01 của tháng**, Manager chọn `[+ Xếp khách]` trên giường `AVAILABLE` tại Room Matrix/Drawer. Hệ thống mở form tiếp nhận, điền sẵn phòng, giường và mã vị trí. Khách đã hoàn tất thủ tục ký hợp đồng giấy và bắt đầu cư trú trong ngày.
+2. Hệ thống tìm hồ sơ theo CCCD. Nếu không có, tạo quy trình cho **khách mới**; nếu đã có hồ sơ đã checkout, dùng lại Tenant/User cũ. Không tự gộp hoặc tạo trùng hồ sơ dựa trên email/SĐT; chỉ tra cứu định danh cũ bằng CCCD và xử lý các xung đột CCCD thực tế nếu có.
+3. Kiểm tra giường đang `AVAILABLE`; chính sách giới tính phòng phù hợp; hợp đồng hiện hành của giường và của Tenant không bị chồng lấn. FE lọc/khóa lựa chọn không phù hợp và Backend kiểm tra lại tại thời điểm ghi dữ liệu.
+4. Trước khi tiếp nhận khách quay lại, kiểm tra không còn hóa đơn tiền thuê chưa tất toán (`Nợ` hoặc `Chờ xác nhận`). Trường hợp còn nợ, **từ chối lập hợp đồng mới cho đến khi Manager xác nhận đã thu đủ**; việc liên hệ/thu nợ được Manager xử lý trực tiếp ngoài hệ thống, không tạo quy trình đòi nợ riêng.
+5. Với khách mới, trong cùng luồng tạo Tenant, User có role `TENANT`, mật khẩu ban đầu ngẫu nhiên riêng, hợp đồng và quan hệ chiếm chỗ. Với khách quay lại, tái sử dụng Tenant/User hiện có và chỉ tạo hợp đồng mới.
+6. Mỗi Tenant được có tối đa **một hợp đồng chiếm chỗ hiện hành**; mỗi Bed được có tối đa **một hợp đồng chiếm chỗ hiện hành**. Backend phải ngăn yêu cầu cạnh tranh đồng thời.
+7. Hợp đồng ghi nhận `tenant_id`, `bed_id`, ngày bắt đầu **ngày 01**, ngày kết thúc **ngày cuối tháng**, giá thuê được cố định tại lúc ký, tiền cọc và snapshot thông tin quan trọng như Room Code, Bed Code/Slot Key tại thời điểm ký. Hợp đồng giấy và nội dung đã chốt không bị thay đổi bởi việc sửa thông tin phòng về sau.
+8. Khi mọi điều kiện hợp lệ, hệ thống lưu Tenant/User mới (nếu có), Contract, cập nhật Bed thành `OCCUPIED` và **phát hành hóa đơn thuê tháng đầu** giá trọn tháng, hạn thanh toán ngày 05, trạng thái `Nợ`, trong cùng một đơn vị xử lý nhất quán. Không xác nhận onboarding thành công nếu một trong các dữ liệu chính hoặc hóa đơn đầu tiên chưa được ghi nhận đúng. Không tạo trùng hóa đơn cùng hợp đồng/kỳ.
+9. Với tài khoản mới, Manager nhận thông tin CCCD đăng nhập và mật khẩu ngẫu nhiên chỉ hiển thị một lần để bàn giao; Backend chỉ lưu password hash. Không bắt buộc Tenant đổi mật khẩu ở lần đăng nhập đầu.
+10. Khoản tiền thuê tháng đầu được thanh toán dựa trên **hóa đơn vừa phát hành** theo FR-16; Manager chỉ xác nhận `Đã thu` sau khi thực nhận đủ. Khoản tiền cọc được theo dõi riêng, không tính vào doanh thu tiền thuê. Không có prorating hay thu tiền lẻ tháng.
+
+**Ràng buộc và trường hợp từ chối:**
+- Từ chối CCCD không hợp lệ, xung đột định danh chưa xử lý, giường không sẵn sàng, phòng lưu trữ, khác giới tính, hợp đồng chiếm chỗ trùng hoặc còn nợ/chờ đối soát khi ký mới.
+- Không tạo tài khoản/hồ sơ khách độc lập trước hợp đồng; không tự tạo lại hồ sơ khách quay lại. Từ chối onboarding nếu không phải ngày 01 của tháng.
+- Không có cơ chế giữ chỗ/đặt trước trong Phase 1.
+
+**Đầu ra:** Một hợp đồng hiện hành hợp lệ, Bed `OCCUPIED`, Tenant/User đúng định danh và **hóa đơn tiền thuê tháng đầu**; thông tin tài khoản mới được bàn giao khi cần.
+
+**Quy tắc liên quan:** BR-01, BR-02, BR-04, BR-05, BR-08, BR-09, BR-11; FR-01, FR-06, FR-07, FR-10, FR-12, FR-13.
+
+#### FR-10: Lưu trữ đa tệp hợp đồng giấy và tài liệu liên quan
+
+**Tác nhân:** Manager (quản lý tệp); Tenant (xem tệp của mình).  
+**Mục tiêu:** Lưu ảnh/scan của các văn bản đã ký ngoài thực tế để tra cứu, không biến tải tài liệu thành điều kiện chặn onboarding.
+
+**Đầu vào:** Hợp đồng được chọn; một hoặc nhiều file ảnh/scan thuộc các định dạng `.jpg`, `.jpeg`, `.png`, `.webp`, `.pdf`, `.doc`, `.docx` (giới hạn dung lượng tối đa 10 MB theo SRS hiện hành); phân loại tài liệu.
+
+**Quy trình xử lý:**
+1. Hợp đồng gốc, phụ lục gia hạn và biên bản bàn giao được hai bên ký/hoàn tất trực tiếp ngoài thực tế.
+2. Sau khi hợp đồng đã được tạo, Manager mở `ContractsPage` → Drawer chi tiết → `Tài liệu & Minh chứng hợp đồng` → `[Tải thêm tệp]`, có thể chọn nhiều tệp trong một lượt.
+3. Hệ thống lưu từng tệp thuộc hợp đồng vào danh sách tài liệu, phân loại `ORIGINAL_CONTRACT`, `RENEWAL_ANNEX`, `CHECKOUT_HANDOVER` (và loại phụ khác nếu thiết kế hỗ trợ).
+4. **Không yêu cầu upload tài liệu trước khi onboarding hoặc gia hạn thành công**, với điều kiện văn bản giấy đã được ký theo quy trình thực tế.
+5. Nếu upload nhầm, Manager được xóa đúng tệp nhầm và tải lại tệp đúng; có thể bổ sung tệp thiếu trang. Phase 1 **không** triển khai chức năng quản lý nhiều phiên bản của cùng một tệp.
+6. Tenant được xem danh sách và nội dung tệp của **hợp đồng thuộc chính mình**, kể cả sau checkout, dưới dạng xem ảnh hoặc PDF phù hợp trình duyệt. Tenant không được thêm/xóa tệp của hợp đồng.
+7. Xóa một tệp đính kèm không được xóa bản ghi hợp đồng, các phụ lục cấu trúc, hóa đơn hoặc lịch sử cư trú.
+
+**Ràng buộc:** Kiểm tra định dạng, dung lượng, JWT/role và quyền sở hữu tệp tại Backend; không để Tenant truy cập tài liệu của người khác. Tệp lưu **private trong OCI Object Storage**, DB chỉ giữ object key, mỗi lần mở/tải cấp **URL có chữ ký tối đa 15 phút** sau kiểm tra quyền; không public file hợp đồng.
+
+**Đầu ra:** Tài liệu hợp đồng có thể tra cứu theo từng hợp đồng; Manager có thể sửa lỗi upload theo cách đơn giản.
+
+**Quy tắc liên quan:** BR-08, BR-11; FR-09, FR-12, FR-13.
+
+#### FR-11: Yêu cầu chuyển phòng (Room Transfer) — Ngoài phạm vi Phase 1
+
+**Tác nhân dự kiến:** Tenant, Manager.
+
+**Trạng thái yêu cầu:** **Tạm hoãn sang Phase 2**, không triển khai luồng chuyển phòng trong Phase 1.
+
+**Phạm vi dự kiến khi triển khai:** Tenant đề nghị đổi phòng; Manager kiểm tra giường đích sẵn sàng, chính sách giới tính phù hợp và tính nhất quán của hợp đồng/quan hệ chiếm chỗ; thực hiện chuyển giường an toàn. Chưa đặc tả thêm giao diện, lịch xử lý hoặc trạng thái trung gian cho Phase 1.
+
+**Quy tắc liên quan:** BR-01, BR-02, BR-08.
+
+#### FR-12: Gia hạn hợp đồng cư trú bằng phụ lục
+
+**Tác nhân:** Tenant và Manager (trao đổi/ký văn bản ngoài thực tế); Manager (thực hiện gia hạn trên hệ thống).  
+**Mục tiêu:** Cho khách tiếp tục thuê cùng giường sau thời hạn hợp đồng hiện tại thông qua phụ lục, với giá và thời hạn của kỳ gia hạn được xác định rõ.
+
+**Điều kiện trước:**
+- Hợp đồng hiện hành **chưa thanh lý**, khách đang cư trú và yêu cầu gia hạn được hoàn tất **trước ngày hết hạn hợp đồng**.
+- Tenant không còn hóa đơn/khoản tiền thuê `Nợ` hoặc `Chờ xác nhận` cần đối soát. Manager phải xác nhận đã thu đầy đủ trước khi gia hạn.
+- Hai bên đã thống nhất việc tiếp tục thuê và ký phụ lục giấy ngoài thực tế; không cần upload ảnh ngay lúc cập nhật gia hạn.
+
+**Quy trình xử lý:**
+1. Hệ thống hiển thị ngày hết hạn và số ngày còn lại trên hợp đồng/thẻ phòng. Khách có thể trao đổi và ký gia hạn **sớm**; không bắt buộc đợi đến giai đoạn `Sắp hết hạn`.
+2. Manager được thay đổi **giá tiêu chuẩn chung của phòng** (`rooms.base_price`) theo FR-03 trước khi ký gia hạn. Giá mới áp dụng đồng nhất cho các giường trong phòng khi lập hợp đồng mới hoặc phụ lục gia hạn mới; việc tăng giá tiêu chuẩn không tự sửa giá đã khóa trong các hợp đồng/phụ lục còn hiệu lực.
+3. Manager mở Drawer của hợp đồng trên `ContractsPage`, chọn `[Gia hạn]`, nhập/chọn `new_end_date` qua Date Picker; hệ thống lấy giá tiêu chuẩn **hiện tại của phòng tại thời điểm ký gia hạn** để ghi thành giá cố định cho **kỳ gia hạn tiếp theo**.
+4. Hệ thống kiểm tra ngày kết thúc mới phải sau ngày kết thúc hiện hành và rơi vào **ngày cuối tháng**; kỳ gia hạn tiếp nối bắt đầu từ **ngày 01 tháng sau** ngày kết thúc cũ; kiểm tra hợp đồng chưa thanh lý, không có khoản nợ/chờ đối soát, và người/giường vẫn là quan hệ thuê hiện hành hợp lệ.
+5. Khi Manager xác nhận, hệ thống ghi nhận **một lần gia hạn/phụ lục** gắn với hợp đồng gốc, gồm ngày ký, thời hạn mới, ngày bắt đầu kỳ gia hạn (ngày 01 tháng tiếp theo), giá cố định của kỳ đó và tham chiếu tài liệu (khi có). Hệ thống cập nhật thông tin thời hạn hiện hành để hiển thị; không tạo một hợp đồng chiếm chỗ thứ hai.
+6. Tiền cọc đang theo dõi được giữ theo thỏa thuận hiện có; không tự tạo quy trình quyết toán/hoàn cọc khi gia hạn.
+7. Manager có thể upload ảnh/scan phụ lục sau đó vào `contract_documents` với loại `RENEWAL_ANNEX` theo FR-10.
+8. Giá đã chốt trong phụ lục **không đổi suốt thời hạn gia hạn**, kể cả khi Manager tăng giá tiêu chuẩn của phòng sau ngày ký phụ lục. Hóa đơn của kỳ gia hạn được phát hành dựa trên giá phụ lục tương ứng; hóa đơn đã phát hành trước đó giữ nguyên số tiền, không bị cập nhật ngược.
+9. Hệ thống cập nhật ngày hết hạn và số ngày còn lại trên Thẻ phòng của Tenant; hợp đồng tiếp tục được theo dõi là có hiệu lực theo thời hạn mới.
+
+**Quy tắc kết thúc hợp đồng:**
+- Nếu không gia hạn, khách phải trả phòng vào ngày kết thúc hợp đồng; Manager chủ động thực hiện kiểm tra, quyết toán cọc ngoài thực tế, thu hồi thẻ/chìa khóa và checkout theo FR-13 **trong ngày cuối**.
+- Phase 1 **không** thiết kế quyền ở thêm mặc định, gia hạn trễ, hoặc quy trình xử lý kéo dài sau khi hợp đồng đã hết hạn.
+- Hệ thống không tự giải phóng giường chỉ vì ngày trên hợp đồng đã qua mà chưa có thao tác xác nhận bàn giao/checkout; Manager chịu trách nhiệm thực hiện đúng thời điểm.
+
+**Đầu ra:** Hợp đồng gốc có thể có nhiều bản ghi phụ lục/lần gia hạn; mỗi kỳ gia hạn có giá cố định và thời hạn xác định; hóa đơn cũ không bị sửa.
+
+**Quy tắc liên quan:** BR-01, BR-03, BR-04, BR-05, BR-08; FR-03, FR-09, FR-10, FR-13.
+
+#### FR-13: Thanh lý hợp đồng và trả phòng (Checkout)
+
+**Tác nhân:** Manager; Tenant tham gia bàn giao ngoài thực tế.  
+**Mục tiêu:** Kết thúc quan hệ cư trú theo hợp đồng, giải phóng giường và bảo toàn lịch sử/hóa đơn.
+
+**Điều kiện trước:**
+- Khách thông báo ý định trả phòng trước tối thiểu 15 ngày theo quy trình vận hành (zalo).
+- Hai bên hoàn tất bàn giao vật lý. Khi hợp đồng hết hạn mà không gia hạn, Manager thực hiện checkout trong ngày cuối của hợp đồng; không có quyền tự động ở thêm.
+
+**Quy trình xử lý:**
+1. Manager và Tenant kiểm tra phòng, vật dụng, tình trạng hư hỏng; xử lý tiền cọc/khấu trừ nếu có ngoài thực tế theo hợp đồng giấy. Manager thu hồi chìa khóa và thẻ xe vật lý theo quy trình thông thường.
+2. Manager mở `ContractsPage` → Drawer hợp đồng → `[Thanh lý (Checkout)]`; xác nhận đã bàn giao và **chọn bắt buộc** trạng thái giường sau checkout: `AVAILABLE` (có thể tiếp tục cho thuê) hoặc `MAINTENANCE` (cần bảo trì).
+3. Hệ thống cập nhật nhất quán: hợp đồng `Đã thanh lý`; Tenant `Đã trả phòng`; giường không còn bị hợp đồng đó chiếm chỗ và nhận trạng thái đã chọn; xe `ISSUED` được thu hồi thẻ và chuyển `REVOKED`; đăng ký xe chưa cấp thẻ `PENDING_CARD` và yêu cầu đổi xe `PENDING` được hủy thành `CANCELLED` (không giả là đã thu hồi thẻ vật lý).
+4. Checkout **không bị chặn** nếu còn hóa đơn `Nợ` hoặc `Chờ xác nhận` sau bàn giao. Các hóa đơn đó giữ nguyên trạng thái: không tự đánh dấu `Đã thu`, không tự chuyển `Chờ xác nhận` về `Nợ`; Manager tiếp tục đối soát theo quy trình thanh toán.
+5. Hệ thống không phát hành hóa đơn cho kỳ thuê **nằm ngoài thời hạn của hợp đồng hoặc sau khi hợp đồng đã checkout**. Tại lần phát hành ngày 25, phải kiểm tra thời hạn hợp đồng đối với kỳ cần thu, tránh tạo hóa đơn tháng sau cho khách kết thúc hợp đồng tháng này.
+6. Tenant giữ nguyên tài khoản để xem hợp đồng, hóa đơn, lịch sử thanh toán và gửi minh chứng cho hóa đơn `Nợ` theo FR-07. Không xóa hồ sơ định danh, hợp đồng, giao dịch, công nợ, lịch sử cư trú hoặc vi phạm.
+7. Không xây dựng quy trình riêng cho trường hợp thiếu/mất thẻ xe hoặc các ngoại lệ bàn giao đặc biệt trong Phase 1; quy trình bàn giao thông thường là yêu cầu vận hành.
+
+**Ràng buộc:**
+- Không tự chuyển mọi giường về `AVAILABLE`; Manager phải chọn trạng thái sau bàn giao.
+- Trạng thái hợp đồng, hồ sơ cư trú, quan hệ chiếm chỗ và giường không được cập nhật nửa chừng.
+- Khoản công nợ cũ được giữ để đối soát; khi khách quay lại hoặc yêu cầu gia hạn, Backend chỉ cho tiếp nhận/gia hạn nếu không còn khoản chưa được Manager xác nhận đã thu.
+
+**Đầu ra:** Hợp đồng được thanh lý; giường được giải phóng đúng trạng thái; tài khoản và lịch sử được giữ; không phát sinh hóa đơn cho kỳ không còn thuê.
+
+**Quy tắc liên quan:** BR-01, BR-04, BR-05, BR-08, BR-10, BR-11; FR-01, FR-07, FR-08, FR-09, FR-12.
+
+---
+### 4.4. Chi phí cơ sở và lợi nhuận ròng ước tính
+
+#### FR-14 — Ghi nhận chi phí cơ sở, tổng lương thủ công và báo cáo lợi nhuận ròng ước tính
+
+**Tác nhân:** Manager.  
+**Mục tiêu:** Theo dõi các khoản chi vận hành được ghi nhận, bao gồm tổng lương do Manager tự tính bên ngoài, và tổng hợp **Lợi nhuận ròng (ước tính từ dữ liệu ghi nhận)** theo kỳ báo cáo.
+
+**Đầu vào:** Loại chi phí `Điện`, `Nước`, `Internet`, `Lương nhân viên`, `Khác`; tiêu đề, số tiền, ngày chi phí (`expense_date`), mã chứng từ (nếu có), ảnh chứng từ (nếu có) và ghi chú.
+
+**Quy trình xử lý:**
+1. Manager tạo khoản chi phí tiện ích cơ sở hoặc chi phí vận hành khác. Đối với `Lương nhân viên`, Manager tự tổng hợp **tổng lương tháng bên ngoài hệ thống** và nhập một khoản tổng cho tháng tương ứng; không nhập bảng lương từng Technician, không tính lương tự động. Khi nhập sai, sửa bản ghi thay vì tạo khoản trùng.
+2. Manager xem bảng kê theo thời gian/loại chi phí; được **sửa hoặc xóa khoản chi nhập nhầm**. Báo cáo tính lại theo dữ liệu hiện có, không yêu cầu workflow phê duyệt hoặc lịch sử phiên bản sửa đổi riêng.
+3. Hệ thống lấy **doanh thu thực thu** của kỳ từ các hóa đơn có `billing_period` thuộc kỳ và `status = Đã thu`, dù Manager xác nhận tiền vào tháng khác. Hóa đơn `Nợ`/`Chờ xác nhận` không được tính là đã thu; **doanh thu kỳ vọng** là tổng hóa đơn được phát hành cho kỳ, bất kể trạng thái.
+4. Chi phí sửa chữa được tổng hợp từ phiếu `Hoàn thành` theo **ngày hoàn thành**, chỉ gồm vật tư/linh kiện thực dùng. Chi phí điện/nước/Internet/lương tổng/chi phí khác được tổng hợp theo `expense_date` trong kỳ; không nhập trùng chi phí vật tư từ Ticket vào Facility Expense.
+5. Hệ thống tính và hiển thị:
+
+   ```text
+   Lợi nhuận ròng (ước tính theo dữ liệu ghi nhận) của kỳ
+       = Doanh thu tiền thuê đã xác nhận thu thuộc kỳ hóa đơn
+       - Chi phí vật tư sửa chữa hoàn thành trong kỳ
+       - Điện, nước, Internet toàn cơ sở ghi nhận trong kỳ
+       - Tổng lương nhân viên do Manager nhập cho kỳ
+       - Chi phí vận hành khác đã ghi nhận trong kỳ
+   ```
+
+6. Tiền cọc không cộng vào doanh thu tiền thuê; tiền phạt vi phạm thu ngoài hệ thống không cộng vào doanh thu thuê. Manager có thể xuất báo cáo **Excel (`.xlsx`) và PDF** theo kỳ chọn; file xuất phải sử dụng cùng công thức với UI và hiển thị chú thích ở mục 7.
+7. **Điều kiện bắt buộc khi hiển thị nhãn “Lợi nhuận ròng (ước tính)”**: đặt ngay cạnh số liệu hoặc trong báo cáo lời giải thích: *“Ước tính dựa trên các khoản thu và chi đã được ghi nhận; có thể chưa bao gồm đầy đủ chi phí, thuế, khấu hao và nghĩa vụ khác.”* Không tuyên bố đây là lợi nhuận ròng kế toán đã kiểm toán. Vì doanh thu theo kỳ hóa đơn trong khi chi phí theo ngày ghi nhận/ngày hoàn thành, đây là chỉ số vận hành theo quy ước, **không phải báo cáo dòng tiền**. Khi hóa đơn kỳ cũ được xác nhận muộn, doanh thu và số ước tính **của kỳ cũ** cập nhật theo.
+
+**Ràng buộc:** Không triển khai quản lý bảng lương, tính lương theo nhân viên, khấu trừ thuế/bảo hiểm, tính khấu hao hoặc kế toán đầy đủ. Các nhóm chi phí chỉ được tính một lần; Manager chịu trách nhiệm về độ đầy đủ và chính xác dữ liệu nhập.
+
+**Đầu ra:** Bảng chi phí, chỉ số **Lợi nhuận ròng (ước tính)** có chú thích và báo cáo Excel/PDF nhất quán.
+
+**Liên quan:** BR-03, BR-05, BR-08; FR-15, FR-16, FR-18, FR-20.
+
+---
+
+### 4.5. Hóa đơn tiền thuê và xác nhận thanh toán
+
+#### FR-15 — Phát hành hóa đơn theo kỳ và lọc trạng thái
+
+**Tác nhân:** Hệ thống (phát hành định kỳ); Manager (tra cứu, chạy lại khi lỗi).  
+**Mục tiêu:** Tạo hóa đơn tiền thuê trọn tháng, đúng kỳ và đúng giá hợp đồng/phụ lục, không phát hành trùng.
+
+**Quy trình xử lý:**
+1. **Kỳ đầu:** Trong onboarding hợp lệ ngày 01, hệ thống phát hành ngay hóa đơn **tháng bắt đầu cư trú**, có số tiền bằng giá thuê trọn tháng ghi trên hợp đồng, hạn thanh toán ngày 05 tháng đó, trạng thái `Nợ`. Việc phát hành thuộc cùng giao dịch nghiệp vụ tiếp nhận theo FR-09.
+2. **Các kỳ tiếp theo:** Vào **00:00 ngày 25 hằng tháng**, theo `Asia/Ho_Chi_Minh`, hệ thống tạo hóa đơn cho tháng sau, chỉ khi tháng đó nằm trong thời hạn của hợp đồng/phụ lục và hợp đồng chưa checkout.
+3. Giá trên hóa đơn được xác định từ **giá đã chốt của kỳ hợp đồng/phụ lục** bao phủ tháng đó; thay đổi giá tiêu chuẩn phòng về sau không sửa hóa đơn hiện có.
+4. Mỗi cặp `(contract_id, billing_period)` chỉ có **một hóa đơn tiền thuê**. Tác vụ phát hành lại khi lỗi chỉ tạo những hóa đơn còn thiếu, không tạo bản sao; không yêu cầu Manager duyệt từng lần chạy lịch.
+5. Hạn thanh toán chung là ngày 05 của chính tháng tính tiền; không tính phí phạt trễ hạn. Hóa đơn `Nợ` sau hạn được gắn chỉ báo quá hạn; `Chờ xác nhận` không xếp vào nợ quá hạn.
+6. Manager xem danh sách, lọc `Tất cả`/`Nợ`/`Chờ xác nhận`/`Đã thu`; tìm kiếm theo mã hóa đơn, tên khách, mã phòng, CCCD hoặc email.
+
+**Ràng buộc:** Không phát hành cho kỳ sau thời điểm kết thúc thuê hoặc sau checkout. Không có onboarding giữa tháng và không yêu cầu logic phát hành bù cho trường hợp đến sau ngày 25. Hóa đơn đầu tiên không chờ batch ngày 25.
+
+**Đầu ra:** Các hóa đơn kỳ đầu và các kỳ tiếp theo đúng thời hạn, giá, trạng thái và điều kiện không trùng.
+
+**Liên quan:** BR-03, BR-04, BR-05, BR-08; FR-09, FR-12, FR-13, FR-16, FR-20.
+
+#### FR-16 — Thanh toán VietQR và xác nhận tiền mặt thủ công
+
+**Tác nhân:** Tenant; Manager.  
+**Mục tiêu:** Hỗ trợ khách chuyển khoản/đưa tiền mặt, nhưng chỉ Manager xác nhận thu tiền khi thực tế nhận đủ.
+
+**A. Chuyển khoản VietQR**
+1. Với từng hóa đơn `Nợ`, hệ thống hiển thị mã VietQR riêng, gồm tài khoản ngân hàng nhận, **đúng số tiền hóa đơn** và nội dung chuyển khoản có mã tham chiếu hóa đơn.
+2. Cung cấp thao tác **tải ảnh VietQR**, **sao chép số tài khoản** và **sao chép nội dung chuyển khoản**, phục vụ khách sử dụng ngân hàng trên cùng điện thoại.
+3. Tenant tự chuyển khoản trong ứng dụng ngân hàng rồi tải ảnh bill/biên lai lên hóa đơn `Nợ`; hệ thống lưu minh chứng và chuyển `Nợ → Chờ xác nhận`.
+4. Manager kiểm tra tiền thực nhận trong ngân hàng bên ngoài hệ thống. Nếu đã nhận đủ, Manager xác nhận `Chờ xác nhận → Đã thu` và hệ thống **tạo `PAYMENT_TRANSACTION`** ghi số tiền, phương thức chuyển khoản, thời điểm và người xác nhận; đây là bản ghi thu tiền của KTX, không phải lệnh chuyển tiền của ngân hàng.
+5. Nếu ảnh hoặc giao dịch không hợp lệ/chưa đối soát được, Manager từ chối và chuyển hóa đơn `Chờ xác nhận → Nợ`, cho Tenant gửi minh chứng lại.
+
+**B. Tiền mặt**
+1. Tenant đưa tiền mặt trực tiếp cho Manager.
+2. Manager chỉ xác nhận khi hóa đơn đang `Nợ` và đã **kiểm đếm nhận đủ** số tiền. Giao diện xác nhận hiển thị mã hóa đơn, khách và số tiền; sau xác nhận, hệ thống chuyển `Nợ → Đã thu` và tạo một bản ghi thu tiền **`PAYMENT_TRANSACTION`** với phương thức `CASH`, thời điểm và người xác nhận.
+3. Backend từ chối xác nhận tiền mặt cho hóa đơn `Chờ xác nhận` hoặc tạo giao dịch thu lần nữa cho hóa đơn `Đã thu`.
+
+**C. Quyền sau checkout**
+- Tenant đã checkout vẫn có thể xem hóa đơn cũ và **gửi minh chứng chuyển khoản cho hóa đơn `Nợ`**; hóa đơn `Chờ xác nhận` giữ nguyên cho đến khi Manager xử lý, kể cả khi khách đã rời KTX.
+
+**Ràng buộc:** Chỉ có tối đa một `PAYMENT_TRANSACTION` đã hoàn tất cho mỗi hóa đơn, được tạo khi Manager xác nhận nhận đủ tiền; không tạo bản ghi thu hoàn tất chỉ vì Tenant đã gửi ảnh minh chứng. Không có webhook, kết nối biến động số dư hay tự gạch nợ. Chỉ ba trạng thái `Nợ`, `Chờ xác nhận`, `Đã thu`; không xử lý thanh toán một phần, trả dư hoặc hoàn tiền thành workflow Phase 1.
+
+**Đầu ra:** Trạng thái hóa đơn và bản ghi thu tiền mặt/chuyển khoản được cập nhật đúng quyền, đúng số tiền đã xác nhận.
+
+**Liên quan:** BR-04, BR-05, BR-08, BR-11; FR-07, FR-13, FR-15, FR-26.
+
+---
+
+### 4.6. Điều phối sự cố và kỹ thuật
+
+#### FR-17 — Báo hỏng và đề xuất mức ưu tiên
+
+**Tác nhân:** Tenant **đang cư trú**.  
+**Đầu vào:** Loại sự cố `Điện`, `Nước`, `Internet`, `Nội thất`, `Tiện ích`, `Khác`; tiêu đề, mô tả, mức ưu tiên đề xuất `Khẩn cấp`/`Cao`/`Bình thường`, ảnh hiện trường, phòng/giường liên quan được xác định từ quyền cư trú.
+
+**Quy trình xử lý:**
+1. Tenant tạo phiếu báo hỏng trên Mobile Web, cung cấp loại sự cố, mô tả và ảnh hiện trường.
+2. Hệ thống xác nhận người báo đang cư trú, liên kết phiếu với Tenant và phòng đang thuê, tạo mã phiếu và trạng thái ban đầu **`Chưa phân công`**.
+3. Phiếu `Khẩn cấp` được nhận diện nổi bật để Manager ưu tiên xử lý; mức ưu tiên Tenant chọn chỉ là **đề xuất**, Manager có thể điều chỉnh.
+4. Tenant chỉ được xem các phiếu thuộc mình. Tenant đã checkout không thể tạo phiếu báo hỏng mới.
+
+**Đầu ra:** Phiếu sự cố hợp lệ chờ Manager phân công.
+
+**Liên quan:** BR-06, BR-11; FR-07, FR-18.
+
+#### FR-18 — Phân công và xử lý phiếu sự cố
+
+**Tác nhân:** Manager; Technician.  
+**Mục tiêu:** Điều phối phiếu theo mức độ ưu tiên và ghi nhận vật tư sửa chữa thực tế.
+
+**Quy trình xử lý:**
+1. Manager xem phiếu `Chưa phân công`, điều chỉnh mức ưu tiên nếu cần, chọn Technician và hạn xử lý; phiếu chuyển sang **`Mới giao`**.
+2. Manager được **phân công lại** cho Technician khác khi phiếu chưa `Hoàn thành`; người được giao cũ không còn quyền xử lý phiếu. Không tạo trạng thái mới cho việc đổi người.
+3. Technician chỉ xem các phiếu đang được giao cho chính mình; danh sách đưa phiếu chưa hoàn thành trước, sau đó sắp xếp `Khẩn cấp → Cao → Bình thường`, cùng ưu tiên thì phiếu tạo sớm đứng trước. Việc khẩn cấp có cảnh báo đỏ nổi bật trên giao diện kỹ thuật viên.
+4. Technician bấm `[Bắt đầu xử lý]`, chuyển phiếu `Mới giao → Đang xử lý` và ghi chú quá trình xử lý khi cần.
+5. Khi hoàn tất, Technician ghi kết quả xử lý, ảnh nghiệm thu; khai báo danh sách linh kiện/vật tư **thực sự sử dụng** theo `tên`, `số lượng`, `đơn giá`.
+6. Hệ thống tự tính **thành tiền = số lượng × đơn giá** từng dòng và tổng chi phí vật tư cả phiếu. Không dùng linh kiện thì tổng chi phí = **0 đồng**, vẫn được hoàn thành. Chi phí sửa chữa chỉ tổng hợp từ phiếu đã `Hoàn thành` vào FR-14.
+7. Technician xác nhận hoàn thành, phiếu chuyển sang **`Hoàn thành`**. Không có quy trình mở lại phiếu hay nghiệm thu nhiều cấp.
+
+**Ràng buộc:** Không cộng chi phí nhân công/dịch vụ kỹ thuật vào chi phí linh kiện của phiếu. Manager không tự biến phiếu hoàn thành thành phiếu mở lại; quyền thao tác phải kiểm tra ở Backend.
+
+**Đầu ra:** Phiếu được xử lý đúng người, đúng trạng thái, có kết quả và chi phí vật tư được tính tự động.
+
+**Liên quan:** BR-03, BR-06, BR-08, BR-11; FR-14, FR-17.
+
+---
+
+### 4.7. Kỷ luật và vi phạm
+
+#### FR-19 — Ghi nhận biên bản vi phạm nội quy
+
+**Tác nhân:** Manager; Tenant (xem lịch sử của mình).  
+**Đầu vào:** Tenant đang cư trú, ngày xảy ra, loại vi phạm, mức xử lý, ghi chú diễn biến; số tiền phạt khi hình thức là `Phạt tiền`.
+
+**Quy trình xử lý:**
+1. Manager chọn Tenant đang cư trú và lập biên bản, phân loại một trong `Về muộn`, `Gây ồn`, `Vệ sinh`, `Khách ngoài`, `Hút thuốc / cháy nổ`, `Khác`.
+2. Manager chọn `Nhắc nhở`, `Cảnh cáo` hoặc `Phạt tiền`; nếu phạt tiền, hệ thống ghi số tiền vào biên bản nhưng **không** tạo hóa đơn/công nợ/thu tiền phạt.
+3. Biên bản gắn Tenant, không bắt buộc gắn Room ID. Hệ thống tạo thông báo cá nhân tự động cho Tenant theo FR-27.
+4. Tenant chỉ xem biên bản của mình; hồ sơ vi phạm được bảo toàn khi checkout.
+
+**Đầu ra:** Biên bản và lịch sử vi phạm có thể tra cứu theo Tenant, không ảnh hưởng số tiền thuê phòng phải thu.
+
+**Liên quan:** BR-07, BR-08, BR-11; FR-07, FR-27.
+
+---
+
+### 4.8. Thống kê và Dashboard
+
+#### FR-20 — Dashboard với bốn KPI vận hành và bốn biểu đồ phân tích
+
+**Tác nhân:** Manager.  
+**Mục tiêu:** Theo dõi sức chứa, thu tiền theo kỳ hóa đơn, công nợ quá hạn và sự cố chưa hoàn thành; phân tích biến động người thuê, trạng thái giường, doanh thu và chi phí trong năm được chọn.
+
+**Đầu ra KPI bắt buộc:** Giữ **đúng bốn thẻ KPI** sau (các biểu đồ bên dưới **không phải KPI bổ sung**):
+
+| KPI | Công thức/phạm vi |
+|---|---|
+| 1. Tỷ lệ lấp đầy | `Số Bed OCCUPIED / tổng số Bed vật lý thuộc các Room đang vận hành × 100%`; Bed MAINTENANCE vẫn tính trong mẫu số; Room lưu trữ không nằm trong hoạt động hiện hành |
+| 2. Doanh thu kỳ vọng / đã thu | Kỳ vọng = tổng số tiền hóa đơn thuê **của kỳ được chọn**; đã thu = tổng số tiền các hóa đơn **cùng kỳ** có trạng thái `Đã thu` dù trả tiền tháng khác |
+| 3. Công nợ quá hạn | Tổng hóa đơn `Nợ` quá hạn thanh toán tính tại thời điểm xem; **không** tính `Chờ xác nhận` |
+| 4. Sự cố đang mở | Các phiếu `Chưa phân công`, `Mới giao`, `Đang xử lý`; không tính `Hoàn thành` |
+
+**Bốn biểu đồ bắt buộc dưới các thẻ KPI:**
+
+| Biểu đồ | Chiều thời gian / cách tính | Nguồn dữ liệu |
+|---|---|---|
+| 1. Line chart — Người vào ở và người rời đi | **Hai đường**, mỗi tháng từ 01–12 của **năm được chọn**. Vào ở = số lượt onboarding thực sự bắt đầu cư trú trong tháng (kể cả khách quay lại); rời đi = số lượt Manager **xác nhận checkout** trong tháng. Gia hạn không được tính là onboarding hay checkout | Lịch sử Contract với ngày bắt đầu cư trú và **ngày checkout thực tế** / sự kiện vòng đời tương đương. Không suy ngày rời đi chỉ từ `end_date` hoặc trạng thái `CHECKED_OUT` hiện tại |
+| 2. Pie chart — Trạng thái giường | **Snapshot ở thời điểm xem**, phân bố số Bed `MAINTENANCE` / `AVAILABLE` / `OCCUPIED` thuộc **các Room đang vận hành**; không dùng năm được chọn để suy trạng thái giường lịch sử | Room/Bed hiện tại; loại Room đã archive; tổng ba nhóm phải bằng số Bed vật lý đang vận hành |
+| 3. Bar chart — Doanh thu theo kỳ hóa đơn | **Hai series cho mỗi tháng 01–12** của năm được chọn: `Kỳ vọng` = tổng số tiền hóa đơn có `billing_period` của tháng; `Đã thu` = các hóa đơn cùng kỳ có trạng thái `Đã thu`. Tiền thu muộn vẫn thuộc cột kỳ hóa đơn gốc | Invoices, hợp đồng/giá snapshot và payment status; không nhóm theo ngày Manager xác nhận tiền |
+| 4. Bar chart — Chi phí phát sinh | **Một cột tổng chi phí cho mỗi tháng 01–12** của năm được chọn; tổng = chi phí Facility Expenses (gồm tổng lương Manager nhập) theo `expense_date` + chi phí vật tư từ Ticket hoàn thành theo ngày hoàn thành. Không tính trùng vật tư | Facility Expenses và Ticket/Parts; tooltip có thể trình bày cơ cấu nhưng không bắt buộc nhiều series |
+
+**Quy trình xử lý:**
+1. Manager xem các KPI và chọn **kỳ hóa đơn** cho KPI 2; các KPI về trạng thái hiện hành luôn phản ánh trạng thái tại lúc xem, theo phạm vi định nghĩa riêng.
+2. Manager chọn **năm thống kê** cho ba biểu đồ lịch sử 12 tháng. Với dữ liệu nghiệp vụ thật, biểu đồ trạng thái giường là snapshot ở thời điểm xem và UI ghi “Trạng thái hiện tại”. Với Prototype dùng bộ số liệu riêng, ghi **“Phân bố giường minh họa”** thay vì khẳng định đây là trạng thái giường vận hành hiện tại; biểu đồ tròn không phụ thuộc năm được chọn.
+3. Mỗi biểu đồ có tiêu đề, chú giải và tooltip; tháng không có số liệu trong tập dữ liệu đang dùng hiển thị 0 hoặc trạng thái trống. Với dữ liệu nghiệp vụ thật, biểu đồ thực hiện đúng nguồn và công thức trong bảng trên. **Dữ liệu minh họa riêng là ngoại lệ chỉ dành cho Prototype/Mock mode**.
+4. **Prototype/Mock mode (quyết định đơn giản hóa để demo sớm):** cho phép sử dụng **một bộ dữ liệu biểu đồ mẫu riêng** (ví dụ `dashboardDemoData.ts`) gồm 12 tháng và tỷ trọng trạng thái giường, **không cần trùng khớp Shared Mock Store, KPI, hóa đơn, hợp đồng, số giường hay các thao tác nghiệp vụ hiện tại**. Không phải bổ sung lịch sử checkout hay seed lại dữ liệu nghiệp vụ chỉ để vẽ biểu đồ. Khi đổi năm thống kê, chọn số liệu mẫu tương ứng (nếu có); không có năm mẫu thì ghi rõ không có dữ liệu. Phải hiển thị **nhãn rõ ràng “Dữ liệu biểu đồ minh họa (Prototype)”** ngay tại khu vực biểu đồ và không nói các con số đó là dữ liệu vận hành thật.
+5. **Bốn KPI hiện có** vẫn tính từ dữ liệu nghiệp vụ Mock Store, **không dùng bộ số liệu chart mẫu để tính KPI, lợi nhuận ròng, hóa đơn, báo cáo tài chính, export hay đổi trạng thái phòng**. Tập dữ liệu minh họa chỉ phục vụ trình diễn giao diện biểu đồ. Ở **API mode**, biểu đồ phải lấy số liệu nghiệp vụ được tổng hợp thật hoặc hiện trạng thái chưa tích hợp; **không tự động dùng dữ liệu demo làm fallback**.
+
+**Ràng buộc:** Đối với nguồn thật, doanh thu theo **kỳ hóa đơn**, không theo ngày thực nhận; chỉ báo quá hạn không phải trạng thái Invoice mới. **Lợi nhuận ròng (ước tính)** thuộc FR-14, không thêm KPI thứ năm. Khi sau này tích hợp dữ liệu thật cho line chart, phải có ngày onboarding/checkout thực tế; **Prototype không bị chặn** vì thiếu lịch sử đầy đủ.
+
+**Liên quan:** BR-01, BR-03, BR-04, BR-05, BR-06; FR-01, FR-07, FR-09, FR-13, FR-14, FR-15, FR-18.
+
+---
+
+### 4.9. Quản trị, xác thực và phân quyền
+
+#### FR-21 — Đăng nhập an toàn và cấp quyền phiên làm việc
+
+**Tác nhân:** Manager, Tenant, Technician.
+
+**Quy trình xử lý:**
+1. Hệ thống cung cấp **một trang đăng nhập chung** với trường `Email hoặc CCCD` và trường `Mật khẩu`.
+2. Nếu người dùng nhập CCCD có định dạng 12 chữ số, hệ thống tìm **Tenant** theo CCCD; nếu nhập email, tìm tài khoản **Manager/Technician**. Email của Tenant không phải tên đăng nhập. Hệ thống không đăng nhập bằng số điện thoại.
+3. Backend so khớp mật khẩu băm bằng Argon2id hoặc Bcrypt, kiểm tra tài khoản hoạt động và xử lý giới hạn đăng nhập: khóa đăng nhập tạm thời **15 phút sau hơn 5 lần nhập sai liên tiếp** theo SRS nền.
+4. Xác thực thành công thì phát hành **JWT Access Token và Refresh Token**; Backend dùng **Redis** để kiểm soát refresh/thu hồi token, không dùng bảng `auth_sessions` trong PostgreSQL. Điều hướng theo role; Manager/Technician dùng email đã đăng ký, Tenant dùng CCCD. Không bắt buộc Tenant đổi mật khẩu lần đầu.
+5. Mọi API được bảo vệ phải kiểm tra role, phạm vi dữ liệu và quyền cư trú. Technician bị khóa không còn được đăng nhập/tiếp tục dùng phiên cũ.
+
+**Ràng buộc:** Không tiết lộ việc tồn tại CCCD/email qua thông báo lỗi đăng nhập. CCCD dùng để tìm tài khoản, không thay thế UUID định danh nội bộ.
+
+**Đầu ra:** Phiên đăng nhập và quyền truy cập phù hợp người dùng.
+
+**Liên quan:** BR-08, BR-09, BR-11; FR-06, FR-07, FR-22, FR-23, FR-24.
+
+#### FR-22 — Đăng xuất an toàn
+
+**Tác nhân:** Mọi người dùng đã đăng nhập.
+
+**Quy trình xử lý:**
+1. Người dùng chọn `Đăng xuất`.
+2. Hệ thống xóa thông tin xác thực trên client, thu hồi Refresh Token và vô hiệu hóa Access Token liên quan bằng cơ chế Redis, không dựa vào PostgreSQL Session. Khi khóa tài khoản hoặc đổi/reset mật khẩu, Backend cũng phải ngăn sử dụng token cũ theo phạm vi thu hồi tương ứng.
+3. Phiên đã đăng xuất không được tiếp tục truy cập API được bảo vệ; ứng dụng chuyển về trang đăng nhập.
+
+**Đầu ra:** Người dùng kết thúc phiên an toàn.
+
+**Liên quan:** BR-11; FR-21.
+
+#### FR-23 — Quản lý tài khoản Technician và RBAC tinh giản
+
+**Tác nhân:** Manager.
+
+**Quy trình xử lý:**
+1. Tài khoản Manager được thiết lập ban đầu cho cơ sở. **Email đăng nhập Manager cố định**; không xây dựng chức năng đổi email của Manager hoặc quản lý nhiều Manager trong Phase 1.
+2. Manager tạo tài khoản Technician với họ tên, **email duy nhất trên toàn bộ tài khoản User**, điện thoại, trạng thái hoạt động và mật khẩu khởi tạo ngẫu nhiên. Không cần sinh hoặc yêu cầu Technician nhớ username riêng.
+3. Manager có thể xem danh sách Technician có tìm kiếm/lọc trạng thái, xem chi tiết, cập nhật tên, số điện thoại và email Technician sau khi xác minh danh tính ngoài thực tế.
+4. Manager được khóa hoặc kích hoạt lại Technician. Khi khóa, Backend **thu hồi toàn bộ phiên hoạt động** và ngăn đăng nhập mới; không xóa lịch sử xử lý phiếu.
+5. Khi phiếu đang giao cho Technician bị khóa, Manager có thể phân công lại các phiếu chưa hoàn thành theo FR-18; không tự gộp, xóa hoặc phân công lại hàng loạt một cách ngầm định.
+6. Technician không được quản lý tài khoản nhân sự, không có ma trận phân quyền tùy chỉnh. Các thao tác nghiệp vụ theo ba role cố định tại BR-11.
+
+**Đầu ra:** Tài khoản nhân sự được cấp phát/quản lý trực tiếp, không phát sinh quyền ngoài phạm vi được giao.
+
+**Liên quan:** BR-09, BR-11; FR-18, FR-21, FR-24.
+
+#### FR-24 — Đổi mật khẩu bằng mật khẩu cũ; khôi phục bằng OTP email
+
+**Tác nhân:** Manager, Tenant, Technician.
+
+**A. Đổi mật khẩu (đang đăng nhập)**
+1. Người dùng đã xác thực bằng JWT hợp lệ mở chức năng đổi mật khẩu và nhập **mật khẩu hiện tại**, **mật khẩu mới** và **xác nhận mật khẩu mới**.
+2. Backend kiểm tra mật khẩu hiện tại và chính sách mật khẩu mới, cập nhật `password_hash` sau khi xác thực thành công; thu hồi/không chấp nhận các token cũ theo cơ chế JWT + Redis đã chốt.
+3. **Không gửi OTP email và không yêu cầu OTP trong luồng Change Password.** Áp dụng thống nhất cho cả ba role.
+
+**B. Quên mật khẩu (chưa đăng nhập)**
+1. Người dùng cung cấp **CCCD** (Tenant) hoặc **email đăng nhập** (Manager/Technician) để yêu cầu khôi phục; Backend xác định **một User cụ thể**, gửi mã OTP 6 số đến email duy nhất liên kết User. Phản hồi không tiết lộ tài khoản có tồn tại hay không.
+2. OTP có hiệu lực **5 phút**, giới hạn số lần thử, chỉ dùng một lần; dữ liệu OTP/reset token tạm thời do **Redis** quản lý. Khi xác minh thành công, người dùng đặt mật khẩu mới và Backend vô hiệu hóa token cũ.
+
+**C. Không truy cập được email**
+1. Tenant hoặc Technician liên hệ Manager; sau khi Manager xác minh danh tính ngoài thực tế, Manager được cập nhật email liên hệ/đăng nhập phù hợp (phải duy nhất) hoặc cấp lại mật khẩu ngẫu nhiên.
+2. **Không** triển khai OTP xác minh email mới, workflow duyệt nhiều cấp hay lịch sử thao tác đổi email/reset mật khẩu riêng. **Không hỗ trợ chức năng đổi email Manager.**
+
+**Đầu ra:** Đổi mật khẩu đã đăng nhập không dùng OTP; quên mật khẩu được khôi phục bằng OTP email; cả ba role đều áp dụng.
+
+**Liên quan:** BR-09, BR-11; FR-06, FR-21, FR-22, FR-23.
+
+---
+
+### 4.10. Cổng thông tin Tenant trên Mobile Web
+
+#### FR-25 — Thẻ phòng điện tử và thông tin cư trú
+
+**Tác nhân:** Tenant.
+
+**Quy trình xử lý:**
+1. Khi Tenant **đang cư trú**, trang chủ hiển thị mã phòng, mã giường, tầng, ngày hết hạn hợp đồng, thời hạn còn lại và tình trạng công nợ cá nhân.
+2. Danh sách bạn cùng phòng chỉ hiển thị **họ tên và mã giường** của người đang cùng phòng; không hiển thị CCCD, số điện thoại, email, địa chỉ, hợp đồng hoặc nợ của họ.
+3. Khi Tenant **đã checkout**, không còn Thẻ phòng hiện hành và không xem danh sách khách đang ở phòng cũ; trang chủ hiển thị thông tin không có hợp đồng cư trú hiện hành và đường dẫn tra cứu hợp đồng/hóa đơn/lịch sử cũ.
+4. Tenant chỉ xem dữ liệu trong phạm vi của mình; Backend kiểm tra quyền độc lập với UI.
+
+**Đầu ra:** Thẻ phòng chỉ dành cho khách đang ở, không tiết lộ dữ liệu cá nhân người khác; khách cũ vẫn có lối vào lịch sử.
+
+**Liên quan:** BR-04, BR-08, BR-11; FR-07, FR-09, FR-12, FR-26.
+
+#### FR-26 — Tab Hóa đơn của Tenant
+
+**Tác nhân:** Tenant, kể cả sau checkout đối với dữ liệu lịch sử của mình.
+
+**Quy trình xử lý:**
+1. Trên thanh điều hướng Mobile Web, Tenant truy cập tab **`Hóa đơn`**; danh sách chỉ gồm hóa đơn gắn với các hợp đồng của chính mình.
+2. Hệ thống tổ chức theo ba nhóm: `Nợ` (cần thanh toán, có VietQR và tải minh chứng); `Chờ xác nhận` (đã gửi minh chứng, đợi Manager); `Đã thu` (lịch sử có ngày/phương thức thanh toán).
+3. Với hóa đơn `Nợ`, hiển thị kỳ thuê, số tiền trọn gói, hạn thanh toán, mã VietQR và thao tác tải ảnh QR, sao chép số tài khoản/nội dung chuyển khoản, tải ảnh minh chứng.
+4. Với hóa đơn `Chờ xác nhận`, Tenant theo dõi trạng thái; không thể tự chuyển thành `Đã thu`. Với `Đã thu`, Tenant chỉ tra cứu lịch sử.
+5. Sau checkout, giữ quyền xem các hóa đơn cũ và gửi minh chứng cho khoản `Nợ`; không cần hợp đồng cư trú hiện hành để thực hiện các thao tác lịch sử này.
+
+**Đầu ra:** Tab hóa đơn và minh chứng chỉ hiển thị dữ liệu Tenant sở hữu, nhất quán với FR-16.
+
+**Liên quan:** BR-04, BR-05, BR-08, BR-11; FR-07, FR-15, FR-16.
+
+#### FR-27 — Hộp thư thông báo hệ thống và tab Vi phạm cá nhân của Tenant
+
+**Tác nhân:** Tenant.
+
+**Quy trình xử lý:**
+1. Hệ thống có **hộp thư thông báo bên trong ứng dụng**, truy cập qua biểu tượng chuông trên header. Tenant có **năm tab điều hướng**: `Phòng`, `Hóa đơn`, `Phương tiện`, `Báo hỏng`, `Vi phạm`. Lịch sử biên bản vi phạm cá nhân được hiển thị tại tab điều hướng `Vi phạm` riêng biệt, không còn gộp bên trong drawer thông báo.
+2. Thông báo chỉ được **hệ thống tự tạo từ các nghiệp vụ đã có**, như: phát hành hóa đơn, nhắc đến hạn/quá hạn, Manager xác nhận/từ chối minh chứng, lập biên bản vi phạm, **Manager từ chối đăng ký cấp thẻ xe hoặc từ chối yêu cầu đổi xe (kèm lý do), và thông báo khi yêu cầu đổi xe được duyệt**. Không cung cấp chức năng Manager soạn/gửi thông báo chung.
+3. Tenant chỉ xem thông báo và các biên bản vi phạm gắn với chính mình; không truy cập thông báo hoặc hồ sơ của người khác.
+4. Sau checkout, Tenant vẫn xem thông báo/lịch sử cá nhân và tab Vi phạm, tiếp tục nhận thông báo liên quan khoản tiền thuê chưa tất toán; không nhận thông báo sinh hoạt chung mới.
+5. Hệ thống không tích hợp SMS, Zalo, push notification hay email gửi thông báo nghiệp vụ; email OTP **chỉ phục vụ quên/khôi phục mật khẩu**.
+
+**Đầu ra:** Hộp thư chuông chứa thông báo từ các sự kiện nghiệp vụ; tab Vi phạm hiển thị danh sách biên bản và lịch sử vi phạm của chính Tenant.
+
+**Liên quan:** BR-05, BR-07, BR-08, BR-10, BR-11; FR-08, FR-15, FR-16, FR-19, FR-25.
+
+---
+## 5. MA TRẬN TRUY VẾT YÊU CẦU (REQUIREMENTS TRACEABILITY MATRIX — RTM)
+
+Bảng dưới đây liên kết yêu cầu nghiệp vụ với FR và những **nhóm dữ liệu cần có**. Tên bảng chỉ là định hướng đồng bộ thiết kế, **không khẳng định schema hiện hành đã có đầy đủ trường hoặc ràng buộc**.
+
+| FR | Yêu cầu | BR liên quan | Nhóm dữ liệu chính |
+|---|---|---|---|
+| FR-01 | Ma trận phòng và giường; trạng thái bảo trì | BR-01, BR-02, BR-08 | `rooms`, `beds`, `contracts` |
+| FR-02 | Tạo Room và đầy đủ Bed | BR-01, BR-08 | `rooms`, `beds`, `room_amenities`, kiểm tra mã phòng đang dùng và mã có lịch sử cần bảo lưu |
+| FR-03 | Sửa giá phòng, mã phòng, chính sách giới tính và tiện nghi | BR-01, BR-02, BR-03, BR-08 | `rooms`, `beds`, `room_amenities`, snapshot hợp đồng |
+| FR-04 | Xóa phòng nhập nhầm, lưu trữ và khôi phục | BR-01, BR-08 | `rooms`, `beds`, quan hệ lịch sử, mã phòng bảo lưu/giải phóng có điều kiện |
+| FR-05 | Tìm kiếm và lọc phòng | BR-01 | `rooms` |
+| FR-06 | Hồ sơ Tenant và chỉnh sửa thông tin | BR-08, BR-09, BR-11 | `tenants`, `users`, `contracts`, `invoices` |
+| FR-07 | Quyền tài khoản sau checkout và lịch sử | BR-04, BR-05, BR-08, BR-11 | `tenants`, `users`, `contracts`, `invoices` |
+| FR-08 | Đăng ký/cấp/từ chối thẻ; Tenant yêu cầu đổi xe giữ nguyên thẻ và lịch sử | BR-10, BR-11 | `vehicles` (gồm `REPLACED`, `CANCELLED`), `vehicle_change_requests` (đề xuất), `tenants`, `notifications` |
+| FR-09 | Tiếp nhận ngày 01, hợp đồng, giường, hóa đơn đầu | BR-01, BR-02, BR-04, BR-05, BR-08, BR-09 | `tenants`, `users`, `rooms`, `beds`, `contracts`, `invoices` |
+| FR-10 | Lưu tài liệu hợp đồng giấy | BR-08, BR-11 | `contracts`, `contract_documents`, tệp lưu trữ |
+| FR-11 | Chuyển phòng — Phase 2 | BR-01, BR-02, BR-08 | `contracts`, `beds` (dự kiến) |
+| FR-12 | Gia hạn bằng phụ lục và khóa giá | BR-01, BR-03, BR-04, BR-05, BR-08 | `contracts`, lịch sử phụ lục/gia hạn, `contract_documents` |
+| FR-13 | Checkout, giải phóng giường, giữ công nợ | BR-04, BR-05, BR-08, BR-10 | `contracts`, `beds`, `tenants`, `vehicles`, `invoices` |
+| FR-14 | Chi phí cơ sở, tổng lương nhập thủ công và lợi nhuận ròng ước tính có chú thích | BR-03, BR-05 | `facility_expenses` (nhóm lương), `invoices`, `payment_transactions`, `maintenance_tickets`, vật tư |
+| FR-15 | Phát hành hóa đơn tháng đầu và định kỳ | BR-03, BR-05, BR-08 | `invoices`, `contracts`, lịch sử phụ lục |
+| FR-16 | Thanh toán VietQR, tiền mặt, đối soát | BR-04, BR-05, BR-11 | `invoices`, `payment_transactions`, tệp minh chứng |
+| FR-17 | Báo hỏng và phân loại sự cố | BR-06, BR-11 | `maintenance_tickets`, `tenants`, `rooms`, `beds` |
+| FR-18 | Phân công thợ, hoàn thành, vật tư | BR-03, BR-06, BR-08, BR-11 | `maintenance_tickets`, `ticket_replacement_parts`, `staff_profiles` |
+| FR-19 | Vi phạm cá nhân, không thu tiền phạt trong web | BR-07, BR-08 | `violations`, `tenants` |
+| FR-20 | Đúng bốn KPI và bốn biểu đồ; dữ liệu biểu đồ độc lập chỉ được phép trong Prototype có nhãn minh họa | BR-01, BR-03, BR-04, BR-05, BR-06 | KPI: nghiệp vụ Mock Store/Backend; charts Prototype: `dashboardDemoData`; charts API thật: `rooms`, `beds`, lịch sử cư trú, `invoices`, `maintenance_tickets`, `facility_expenses` |
+| FR-21 | Đăng nhập CCCD/email và RBAC | BR-09, BR-11 | `users`, `tenants`, `staff_profiles`, JWT + Redis |
+| FR-22 | Đăng xuất | BR-11 | JWT/Redis (thu hồi token; không có Session SQL) |
+| FR-23 | Quản lý tài khoản Technician | BR-09, BR-11 | `users`, `staff_profiles`, Redis thu hồi token |
+| FR-24 | Đổi bằng mật khẩu cũ (không OTP); quên dùng OTP email | BR-09, BR-11 | `users`, email duy nhất, JWT/Redis OTP tạm thời (không có bảng OTP SQL) |
+| FR-25 | Thẻ phòng, người cùng phòng, quyền sau checkout | BR-04, BR-08, BR-11 | `tenants`, `rooms`, `beds`, `contracts`, `invoices` |
+| FR-26 | Tab hóa đơn của Tenant | BR-04, BR-05, BR-11 | `invoices`, `payment_transactions`, `contracts` |
+| FR-27 | Thông báo tự động qua biểu tượng chuông và tab Vi phạm cá nhân của Tenant | BR-05, BR-07, BR-08, BR-10, BR-11 | `notifications`, `violations`, `invoices`, `vehicles`, `vehicle_change_requests` (đề xuất) |
+
+---
+
+## 6. CÁC LUỒNG TUẦN TỰ NGHIỆP VỤ ĐẦU CUỐI
+
+Các sơ đồ mô tả luồng yêu cầu, không ấn định endpoint hoặc cấu trúc transaction vật lý. Chúng nhất quán với quy tắc **không giữ chỗ, không nhập khách giữa tháng, đối soát thanh toán thủ công**.
+
+### 6.1. Onboarding khách mới/khách quay lại và phát hành hóa đơn tháng đầu
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Khach as Khách thuê
-    actor BQL as Quản lý (Desktop Web)
-    participant Sys as Hệ thống KTX Hub
-
-    Khach->>BQL: Đến cơ sở xem phòng thực tế (Offline)
-    BQL->>Khach: Dẫn khách xem phòng, giới thiệu tiện nghi và thống nhất giá thuê trọn gói
-    Khach->>BQL: Đồng ý thuê giường -> Hai bên ký kết hợp đồng giấy ở ngoài
-    BQL->>Sys: Mở [Hồ sơ người thuê] -> Bấm [+ Thêm người thuê và gán phòng]
-    BQL->>Sys: Nhập CCCD, SĐT, Họ tên, chọn giường trống (P.302-G02), nhập tiền cọc
-    Sys->>Sys: Tạo hồ sơ khách thuê + Khởi tạo hợp đồng + Cấp tài khoản cho khách
-    BQL->>Sys: Mở [Hợp đồng] -> Bấm tải ảnh/scan hợp đồng giấy đã ký vào mục "Tài liệu hợp đồng"
-    Sys->>Sys: Lưu vết tệp tài liệu hợp đồng làm minh chứng lưu trữ
-    Sys-->>Khach: Khách đăng nhập app di động xem Thẻ phòng, thời hạn HĐ và mã VietQR đóng tiền
+    actor T as Khách thuê
+    actor M as Manager
+    participant S as KTX Hub
+    participant D as Database
+    Note over T,M: Ngày 01 — ký và bàn giao hợp đồng giấy trực tiếp
+    M->>S: Chọn Bed AVAILABLE, nhập CCCD và thông tin hợp đồng
+    S->>D: Tìm Tenant theo CCCD, kiểm tra công nợ/hợp đồng hiện hành
+    D-->>S: Hồ sơ cũ hoặc không có hồ sơ
+    S->>D: Kiểm tra Bed còn trống, phòng hoạt động, giới tính phù hợp
+    alt Điều kiện hợp lệ
+        S->>D: Transaction: tạo/tái dùng Tenant-User, Contract, chiếm Bed OCCUPIED, invoice tháng đầu
+        D-->>S: Commit thành công
+        S-->>M: Kết quả onboarding, hóa đơn tháng đầu; mật khẩu ngẫu nhiên một lần nếu tài khoản mới
+        M-->>T: Bàn giao quyền sử dụng giường và thông tin tài khoản
+    else Không hợp lệ hoặc lỗi lưu dữ liệu
+        S-->>M: Từ chối; không ghi nhận onboarding nửa chừng
+    end
+    Note over S,D: Bản scan hợp đồng được bổ sung sau, không chặn onboarding
 ```
 
-### Luồng 2: Hạch toán Chi phí Điện Nước Cơ sở &amp; Báo cáo Lợi Nhuận Ròng
+### 6.2. Phát hành hóa đơn định kỳ và khóa theo kỳ thuê
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Chu as Chủ KTX / Quản lý (Desktop Web)
-    participant Sys as Hệ thống KTX Hub
-    participant DB as Cơ sở Dữ liệu
-
-    Chu->>Sys: Nhập chi phí hóa đơn điện tổng tòa nhà tháng 10 (EVN)
-    Chu->>Sys: Nhập chi phí hóa đơn nước tổng tòa nhà tháng 10 (Cấp nước)
-    Chu->>Sys: Nhập cước Internet cáp quang tòa nhà
-    Sys->>DB: Lưu vào bảng facility_expenses
-    Sys->>DB: Truy vấn Tổng doanh thu thực thu từ hóa đơn tiền phòng trọn gói
-    Sys->>DB: Truy vấn Tổng chi phí sửa chữa từ các phiếu hoàn thành
-    Sys->>Sys: Tính Lợi nhuận ròng = Doanh thu - Sửa chữa - Điện tổng - Nước tổng - Internet
-    Sys-->>Chu: Hiển thị Thẻ KPI Lợi nhuận ròng và Biểu đồ Thu chi minh bạch
-    Chu->>Sys: Bấm [Xuất Excel báo cáo tài chính] -> Tải tệp .xlsx
+    participant J as Scheduler ngày 25, 00:00
+    participant S as Billing Service
+    participant D as Database
+    J->>S: Phát hành hóa đơn tháng tiếp theo
+    S->>D: Lấy hợp đồng/phụ lục bao phủ kỳ, chưa checkout
+    D-->>S: Danh sách hợp đồng hợp lệ
+    loop Mỗi hợp đồng
+        S->>D: Kiểm tra (contract_id, billing_period)
+        alt Chưa có hóa đơn
+            S->>D: Tạo invoice theo giá khóa trong kỳ, hạn ngày 05, status Nợ
+        else Đã có
+            S->>S: Bỏ qua, không tạo trùng
+        end
+    end
+    Note over J,S: Hóa đơn tháng đầu đã được phát hành trong onboarding ngày 01
 ```
 
-### Luồng 3: Điều phối Sự cố theo Thứ tự Ưu tiên (Khẩn cấp -&gt; Cao -&gt; Bình thường)
+### 6.3. VietQR, gửi minh chứng và xác nhận thanh toán
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Khach as Khách thuê (Mobile App)
-    participant Sys as Hệ thống KTX Hub
-    actor BQL as Quản lý (Desktop Web)
-    actor Tho as Kỹ thuật viên (Mobile App)
-
-    Khach->>Sys: Gửi phiếu báo hỏng, chọn mức "Khẩn cấp" kèm ảnh chụp
-    Sys->>Sys: Gắn priority = "Khẩn cấp" (Rank 0)
-    Sys-->>BQL: Bắn thông báo cờ đỏ nhấp nháy trên Dashboard
-    BQL->>Sys: Phân công thợ phụ trách (Võ Văn Thịnh)
-    Sys-->>Tho: Hiện banner đỏ trên đầu màn hình: "1 việc khẩn cấp đang chờ"
-    Sys->>Tho: Sắp xếp việc khẩn cấp lên vị trí đầu tiên trong danh sách
-    Tho->>Sys: Đến phòng xử lý -> Bấm [Bắt đầu xử lý] (IN_PROGRESS)
-    Tho->>Sys: Sửa xong: Chụp ảnh nghiệm thu, nhập chi phí linh kiện -> Bấm [Hoàn thành]
-    Sys-->>Khach: Gửi thông báo sự cố đã khắc phục thành công
-    Sys-->>BQL: Ghi nhận chi phí linh kiện vào báo cáo tài chính
+    actor T as Tenant
+    participant S as KTX Hub
+    actor M as Manager
+    participant B as Ứng dụng ngân hàng bên ngoài
+    T->>S: Mở invoice Nợ, xem/tải VietQR, sao chép tài khoản và nội dung
+    T->>B: Tự chuyển khoản theo mã tham chiếu
+    T->>S: Tải ảnh minh chứng
+    S->>S: Invoice Nợ -> Chờ xác nhận
+    M->>B: Kiểm tra tiền thực nhận ngoài hệ thống
+    alt Đã nhận đủ
+        M->>S: Xác nhận đã thu
+        S->>S: Invoice -> Đã thu, lưu giao dịch và người xác nhận
+    else Không xác minh được
+        M->>S: Từ chối minh chứng
+        S->>S: Invoice -> Nợ
+    end
+    S-->>T: Hiển thị trạng thái và thông báo hệ thống tương ứng
 ```
 
-### Luồng 4: Quy trình Trả phòng, Kiểm kê Tài sản &amp; Quyết toán Hoàn cọc (Checkout)
+### 6.4. Thay đổi giá phòng và ký phụ lục gia hạn
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Khach as Khách thuê (Mobile App)
-    participant Sys as Hệ thống KTX Hub
-    actor BQL as Quản lý (Desktop Web)
+    actor M as Manager
+    participant S as KTX Hub
+    participant D as Database
+    M->>S: Cập nhật base_price chung cả phòng (nếu cần)
+    S->>D: Lưu giá tiêu chuẩn mới; giữ nguyên hợp đồng/phụ lục đã ký
+    Note over M,S: Gia hạn hoàn tất trước ngày hết hạn, Tenant đã hết nợ/chờ xác nhận
+    M->>S: Mở Contract, chọn Gia hạn, chọn ngày cuối kỳ mới
+    S->>D: Kiểm tra hiệu lực, công nợ và thời hạn
+    S->>D: Lưu bản ghi phụ lục: kỳ mới từ ngày 01, giá phòng tại thời điểm ký, ngày ký
+    S->>D: Cập nhật hạn hợp đồng đang hiển thị
+    S-->>M: Gia hạn thành công; scan phụ lục có thể upload sau
+    Note over S,D: Hóa đơn cũ bất biến; hóa đơn kỳ gia hạn dùng giá của phụ lục
+```
 
-    Khach->>BQL: Báo trước lịch trả phòng (Offline hoặc nhắn tin)
-    BQL->>Khach: Trực tiếp đến kiểm tra phòng, bàn giao chìa khóa và hoàn trả tiền cọc ngoài đời
-    BQL->>Sys: Mở [Hợp đồng] -> Bấm [Thanh lý hợp đồng]
-    Sys->>Sys: Chuyển hợp đồng sang "Đã thanh lý" -> Giường tự động chuyển sang "Sẵn sàng"
-    Sys-->>Khach: Hồ sơ chuyển trạng thái "Đã trả phòng"
+### 6.5. Checkout và bảo toàn công nợ
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor T as Tenant
+    actor M as Manager
+    participant S as KTX Hub
+    participant D as Database
+    T->>M: Thông báo trả phòng và bàn giao thực tế
+    Note over T,M: Manager kiểm tra hiện trạng, cọc, chìa khóa/thẻ xe ngày cuối hợp đồng
+    M->>S: Chọn Checkout và trạng thái Bed AVAILABLE hoặc MAINTENANCE
+    S->>D: Transaction: thanh lý Contract, Tenant Đã trả phòng, giải phóng Bed, thu hồi xe/thẻ
+    D-->>S: Hoàn tất nhất quán
+    S-->>M: Checkout thành công
+    Note over S,D: Invoice Nợ/Chờ xác nhận giữ nguyên; không phát hành hóa đơn kỳ sau
+    T->>S: Đăng nhập CCCD và xem nợ/hợp đồng cũ
+    opt Có invoice Nợ
+        T->>S: Gửi minh chứng chuyển khoản
+        S->>S: Invoice -> Chờ xác nhận, chờ Manager đối soát
+    end
+```
+
+### 6.6. Báo hỏng, phân công và ghi nhận chi phí vật tư
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor T as Tenant đang cư trú
+    participant S as KTX Hub
+    actor M as Manager
+    actor K as Technician
+    T->>S: Gửi phiếu + loại sự cố + ưu tiên đề xuất + ảnh
+    S->>S: Tạo ticket Chưa phân công
+    M->>S: Xem, điều chỉnh ưu tiên, phân công Technician
+    S->>S: Ticket -> Mới giao
+    K->>S: Bắt đầu xử lý
+    S->>S: Ticket -> Đang xử lý
+    K->>S: Ghi kết quả, ảnh và linh kiện đã dùng
+    S->>S: Tính tổng vật tư (có thể 0), ticket -> Hoàn thành
+    S-->>M: Phiếu hoàn thành được tính chi phí trong FR-14
+```
+
+### 6.7. Đổi mật khẩu và quên mật khẩu (OTP chỉ cho khôi phục)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Manager / Tenant / Technician
+    participant S as Auth Service
+    participant R as Redis (token / OTP)
+    participant E as Email Service
+    alt Change Password — đã đăng nhập
+        U->>S: JWT + mật khẩu cũ + mật khẩu mới
+        S->>S: Kiểm tra JWT, mật khẩu cũ và mật khẩu mới
+        S->>S: Cập nhật password hash
+        S->>R: Vô hiệu hóa token cũ theo chính sách thu hồi
+        S-->>U: Đổi mật khẩu thành công; đăng nhập lại
+    else Forgot Password — chưa đăng nhập
+        U->>S: CCCD (Tenant) hoặc email (Staff)
+        S->>S: Xác định User/email duy nhất, phản hồi chống dò tài khoản
+        S->>R: Lưu dữ liệu xác minh OTP, TTL 5 phút
+        S->>E: Gửi OTP 6 số đến email hiện lưu
+        E-->>U: OTP qua email
+        U->>S: Nhập OTP và mật khẩu mới
+        S->>R: Xác minh, giới hạn thử, hủy OTP dùng một lần
+        S->>S: Cập nhật password hash
+        S->>R: Vô hiệu hóa token cũ
+        S-->>U: Khôi phục thành công
+    end
+    Note over U,S: Mất email: Tenant/Technician gặp Manager xác minh trực tiếp
+```
+
+### 6.8. Tenant yêu cầu đổi xe giữ nguyên thẻ vật lý
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor T as Tenant
+    participant S as KTX Hub
+    actor M as Manager
+    T->>S: Yêu cầu đổi xe, khai xe mới + giấy tờ
+    S->>S: Tạo VehicleChangeRequest PENDING, giữ xe cũ ISSUED
+    M->>S: Xem xe hiện tại và xe đề nghị
+    alt Chấp nhận
+        M->>S: Duyệt đổi xe
+        S->>S: Atomic: xe cũ REPLACED, xe mới ISSUED cùng cardCode
+        S->>S: Yêu cầu APPROVED; lưu liên kết và thời điểm
+        S-->>T: Thông báo duyệt; vẫn giữ thẻ vật lý cũ
+    else Từ chối
+        M->>S: Nhập lý do, từ chối
+        S->>S: Yêu cầu REJECTED; xe cũ vẫn ISSUED
+        S-->>T: Thông báo lý do từ chối
+    end
 ```
 
 ---
 
 ## 7. YÊU CẦU GIAO DIỆN NGOÀI (EXTERNAL INTERFACE REQUIREMENTS)
 
-### 7.1. Giao diện Người dùng (User Interfaces)
+### 7.1. Giao diện người dùng
 
-1. **Phân hệ Quản lý (Desktop Web):**
-   - Tối ưu cho màn hình máy tính để bàn (từ 1280px trở lên).
-   - Sidebar cố định bên trái, vùng làm việc chính nền xám nhạt (`--slate-50`), thẻ dữ liệu nền trắng bo góc hiện đại.
-2. **Phân hệ Khách thuê (Mobile-First Web):**
-   - Tối ưu cho màn hình di động (từ 360px đến 430px).
-   - Thanh điều hướng đáy màn hình 4 tab cố định: *Phòng, Hóa đơn, Phương tiện, Báo hỏng*. Vùng bấm tối thiểu 44x44px.
-3. **Phân hệ Kỹ thuật viên (Mobile App):**
-   - Giao diện dạng khung điện thoại (`max-w-md`), thẻ công việc bo góc lớn, màu sắc phân loại ưu tiên trực quan (Đỏ, Cam, Xanh).
-4. **Quy chuẩn Font chữ &amp; Màu sắc:**
-   - Tiêu đề: `Plus Jakarta Sans`. Nội dung: `Inter`. Mã số, tiền tệ, số tài khoản: `JetBrains Mono`.
-   - Màu thương hiệu chính: Xanh dương đậm (`--brand-600: #1D4ED8`), nền thương hiệu nhạt (`--brand-50: #EFF6FF`).
-   - Màu trạng thái: Xanh lá (`#16A34A`), Vàng cam (`#D97706`), Đỏ nguy cấp (`#DC2626`).
+| Nhóm | Yêu cầu |
+|---|---|
+| Manager | Desktop Web, thuận tiện quản lý bảng danh sách và Drawer; sidebar, bộ lọc nhiều tiêu chí, biểu đồ và biểu mẫu quản lý |
+| Tenant | Mobile-first Web, thanh điều hướng đáy gồm **5 tab**: `Phòng`, `Hóa đơn`, `Phương tiện`, `Báo hỏng`, `Vi phạm`; thông báo hệ thống truy cập qua biểu tượng chuông trên header |
+| Technician | Mobile/Tablet responsive, danh sách phiếu ưu tiên rõ ràng, nút cập nhật xử lý và tải ảnh dễ sử dụng trên màn hình cảm ứng |
+| Đăng nhập chung | Một form `Email hoặc CCCD` + `Mật khẩu`; sau đăng nhập điều hướng theo role và trạng thái cư trú |
+| Tenant sau checkout | Không hiện Thẻ phòng hay bạn cùng phòng hiện tại; vẫn mở được hợp đồng cũ, hóa đơn, lịch sử và gửi minh chứng nợ cũ |
 
-### 7.2. Giao diện Phần cứng (Hardware Interfaces)
+Quy ước hình ảnh/màu sắc dựa trên SRS nền: màu thương hiệu `#1D4ED8`, nền xám nhạt, ưu tiên `Khẩn cấp` đỏ, `Cao` cam, `Bình thường` xanh; font `Plus Jakarta Sans` (tiêu đề), `Inter` (nội dung), `JetBrains Mono` (mã/giá). Các yêu cầu tương tác vẫn phải có nhãn văn bản, không phụ thuộc duy nhất vào màu sắc.
 
-Hệ thống chạy trên các thiết bị tiêu chuẩn: Máy tính văn phòng có trình duyệt web; Điện thoại thông minh có camera để chụp ảnh giấy tờ, ảnh công tơ, ảnh sự cố và quét mã VietQR. Không yêu cầu thiết bị phần cứng nhúng IoT chuyên dụng.
+### 7.2. Phần cứng
 
-### 7.3. Giao diện Phần mềm (Software Interfaces)
+Máy tính có trình duyệt dành cho Manager; smartphone/tablet có camera dành cho Tenant và Technician để chụp tệp, sự cố, nghiệm thu, bill. Không yêu cầu thiết bị barrier, đầu đọc thẻ, cảm biến IoT hoặc ứng dụng native chuyên biệt.
 
-1. **Dịch vụ VietQR Napas247:** Sinh ảnh mã QR động theo chuẩn Napas247 chứa số tài khoản, số tiền và nội dung chuyển khoản chuẩn hóa.
-2. **Dịch vụ Lưu trữ Tệp (Cloud Object Storage):** Kết nối S3 API để lưu trữ ảnh CCCD, ảnh cà vẹt xe, ảnh công tơ, ảnh báo hỏng và ảnh nghiệm thu.
-3. **Thư viện Xuất Báo cáo:** Xuất tài liệu định dạng PDF (`jspdf` / `react-pdf`) và bảng tính Microsoft Excel (`.xlsx` qua `exceljs`).
-4. **Dịch vụ Thư điện tử (Email Service):** Gửi mã OTP xác thực và thông báo hợp đồng qua SMTP/SendGrid/Resend API.
+### 7.3. Giao diện phần mềm và dịch vụ
 
-### 7.4. Giao diện Truyền thông (Communication Interfaces)
+1. **VietQR:** Tạo mã theo từng hóa đơn, gồm tài khoản nhận, số tiền và nội dung có tham chiếu. Có tải ảnh và sao chép thông tin; không đồng nghĩa đã thanh toán.
+2. **OCI Object Storage:** Lưu ảnh/PDF tài liệu hợp đồng, ảnh đăng ký xe, ảnh sự cố/nghiệm thu và minh chứng chuyển khoản trong **bucket/object private**. Backend xác minh JWT, role và quyền sở hữu trước khi cấp **URL có chữ ký hiệu lực tối đa 15 phút**. DB lưu object key bền vững, không lưu presigned URL tạm; không public toàn bộ đường dẫn upload.
+3. **Xuất báo cáo:** Hỗ trợ `.xlsx` và `.pdf` cho FR-14, không bắt buộc công nghệ thư viện cụ thể.
+4. **Email Service:** Chỉ gửi OTP **quên/khôi phục mật khẩu**; không gửi OTP cho Change Password và không gửi email thông báo vận hành theo FR-27.
+5. **Database:** PostgreSQL; Logical ERD phải đồng bộ với giá hợp đồng/phụ lục, room code lịch sử, trạng thái dữ liệu; **không có** `occupied_beds` tổng hợp lưu tại Room, **không có bảng PostgreSQL OTP/Session**. JWT/Redis là dữ liệu vận hành xác thực ngoài ERD quan hệ.
 
-Giao thức HTTPS trên nền TLS 1.3 bảo mật toàn diện. Kiến trúc trao đổi dữ liệu RESTful JSON API. Endpoint Webhook ngân hàng được bảo vệ bằng chữ ký HMAC-SHA256 (`X-Signature`).
+### 7.4. Giao tiếp
+
+Frontend React trao đổi REST/JSON với Backend Java Spring Boot qua HTTPS. Không yêu cầu WebSocket cho ma trận phòng trong Phase 1. Phiên xác thực và dữ liệu nhạy cảm phải được truyền an toàn.
 
 ---
 
-## 8. YÊU CẦU PHI CHỨC NĂNG (NON-FUNCTIONAL REQUIREMENTS - NFR)
+## 8. YÊU CẦU PHI CHỨC NĂNG (NON-FUNCTIONAL REQUIREMENTS — NFR)
 
-### 8.1. Hiệu năng &amp; Khả năng đáp ứng (Performance Requirements)
+Các chỉ tiêu số dưới đây **được kế thừa từ SRS nền và là mục tiêu đặc tả**, không phải kết quả đo hoặc tuyên bố đã nghiệm thu. Riêng việc xuất Excel/PDF **không có ngưỡng thời gian bắt buộc** theo quyết định đã chốt.
 
-- **Thời gian phản hồi:** 95% các yêu cầu tra cứu danh mục phòng, khách thuê, sự cố phải phản hồi dưới 1.2 giây dưới tải bình thường.
-- **Thời gian sinh mã VietQR:** Không quá 2.0 giây.
-- **Tải đồng thời:** Chịu tải tối thiểu 500 yêu cầu đồng thời vào các ngày cao điểm chốt số và thu tiền phòng (từ ngày 25 đến ngày 05 tháng sau).
+### 8.1. Hiệu năng
 
-### 8.2. Độ sẵn sàng &amp; Độ tin cậy (Availability &amp; Reliability)
+- Mục tiêu phản hồi cho 95% thao tác tra cứu danh mục phòng, khách thuê và sự cố: **dưới 1,2 giây** trong điều kiện tải bình thường theo SRS nền.
+- Mục tiêu sinh VietQR: **không quá 2 giây** theo SRS nền.
+- Mục tiêu chịu tải: **500 yêu cầu đồng thời** trong các giai đoạn cao điểm thu tiền theo SRS nền; cần kiểm chứng riêng ở giai đoạn triển khai/đánh giá hiệu năng.
+- Xuất báo cáo `.xlsx`/`.pdf` phải hoàn thành và tạo đúng nội dung; **không** đặt cam kết cố định 2 giây cho thao tác xuất tệp.
 
-- **Độ sẵn sàng (Uptime):** Đạt tối thiểu 99.5% trong suốt cả năm.
-- **Sao lưu tự động:** Cơ sở dữ liệu được sao lưu định kỳ 24 giờ một lần và lưu trữ nhật ký WAL để khôi phục dữ liệu Point-In-Time trong 7 ngày gần nhất.
+### 8.2. Độ tin cậy và sao lưu
 
-### 8.3. An toàn &amp; Bảo mật thông tin (Security &amp; Privacy)
+- Mục tiêu độ sẵn sàng **99,5%** trong năm theo SRS nền; việc đạt mục tiêu phụ thuộc môi trường triển khai thực tế.
+- Mục tiêu sao lưu CSDL ít nhất mỗi **24 giờ** và hỗ trợ lưu WAL phục hồi Point-in-Time trong **7 ngày** gần nhất theo SRS nền.
+- Chạy lại phát hành hóa đơn phải **idempotent**; giao dịch onboarding, checkout và thay đổi Room Code/Slot Key không được để dữ liệu ở trạng thái hoàn tất nửa chừng.
 
-- Toàn bộ mật khẩu được băm một chiều an toàn bằng thuật toán `Argon2id` hoặc `Bcrypt`.
-- Phân quyền RBAC nghiêm ngặt; khách thuê tuyệt đối không thể truy cập API quản trị của Ban quản lý.
-- Dữ liệu CCCD được che mờ (masking) khi hiển thị nơi công cộng; đường dẫn tải ảnh giấy tờ tùy thân được bảo vệ bằng Pre-signed URL có hạn dùng tối đa 15 phút.
-- Ngăn ngừa 100% các lỗ hổng OWASP Top 10: SQL Injection (dùng Parameterized Queries), XSS (Sanitize HTML), CSRF Token và Rate Limiting.
+### 8.3. Bảo mật và riêng tư
 
-### 8.4. Tính toàn vẹn dữ liệu (Data Integrity)
+- Mật khẩu chỉ lưu dạng băm an toàn bằng **Argon2id hoặc Bcrypt**; mật khẩu khởi tạo ngẫu nhiên, riêng từng tài khoản và chỉ hiển thị một lần.
+- Hỗ trợ chặn thử mật khẩu bằng khóa tạm 15 phút sau hơn 5 lần sai liên tiếp, hạn chế dò OTP và không lộ trạng thái tồn tại tài khoản qua thông báo lỗi.
+- Dữ liệu CCCD cần được che bớt trong giao diện không cần hiển thị đầy đủ, chỉ cấp quyền xem/sửa dữ liệu cá nhân đúng phạm vi. **Tệp/ảnh nhạy cảm lưu riêng tư trên OCI; Backend kiểm tra quyền trước khi cấp URL có chữ ký không quá 15 phút**, không trả địa chỉ public thường trực. Credential OCI chỉ quản lý qua secret/config bảo mật.
+- Backend bắt buộc kiểm tra RBAC, chủ sở hữu tài nguyên và trạng thái cư trú. Sử dụng truy vấn tham số, xử lý nội dung đầu vào/đầu ra an toàn và phòng vệ XSS, CSRF, SQL Injection theo kiến trúc thực tế.
+- Giao tiếp dữ liệu nhạy cảm qua HTTPS/TLS phù hợp cấu hình bảo mật của môi trường; tránh ghi thông tin mật khẩu, OTP và CCCD đầy đủ vào nhật ký không cần thiết.
 
-CSDL đạt chuẩn 3NF/BCNF; toàn bộ bảng kế toán tài chính áp dụng Soft Delete; khóa ngoại thiết lập `ON DELETE RESTRICT`.
+### 8.4. Toàn vẹn và bảo toàn dữ liệu
 
-### 8.5. Khả năng bảo trì &amp; Mở rộng (Maintainability &amp; Scalability)
+- Giữ UUID làm định danh kỹ thuật cho các bảng nghiệp vụ; CCCD chỉ dùng cho định danh nghiệp vụ/đăng nhập Tenant; **mỗi User có một email duy nhất (không phân biệt hoa/thường)** để nhận OTP, chỉ nhân sự dùng email đăng nhập. SĐT không bắt buộc unique.
+- Bảo đảm tối đa một hợp đồng chiếm chỗ hiện hành cho mỗi Bed và mỗi Tenant; hóa đơn không trùng `(contract_id, billing_period)`.
+- Lưu lịch sử hợp đồng, phụ lục, hóa đơn, giao dịch và vi phạm; không dùng các bản ghi đã checkout để tự ý xóa hoặc sửa ngược hóa đơn cũ.
+- Cách xóa vật lý, lưu trữ và ràng buộc khóa ngoại phải phù hợp nghiệp vụ; Logical ERD hiện hành chưa phải căn cứ để hạ thấp yêu cầu đã chốt.
 
-Mã nguồn TypeScript phân tầng module hóa rõ ràng (UI Components, Domain Services, Data Adapters); CSDL thiết kế chuẩn hóa, sẵn sàng mở rộng quy mô phòng và vị trí giường linh hoạt.
+### 8.5. Khả năng bảo trì và mở rộng
 
----
-
-## 9. PHỤ LỤC &amp; TIÊU CHÍ NGHIỆM THU (APPENDICES &amp; ACCEPTANCE CRITERIA)
-
-### 9.1. Bảng minh chứng giải quyết trọn vẹn 6 Bài toán Vận hành
-
-
-| Bài toán Vận hành                                      | Thách thức Thực tế                                                                                            | Giải pháp Phần mềm của KTX Hub                                                                                     | Tiêu chí Nghiệm thu Thành công                                                                                                           |
-| :------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Bài toán 1: Quản lý vị trí giường (Bed-level)**      | Khách thuê phòng tập thể độc lập; quản lý theo phòng nguyên căn bị sai lệch sức chứa và giá tiền.              | Cấu trúc dữ liệu phân rã `Room -> Bed`. Ma trận phòng &amp; giường trực quan theo tầng.                            | Hiển thị chính xác từng vị trí giường tiêu chuẩn, trạng thái lấp đầy theo thời gian thực. Không cho phép xếp trùng 2 người vào 1 giường. |
-| **Bài toán 2: Quản lý chi phí &amp; Lợi nhuận ròng**   | Thu tiền phòng trọn gói nhưng không biết chi phí điện nước cơ sở thực tế là bao nhiêu để tính ra lãi/lỗ ròng. | Giao diện ghi nhận hóa đơn điện nước tổng cơ sở (`FinancialPage`, `BR-03`). Công thức tính Lợi nhuận ròng tự động. | Nhập hóa đơn EVN/cấp nước tổng -&gt; Hệ thống tự động trừ vào doanh thu thực thu để ra Lợi nhuận ròng chuẩn xác.                         |
-| **Bài toán 3: Kiểm soát cách ly giới tính 100%**       | Nguy cơ mất an ninh trật tự nếu xếp nhầm khách khác giới vào chung phòng.                                     | Động cơ kiểm soát giới tính (`BR-02`) khóa cứng và lọc bỏ tự động mọi phòng khác giới.                             | Không thể xếp hoặc chuyển khách vào phòng khác giới tính ở bất kỳ luồng nào.                                                             |
-| **Bài toán 4: Thu nợ, VietQR &amp; Xác nhận tiền mặt** | Thu tiền phân mảnh; khách đóng cả chuyển khoản lẫn tiền mặt gây thất thoát sổ sách.                           | Sinh mã VietQR động gắn sẵn số tiền; Modal xác nhận thu tiền mặt lưu vết người nhận; Bộ lọc hóa đơn "Nợ".          | Quét VietQR đúng số tiền; bấm xác nhận tiền mặt lưu vết đúng cán bộ thu; bộ lọc "Nợ" lọc ra 100% khách chưa đóng tiền.                   |
-| **Bài toán 5: Thứ tự ưu tiên sự cố kỹ thuật**          | Sự cố xảy ra dồn dập, thợ không biết việc nào cần làm trước dẫn đến chậm trễ việc khẩn cấp.                   | Cơ chế phân cấp 3 mức: Khẩn cấp (Rank 0) &gt; Cao (Rank 1) &gt; Bình thường (Rank 2). Sort tự động theo rank.      | Việc khẩn cấp có cờ đỏ nhấp nháy, banner cảnh báo trên đầu màn hình thợ và luôn được xếp lên đầu danh sách xử lý.                        |
-| **Bài toán 6: Quản lý phương tiện hầm xe**             | Hầm xe đông đúc, nguy cơ mất trộm hoặc khách ngoài gửi xe trái phép.                                          | Phân hệ Quản lý phương tiện (`VehiclesPage`, `TenantVehiclesPage`) quản lý biển số, thẻ từ, ảnh cà vẹt xe.         | Tra cứu xe tức thời bằng biển số; khách tự tải ảnh cà vẹt xe; phí giữ xe được bao trọn gói 100% không thu thêm.                          |
-
-
-### 9.2. Tiêu chí nghiệm thu chuyển giao hệ thống (Sign-off Acceptance Checklist)
-
-
-| STT | Hạng mục kiểm tra                                 | Tiêu chuẩn Đạt (Pass Criteria)                                                                                          | Trạng thái |
-| :---: | :------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- | :----------: |
-| 1   | **Hiển thị Rich Text Markdown**                   | Tệp `docs/SRS.md` hiển thị mượt mà trên mọi trình xem Rich Text (VS Code, GitHub, Typora), không lỗi thẻ hay công thức. | ĐẠT        |
-| 2   | **Hồ sơ Khách thuê Đa đối tượng**                 | Không yêu cầu trường học, khoa, MSSV, diện ưu tiên; quản lý định danh chuẩn CCCD 12 số, họ tên, SĐT, email.             | ĐẠT        |
-| 3   | **Cấp tài khoản &amp; Xếp phòng trực tiếp**       | Quản lý tạo hồ sơ và gán giường trực tiếp cho khách trên trang quản lý mà không cần đăng ký tài khoản trước.            | ĐẠT        |
-| 4   | **Phân định Nền tảng Thiết bị**                   | Manager dùng Desktop Dashboard; Khách thuê và Kỹ thuật viên thao tác mượt mà trên thiết bị di động (Mobile).            | ĐẠT        |
-| 5   | **Thứ tự Ưu tiên Xử lý Kỹ thuật**                 | Việc khẩn cấp hiển thị cờ đỏ, banner cảnh báo và được sắp xếp lên đầu danh sách công việc của kỹ thuật viên.            | ĐẠT        |
-| 6   | **Bộ lọc Hóa đơn &amp; Xác nhận Tiền mặt**        | Bộ lọc "Nợ" lọc chính xác khách chưa đóng tiền; Modal xác nhận tiền mặt hoạt động chuẩn xác và lưu vết người xác nhận.  | ĐẠT        |
-| 7   | **Quản lý Phương tiện Hầm xe**                    | Phía khách đăng ký được xe kèm ảnh cà vẹt; phía quản lý cấp được thẻ từ và tra cứu nhanh bằng biển số.                  | ĐẠT        |
-| 8   | **Hạch toán Tiện ích Cơ sở &amp; Lợi nhuận ròng** | Hỗ trợ nhập hóa đơn điện nước tổng của cơ sở để khấu trừ ra Lợi nhuận ròng thực tế từ doanh thu trọn gói.               | ĐẠT        |
-
+- Frontend React/TypeScript và Backend Java Spring Boot được tổ chức theo các module nghiệp vụ; sử dụng PostgreSQL và mô hình quan hệ có ràng buộc dữ liệu phù hợp.
+- Phạm vi sản phẩm trong phiên bản này vẫn là **một tòa nhà**; không mở rộng thành đa cơ sở hoặc thay đổi số Bed trong Room ở Phase 1.
 
 ---
 
-*Tài liệu Đặc tả Yêu cầu Phần mềm (SRS) phiên bản 2.1 đã hoàn thiện đầy đủ, chuẩn hóa Rich Text và có giá trị hiệu lực làm chuẩn kỹ thuật cho toàn bộ dự án KTX Hub (PDMS).*
+## 9. PHỤ LỤC VÀ TIÊU CHÍ HOÀN THIỆN
+
+### 9.1. Sáu bài toán vận hành và phạm vi giải quyết
+
+| Bài toán | Cơ chế trong phạm vi |
+|---|---|
+| Quản lý vị trí ngủ | Room/Bed 4–6–8, Slot Key, kiểm soát chiếm chỗ và giới tính |
+| Theo dõi thu – chi | Doanh thu đã xác nhận theo kỳ hóa đơn; chi phí cơ sở/vật tư sửa chữa/tổng lương nhập thủ công; lợi nhuận ròng **ước tính từ dữ liệu ghi nhận** có chú thích; không tính cọc |
+| Cách ly giới tính | Backend từ chối xếp khách khác giới; không đổi chính sách phòng khi có chiếm chỗ |
+| Thu tiền VietQR và tiền mặt | QR theo hóa đơn, gửi chứng từ, Manager đối soát và xác nhận thủ công |
+| Điều phối sự cố | Ba mức ưu tiên, bốn trạng thái, Technician chỉ xử lý phiếu được giao |
+| Quản lý xe/thẻ vật lý | Tối đa một xe đang chờ/đã cấp; từ chối đăng ký có lý do; Tenant có thể gửi yêu cầu đổi xe, Manager duyệt để chuyển mã thẻ hiện tại sang xe mới mà giữ lịch sử; không barrier |
+
+### 9.2. Những điểm bắt buộc đồng bộ sang ERD/Backend/Frontend
+
+Bảng này là **ghi chú chuyển tiếp triển khai**, không thêm FR mới hay khẳng định thay đổi đã được thực hiện.
+
+| Nhóm | Yêu cầu đồng bộ |
+|---|---|
+| Room/Bed | Cấm tái sử dụng mã phòng đang thuộc Room hoặc đã gắn lịch sử nghiệp vụ; cho phép tái sử dụng mã của phòng xóa vật lý/đổi mã khi chưa có lịch sử; cập nhật đồng bộ `slot_key`; trạng thái lưu trữ riêng của Room; tầng/sức chứa bất biến |
+| Contract | Giữ Room/Bed UUID; snapshot thông tin ký; một Contract có nhiều lần gia hạn/phụ lục giá cố định; kỳ gia hạn tiếp nối đầu tháng; không sửa hóa đơn cũ |
+| Tenant/User | Tenant xác thực CCCD, staff xác thực email; **email duy nhất trên toàn hệ thống**, SĐT không UNIQUE; email Manager cố định; Tenant tạo hồ sơ ngày 01 khi onboarding; giữ tài khoản sau checkout; không có role `student` trong mô hình RBAC đích |
+| Invoice/Payment | Phát hành hóa đơn tháng đầu ngay trong onboarding, các kỳ sau ngày 25; due ngày 05; theo kỳ hợp đồng/phụ lục; 3 trạng thái; idempotent; `PAYMENT_TRANSACTION` ghi nhận cả tiền mặt và VietQR sau khi Manager xác nhận đã thu đủ, 0..1 bản ghi thu hoàn tất/hóa đơn |
+| Finance | Doanh thu `Đã thu` nhóm theo **billing_period**; chi phí theo ngày ghi nhận và hoàn thành sửa chữa; thêm nhóm `Lương nhân viên` do Manager nhập **tổng theo tháng**; cho hiển thị **“Lợi nhuận ròng (ước tính)”** kèm cảnh báo rõ giới hạn, đồng bộ công thức UI/PDF/XLSX |
+| Vehicle | Có `PENDING_CARD`, `ISSUED`, `REJECTED`, `REVOKED`, `REPLACED`, `CANCELLED`; `VehicleChangeRequest` riêng (`PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`) và quan hệ xe cũ/mới; duyệt đổi xe atomic chuyển cùng `cardCode`; lý do từ chối bắt buộc không minh chứng; notification; giới hạn một xe `ISSUED`/Tenant và một `ISSUED`/cardCode; chưa tự coi schema Backend đáp ứng |
+| Maintenance | Loại `Điện`, `Nước`, `Internet`, `Nội thất`, `Tiện ích`, `Khác`; thêm `Chưa phân công`, phân công lại; vật tư tên/số lượng/đơn giá, tính tổng tự động, có thể bằng 0 |
+| Auth | Một login form CCCD/email; Change Password dùng JWT + mật khẩu hiện tại (**không OTP**); Forgot Password dùng OTP email 5 phút qua Redis; JWT Access/Refresh và thu hồi token trên Redis; **không có bảng auth_sessions/auth_otps PostgreSQL**; Manager không có chức năng đổi email; nhân sự không cần username riêng |
+| Portal/Notifications | Quyền Tenant sau checkout; thông báo từ chối đăng ký xe, duyệt/từ chối yêu cầu đổi xe; Tenant có nút yêu cầu đổi xe nếu `ISSUED`; danh sách người cùng phòng chỉ họ tên/mã Bed; Tenant có 5 tab điều hướng, tab Vi phạm riêng; FR-27 chỉ thông báo tự động hệ thống qua icon chuông, không có màn soạn của Manager |
+| Dashboard/Analytics | Giữ đúng 4 KPI từ nghiệp vụ; thêm 4 biểu đồ (doanh thu 2 series kỳ vọng/đã thu). **Prototype** được dùng bộ số liệu chart minh họa riêng, không cần khớp Mock Store, phải có nhãn rõ và không tác động KPI/Finance. Chỉ khi tích hợp API thật mới yêu cầu ngày checkout thực tế và nguồn nghiệp vụ để vẽ chart |
+| Lưu tệp / Database | OCI private + URL có chữ ký tối đa 15 phút; lưu object key; bỏ `rooms.occupied_beds`, tính số đang ở từ `beds`; cho phép dựng lại Flyway baseline trên DB **chỉ có seed** trong đợt refactor Backend (không xóa dữ liệu khi chưa xác nhận môi trường) |
+
+### 9.3. Các giới hạn được chủ động chấp nhận trong Phase 1
+
+- Không có booking/giữ chỗ, onboarding ngoài ngày 01, tính tiền thuê lẻ tháng hay thay đổi sức chứa phòng đã tạo.
+- Không có chuyển phòng FR-11 (hoãn Phase 2), gia hạn trễ hoặc cơ chế ở thêm tự động.
+- Không thiết kế điều chỉnh/hủy hóa đơn phức tạp cho ngoại lệ trả phòng sớm sau khi kỳ tương lai đã phát hành; không làm quy trình đòi nợ, thanh toán một phần, trả dư/hoàn tiền.
+- Không làm workflow mất thẻ xe, quản lý phiên bản file scan, phê duyệt nhiều cấp, lịch sử riêng thay đổi email/reset mật khẩu.
+- Không có Manager soạn thông báo chung, thông báo SMS/Zalo/push, webhook ngân hàng, tự động nhận tiền hay thiết bị barrier.
+- Không làm payroll tự động, accounting đầy đủ, kê khai thuế hay kiểm toán; nhãn “Lợi nhuận ròng (ước tính)” luôn kèm giải thích chỉ tính các khoản thu và chi đã ghi nhận.
+- Không có luồng khiếu nại từ chối xe, không yêu cầu tải minh chứng từ chối, không xử lý mất thẻ riêng. **Có luồng Tenant chủ động yêu cầu đổi xe giữ nguyên thẻ, Manager chấp nhận/từ chối và bảo toàn lịch sử**; không tự đổi xe chưa qua duyệt.
+
+### 9.4. Trạng thái tài liệu và lưu ý nghiệm thu
+
+Đây là **bản đặc tả nghiệp vụ sau review**, chưa phải bằng chứng rằng các FR hoặc NFR đã được lập trình và kiểm chứng. Khi triển khai, đội ngũ cần cập nhật Conceptual/Logical ERD, ràng buộc database, Backend, Frontend và dữ liệu hiện có để khớp đặc tả. Không ghi trạng thái `ĐẠT` cho tiêu chí triển khai khi chưa có kết quả xác minh thực tế.
+
+---
+
+*Hết tài liệu SRS — KTX Hub / PDMS, phiên bản 3.4.1 — FINAL (cập nhật nghiệp vụ; chưa xác nhận triển khai).*
