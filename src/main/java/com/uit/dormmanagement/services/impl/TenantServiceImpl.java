@@ -43,7 +43,7 @@ public class TenantServiceImpl implements TenantService {
   private final VehicleRepository vehicleRepository;
 
   private static final List<ContractStatus> ACTIVE_CONTRACT_STATUSES =
-      List.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON);
+      List.of(ContractStatus.ACTIVE);
 
   @Override
   @Transactional(readOnly = true)
@@ -76,21 +76,6 @@ public class TenantServiceImpl implements TenantService {
             .orElseThrow(() -> new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND));
 
     String cleanPhone = request.phone().trim();
-    if (!cleanPhone.equals(tenant.getPhone())) {
-      boolean phoneExistsInTenants =
-          tenantRepository.findByPhone(cleanPhone).filter(t -> !t.getId().equals(id)).isPresent();
-
-      boolean phoneExistsInUsers =
-          userRepository
-              .findByPhone(cleanPhone)
-              .filter(u -> tenant.getUser() == null || !u.getId().equals(tenant.getUser().getId()))
-              .isPresent();
-
-      if (phoneExistsInTenants || phoneExistsInUsers) {
-        throw new BaseAppException(TenantErrorCode.PHONE_DUPLICATED);
-      }
-    }
-
     tenant.setFullName(request.fullName().trim());
     tenant.setPhone(cleanPhone);
     tenant.setPermanentAddress(
@@ -101,12 +86,6 @@ public class TenantServiceImpl implements TenantService {
     tenant.setEmergencyContactPhone(
         request.emergencyContactPhone() != null ? request.emergencyContactPhone().trim() : null);
 
-    User user = tenant.getUser();
-    if (user != null && !cleanPhone.equals(user.getPhone())) {
-      user.setPhone(cleanPhone);
-      userRepository.save(user);
-    }
-
     Tenant savedTenant = tenantRepository.save(tenant);
     log.info(
         "Updated profile for tenant {} ({})", savedTenant.getTenantCode(), savedTenant.getId());
@@ -115,7 +94,7 @@ public class TenantServiceImpl implements TenantService {
 
   private TenantSummaryResponse toSummaryResponse(Tenant tenant) {
     Optional<Contract> activeContractOpt =
-        contractRepository.findFirstByTenantIdAndStatusInAndDeletedAtIsNull(
+        contractRepository.findFirstByTenantIdAndStatusIn(
             tenant.getId(), ACTIVE_CONTRACT_STATUSES);
 
     String roomNumber = null;
@@ -142,7 +121,7 @@ public class TenantServiceImpl implements TenantService {
         .gender(tenant.getGender())
         .idCardNumber(tenant.getIdCardNumber())
         .phone(tenant.getPhone())
-        .email(tenant.getEmail())
+        .email(tenant.getUser().getEmail())
         .residentStatus(tenant.getResidentStatus())
         .roomNumber(roomNumber)
         .bedCode(bedCode)
@@ -152,7 +131,7 @@ public class TenantServiceImpl implements TenantService {
 
   private TenantDetailResponse toDetailResponse(Tenant tenant) {
     Optional<Contract> activeContractOpt =
-        contractRepository.findFirstByTenantIdAndStatusInAndDeletedAtIsNull(
+        contractRepository.findFirstByTenantIdAndStatusIn(
             tenant.getId(), ACTIVE_CONTRACT_STATUSES);
 
     UUID currentBedId = null;
@@ -177,7 +156,7 @@ public class TenantServiceImpl implements TenantService {
           toContractDetailResponse(activeContract, currentBedCode, currentRoomNumber);
     }
 
-    List<Vehicle> vehicles = vehicleRepository.findByTenantIdAndDeletedAtIsNull(tenant.getId());
+    List<Vehicle> vehicles = vehicleRepository.findByTenantId(tenant.getId());
     List<VehicleResponse> vehicleResponses =
         vehicles.stream().map(v -> toVehicleResponse(v, tenant.getFullName())).toList();
 
@@ -193,7 +172,7 @@ public class TenantServiceImpl implements TenantService {
         .gender(tenant.getGender())
         .idCardNumber(tenant.getIdCardNumber())
         .phone(tenant.getPhone())
-        .email(tenant.getEmail())
+        .email(tenant.getUser().getEmail())
         .permanentAddress(tenant.getPermanentAddress())
         .dateOfBirth(tenant.getDateOfBirth())
         .emergencyContactName(tenant.getEmergencyContactName())

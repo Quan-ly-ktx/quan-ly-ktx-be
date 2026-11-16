@@ -6,11 +6,11 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum TicketCategory {
-  PLUMBING("Điện nước"),
-  AIR_CONDITIONING("Điều hòa"),
-  ELECTRICAL("Điện"),
+  ELECTRIC("Điện"),
+  WATER("Nước"),
+  INTERNET("Internet"),
   FURNITURE("Nội thất"),
-  LOCKS("Khóa cửa"),
+  AMENITY("Tiện ích"),
   OTHER("Khác");
 
   private final String displayName;

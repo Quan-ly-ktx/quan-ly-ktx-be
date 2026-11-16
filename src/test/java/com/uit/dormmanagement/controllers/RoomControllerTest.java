@@ -144,7 +144,7 @@ class RoomControllerTest {
   @DisplayName("PUT /api/v1/admin/rooms/{id} should return HTTP 200 when updated")
   void updateRoom_success() throws Exception {
     UpdateRoomRequest request =
-        new UpdateRoomRequest(GenderPolicy.FEMALE, new BigDecimal("1700000.00"), List.of());
+        new UpdateRoomRequest(null, GenderPolicy.FEMALE, new BigDecimal("1700000.00"), List.of());
 
     when(roomService.updateRoom(eq(roomId), any(UpdateRoomRequest.class))).thenReturn(sampleDetail);
 

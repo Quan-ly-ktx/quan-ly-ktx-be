@@ -10,6 +10,7 @@ import com.uit.dormmanagement.dtos.response.auth.AuthResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserResponse;
 import com.uit.dormmanagement.dtos.response.auth.VerifyResetPasswordOtpResponse;
 import com.uit.dormmanagement.entities.User;
+import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
@@ -73,11 +74,6 @@ public class AuthServiceImpl implements AuthService {
     if (user.getStatus() == UserStatus.LOCKED) {
       log.warn("Login failed: account is permanently locked for user id: {}", user.getId());
       throw new BaseAppException(AuthErrorCode.ACCOUNT_LOCKED);
-    }
-
-    if (user.getStatus() == UserStatus.INACTIVE) {
-      log.warn("Login failed: account is inactive for user id: {}", user.getId());
-      throw new BaseAppException(AuthErrorCode.ACCOUNT_INACTIVE);
     }
 
     if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
@@ -294,14 +290,17 @@ public class AuthServiceImpl implements AuthService {
   }
 
   private Optional<User> findUserByIdentifier(String identifier) {
-    Optional<User> userOpt = userRepository.findByUsername(identifier);
-    if (userOpt.isEmpty()) {
-      userOpt = userRepository.findByEmail(identifier);
+    String normalizedIdentifier = identifier.trim();
+    Optional<User> byEmail =
+        userRepository
+            .findByEmail(normalizedIdentifier.toLowerCase(java.util.Locale.ROOT))
+            .filter(user -> user.getRole() != UserRole.TENANT);
+    if (byEmail.isPresent()) {
+      return byEmail;
     }
-    if (userOpt.isEmpty()) {
-      userOpt = userRepository.findByPhone(identifier);
-    }
-    return userOpt;
+    return tenantRepository
+        .findByIdCardNumber(normalizedIdentifier)
+        .map(com.uit.dormmanagement.entities.Tenant::getUser);
   }
 
   private String resolveUserFullName(User user) {
@@ -310,12 +309,12 @@ public class AuthServiceImpl implements AuthService {
           staffProfileRepository
               .findByUserId(user.getId())
               .map(profile -> profile.getFullName())
-              .orElse(user.getUsername());
+              .orElse(user.getEmail());
       case TENANT ->
           tenantRepository
               .findByUserId(user.getId())
               .map(tenant -> tenant.getFullName())
-              .orElse(user.getUsername());
+              .orElse(user.getEmail());
     };
   }
 

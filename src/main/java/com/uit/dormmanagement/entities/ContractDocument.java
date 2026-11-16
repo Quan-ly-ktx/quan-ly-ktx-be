@@ -38,24 +38,46 @@ public class ContractDocument {
   @JoinColumn(name = "contract_id", nullable = false)
   private Contract contract;
 
-  @Column(name = "file_name", nullable = false)
-  private String fileName;
-
-  @Column(name = "file_url", nullable = false)
-  private String fileUrl;
-
-  @Column(name = "file_type", nullable = false)
-  private String fileType;
-
-  @Column(name = "file_size")
-  private Long fileSize;
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "renewal_id")
+  private ContractRenewal renewal;
 
   @Enumerated(EnumType.STRING)
-  @Column(name = "document_category", nullable = false)
+  @Column(name = "document_type", nullable = false)
   @Builder.Default
-  private ContractDocumentCategory documentCategory = ContractDocumentCategory.ORIGINAL_CONTRACT;
+  private ContractDocumentCategory documentType = ContractDocumentCategory.ORIGINAL_CONTRACT;
+
+  @Column(name = "original_filename", nullable = false)
+  private String originalFilename;
+
+  @Column(name = "mime_type", nullable = false)
+  private String mimeType;
+
+  @Column(name = "storage_file_key", nullable = false, unique = true)
+  private String storageFileKey;
 
   @CreationTimestamp
   @Column(name = "uploaded_at", nullable = false, updatable = false)
   private Instant uploadedAt;
+
+  // Compatibility helpers
+  public String getFileName() {
+    return originalFilename;
+  }
+
+  public String getFileUrl() {
+    return storageFileKey;
+  }
+
+  public ContractDocumentCategory getDocumentCategory() {
+    return documentType;
+  }
+
+  public String getFileType() {
+    return mimeType;
+  }
+
+  public Long getFileSize() {
+    return null;
+  }
 }

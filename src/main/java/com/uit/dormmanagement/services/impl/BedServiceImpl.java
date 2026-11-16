@@ -39,8 +39,8 @@ public class BedServiceImpl implements BedService {
         throw new BaseAppException(RoomErrorCode.CANNOT_MAINTAIN_OCCUPIED_BED);
       }
       boolean hasActiveContract =
-          contractRepository.existsByBedIdAndStatusInAndDeletedAtIsNull(
-              bedId, Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON));
+          contractRepository.existsByBedIdAndStatusIn(
+              bedId, Set.of(ContractStatus.ACTIVE));
       if (hasActiveContract) {
         throw new BaseAppException(RoomErrorCode.CANNOT_MAINTAIN_OCCUPIED_BED);
       }
@@ -63,7 +63,7 @@ public class BedServiceImpl implements BedService {
         room != null ? room.getRoomNumber() : null,
         savedBed.getBedCode(),
         savedBed.getSlotKey(),
-        savedBed.getPrice(),
+        room != null ? room.getBasePrice() : null,
         savedBed.getStatus());
   }
 }

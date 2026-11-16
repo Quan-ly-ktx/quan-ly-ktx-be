@@ -81,9 +81,7 @@ class VehicleControllerTest {
     User user =
         User.builder()
             .id(userId)
-            .username("nam.nguyen@example.com")
             .email("nam.nguyen@example.com")
-            .phone("0987654321")
             .passwordHash("hashed")
             .role(UserRole.TENANT)
             .status(UserStatus.ACTIVE)
@@ -130,7 +128,7 @@ class VehicleControllerTest {
             .brand("Honda")
             .color("Đen")
             .cardCode("THE-0187")
-            .status(VehicleStatus.ACTIVE)
+            .status(VehicleStatus.ISSUED)
             .createdAt(Instant.now())
             .build();
   }
@@ -226,7 +224,7 @@ class VehicleControllerTest {
     VehicleResponse pending =
         VehicleResponse.builder()
             .id(vehicleId)
-            .status(VehicleStatus.PENDING)
+            .status(VehicleStatus.PENDING_CARD)
             .licensePlate("59-X3 999.99")
             .build();
 
@@ -243,6 +241,6 @@ class VehicleControllerTest {
                 .param("color", "Đỏ"))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.httpStatus").value(201))
-        .andExpect(jsonPath("$.data.status").value("PENDING"));
+        .andExpect(jsonPath("$.data.status").value("PENDING_CARD"));
   }
 }

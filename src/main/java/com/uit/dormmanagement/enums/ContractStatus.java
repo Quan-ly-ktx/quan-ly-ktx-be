@@ -7,9 +7,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum ContractStatus {
   ACTIVE("Hiệu lực"),
-  EXPIRING_SOON("Sắp hết hạn"),
-  TERMINATED("Đã thanh lý"),
-  CANCELLED("Đã hủy");
+  LIQUIDATED("Đã thanh lý");
 
   private final String displayName;
 }

@@ -7,6 +7,7 @@ import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.ContractDocument;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.Tenant;
+import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
 import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
@@ -16,6 +17,8 @@ import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.RoomType;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.enums.VehicleType;
+import com.uit.dormmanagement.enums.UserRole;
+import com.uit.dormmanagement.enums.UserStatus;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -38,6 +41,7 @@ class TenantContractVehicleRepositoryTest {
   @Autowired private RoomRepository roomRepository;
   @Autowired private BedRepository bedRepository;
   @Autowired private TenantRepository tenantRepository;
+  @Autowired private UserRepository userRepository;
   @Autowired private ContractRepository contractRepository;
   @Autowired private ContractDocumentRepository contractDocumentRepository;
   @Autowired private VehicleRepository vehicleRepository;
@@ -55,10 +59,8 @@ class TenantContractVehicleRepositoryTest {
             Room.builder()
                 .roomNumber("P.999")
                 .floor(9)
-                .roomType(RoomType.FOUR_BEDS)
                 .genderPolicy(GenderPolicy.MALE)
-                .totalBeds(4)
-                .occupiedBeds(1)
+                .totalBeds((short) 4)
                 .basePrice(new BigDecimal("1500000.00"))
                 .build());
 
@@ -68,19 +70,26 @@ class TenantContractVehicleRepositoryTest {
                 .room(testRoom)
                 .bedCode("B01")
                 .slotKey("P.999-B01")
-                .price(new BigDecimal("1500000.00"))
                 .status(BedStatus.OCCUPIED)
                 .build());
 
+    User tenantUser =
+        userRepository.save(
+            User.builder()
+                .email("tenant-repo@example.test")
+                .passwordHash("hash")
+                .role(UserRole.TENANT)
+                .status(UserStatus.ACTIVE)
+                .build());
     testTenant =
         tenantRepository.save(
             Tenant.builder()
+                .user(tenantUser)
                 .tenantCode("NT-9001")
                 .fullName("Nguyễn Văn Repo")
                 .gender(GenderPolicy.MALE)
                 .idCardNumber("079203999001")
                 .phone("0987654321")
-                .email("repo.test@dorm.vn")
                 .permanentAddress("123 Test Street")
                 .residentStatus(ResidentStatus.ACTIVE)
                 .build());
@@ -91,12 +100,13 @@ class TenantContractVehicleRepositoryTest {
                 .contractCode("HD-2026-9001")
                 .tenant(testTenant)
                 .bed(testBed)
-                .startDate(LocalDate.of(2026, 1, 1))
-                .endDate(LocalDate.of(2026, 6, 30))
-                .monthlyRent(new BigDecimal("1500000.00"))
+                .roomCodeSnapshot(testRoom.getRoomNumber())
+                .bedCodeSnapshot(testBed.getBedCode())
+                .startOn(LocalDate.of(2026, 1, 1))
+                .originalEndOn(LocalDate.of(2026, 6, 30))
+                .originalMonthlyRent(new BigDecimal("1500000.00"))
                 .depositAmount(new BigDecimal("1500000.00"))
                 .status(ContractStatus.ACTIVE)
-                .signedAt(Instant.now())
                 .build());
 
     entityManager.flush();
@@ -144,7 +154,7 @@ class TenantContractVehicleRepositoryTest {
             "079203999001", ResidentStatus.CHECKED_OUT);
     assertThat(existsCheckedOut).isFalse();
 
-    Optional<Tenant> byEmail = tenantRepository.findByEmail("repo.test@dorm.vn");
+    Optional<Tenant> byEmail = tenantRepository.findByUser_Email("tenant-repo@example.test");
     assertThat(byEmail).isPresent();
     assertThat(byEmail.get().getTenantCode()).isEqualTo("NT-9001");
 
@@ -169,39 +179,39 @@ class TenantContractVehicleRepositoryTest {
                 .brand("Honda")
                 .color("Red")
                 .cardCode("CARD-999")
-                .status(VehicleStatus.ACTIVE)
+                .status(VehicleStatus.ISSUED)
                 .build());
     entityManager.flush();
     entityManager.clear();
 
     long count =
-        vehicleRepository.countByTenantIdAndStatusInAndDeletedAtIsNull(
-            testTenant.getId(), List.of(VehicleStatus.PENDING, VehicleStatus.ACTIVE));
+        vehicleRepository.countByTenantIdAndStatusIn(
+            testTenant.getId(), List.of(VehicleStatus.PENDING_CARD, VehicleStatus.ISSUED));
     assertThat(count).isEqualTo(1);
 
     Optional<Vehicle> first =
-        vehicleRepository.findFirstByTenantIdAndStatusInAndDeletedAtIsNull(
-            testTenant.getId(), List.of(VehicleStatus.ACTIVE));
+        vehicleRepository.findFirstByTenantIdAndStatusIn(
+            testTenant.getId(), List.of(VehicleStatus.ISSUED));
     assertThat(first).isPresent();
     assertThat(first.get().getLicensePlate()).isEqualTo("59-X1 999.99");
 
     boolean existsPlate =
-        vehicleRepository.existsByLicensePlateAndStatusInAndDeletedAtIsNull(
-            "59-X1 999.99", List.of(VehicleStatus.ACTIVE));
+        vehicleRepository.existsByLicensePlateAndStatusIn(
+            "59-X1 999.99", List.of(VehicleStatus.ISSUED));
     assertThat(existsPlate).isTrue();
 
     boolean existsCard =
-        vehicleRepository.existsByCardCodeAndStatusAndDeletedAtIsNull(
-            "CARD-999", VehicleStatus.ACTIVE);
+        vehicleRepository.existsByCardCodeAndStatus(
+            "CARD-999", VehicleStatus.ISSUED);
     assertThat(existsCard).isTrue();
 
     List<Vehicle> tenantVehicles =
-        vehicleRepository.findByTenantIdAndDeletedAtIsNull(testTenant.getId());
+        vehicleRepository.findByTenantId(testTenant.getId());
     assertThat(tenantVehicles).hasSize(1);
 
     Page<Vehicle> filtered =
         vehicleRepository.findVehiclesWithFilters(
-            "59-X1", VehicleStatus.ACTIVE, PageRequest.of(0, 10));
+            "59-X1", VehicleStatus.ISSUED, PageRequest.of(0, 10));
     assertThat(filtered.getContent()).hasSize(1);
     assertThat(filtered.getContent().get(0).getBrand()).isEqualTo("Honda");
   }
@@ -218,13 +228,13 @@ class TenantContractVehicleRepositoryTest {
     assertThat(page.getContent().get(0).getContractCode()).isEqualTo("HD-2026-9001");
 
     List<Contract> expiring =
-        contractRepository.findAllByStatusAndEndDateLessThanEqual(
+        contractRepository.findAllByStatusAndOriginalEndOnLessThanEqual(
             ContractStatus.ACTIVE, LocalDate.of(2026, 7, 1));
     assertThat(expiring).isNotEmpty();
     assertThat(expiring).anyMatch(c -> c.getContractCode().equals("HD-2026-9001"));
 
     Optional<Contract> activeContract =
-        contractRepository.findFirstByTenantIdAndStatusInAndDeletedAtIsNull(
+        contractRepository.findFirstByTenantIdAndStatusIn(
             testTenant.getId(), List.of(ContractStatus.ACTIVE));
     assertThat(activeContract).isPresent();
     assertThat(activeContract.get().getContractCode()).isEqualTo("HD-2026-9001");
@@ -245,11 +255,10 @@ class TenantContractVehicleRepositoryTest {
         contractDocumentRepository.save(
             ContractDocument.builder()
                 .contract(testContract)
-                .fileName("doc1.pdf")
-                .fileUrl("http://example.com/doc1.pdf")
-                .fileType("application/pdf")
-                .fileSize(1024L)
-                .documentCategory(ContractDocumentCategory.ORIGINAL_CONTRACT)
+                .originalFilename("doc1.pdf")
+                .storageFileKey("contracts/doc1.pdf")
+                .mimeType("application/pdf")
+                .documentType(ContractDocumentCategory.ORIGINAL_CONTRACT)
                 .uploadedAt(Instant.now().minusSeconds(100))
                 .build());
 
@@ -257,11 +266,10 @@ class TenantContractVehicleRepositoryTest {
         contractDocumentRepository.save(
             ContractDocument.builder()
                 .contract(testContract)
-                .fileName("doc2.pdf")
-                .fileUrl("http://example.com/doc2.pdf")
-                .fileType("application/pdf")
-                .fileSize(2048L)
-                .documentCategory(ContractDocumentCategory.RENEWAL_ANNEX)
+                .originalFilename("doc2.pdf")
+                .storageFileKey("contracts/doc2.pdf")
+                .mimeType("application/pdf")
+                .documentType(ContractDocumentCategory.CHECKOUT_HANDOVER)
                 .uploadedAt(Instant.now())
                 .build());
 

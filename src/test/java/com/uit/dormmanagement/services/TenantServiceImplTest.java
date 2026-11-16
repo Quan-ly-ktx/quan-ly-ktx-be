@@ -70,9 +70,7 @@ class TenantServiceImplTest {
     user =
         User.builder()
             .id(UUID.randomUUID())
-            .username("nam.nguyen@example.com")
             .email("nam.nguyen@example.com")
-            .phone("0987654321")
             .build();
 
     tenant =
@@ -84,7 +82,6 @@ class TenantServiceImplTest {
             .gender(GenderPolicy.MALE)
             .idCardNumber("079203001187")
             .phone("0987654321")
-            .email("nam.nguyen@example.com")
             .permanentAddress("123 Lê Lợi, TP.HCM")
             .residentStatus(ResidentStatus.ACTIVE)
             .createdAt(Instant.now())
@@ -99,9 +96,11 @@ class TenantServiceImplTest {
             .contractCode("HD-2026-0187")
             .tenant(tenant)
             .bed(bed)
-            .startDate(LocalDate.of(2026, 9, 1))
-            .endDate(LocalDate.of(2027, 9, 1))
-            .monthlyRent(new BigDecimal("1500000.00"))
+            .roomCodeSnapshot("P.302")
+            .bedCodeSnapshot("G02")
+            .startOn(LocalDate.of(2026, 9, 1))
+            .originalEndOn(LocalDate.of(2027, 9, 1))
+            .originalMonthlyRent(new BigDecimal("1500000.00"))
             .depositAmount(new BigDecimal("1500000.00"))
             .status(ContractStatus.ACTIVE)
             .createdAt(Instant.now())
@@ -116,7 +115,7 @@ class TenantServiceImplTest {
             .brand("Honda")
             .color("Đen")
             .cardCode("THE-0187")
-            .status(VehicleStatus.ACTIVE)
+            .status(VehicleStatus.ISSUED)
             .createdAt(Instant.now())
             .build();
   }
@@ -127,7 +126,7 @@ class TenantServiceImplTest {
     Pageable pageable = PageRequest.of(0, 10);
     when(tenantRepository.findActiveTenantsWithFilters(eq("Nam"), any(), any(), eq(pageable)))
         .thenReturn(new PageImpl<>(List.of(tenant), pageable, 1));
-    when(contractRepository.findFirstByTenantIdAndStatusInAndDeletedAtIsNull(eq(tenantId), any()))
+    when(contractRepository.findFirstByTenantIdAndStatusIn(eq(tenantId), any()))
         .thenReturn(Optional.of(activeContract));
 
     Page<TenantSummaryResponse> page = tenantService.getTenants(pageable, "  Nam  ", null, null);
@@ -155,10 +154,10 @@ class TenantServiceImplTest {
   @DisplayName("getTenantById: when found should return complete detail response")
   void getTenantById_whenFound_shouldReturnDetail() {
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
-    when(contractRepository.findFirstByTenantIdAndStatusInAndDeletedAtIsNull(eq(tenantId), any()))
+    when(contractRepository.findFirstByTenantIdAndStatusIn(eq(tenantId), any()))
         .thenReturn(Optional.of(activeContract));
     when(contractRepository.findByTenantId(tenantId)).thenReturn(List.of(activeContract));
-    when(vehicleRepository.findByTenantIdAndDeletedAtIsNull(tenantId)).thenReturn(List.of(vehicle));
+    when(vehicleRepository.findByTenantId(tenantId)).thenReturn(List.of(vehicle));
 
     TenantDetailResponse detail = tenantService.getTenantById(tenantId);
 
@@ -186,18 +185,19 @@ class TenantServiceImplTest {
   }
 
   @Test
-  @DisplayName(
-      "updateTenant: when phone changed and already exists on another tenant should throw PHONE_DUPLICATED")
-  void updateTenant_whenPhoneDuplicated_shouldThrow() {
+  @DisplayName("updateTenant: contact phone may be shared by multiple tenants")
+  void updateTenant_whenPhoneAlreadyUsed_shouldUpdate() {
     UpdateTenantRequest request =
         UpdateTenantRequest.builder().fullName("Nguyễn Hoàng Nam").phone("0911111111").build();
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
-    when(tenantRepository.findByPhone("0911111111"))
-        .thenReturn(Optional.of(Tenant.builder().id(UUID.randomUUID()).build()));
+    when(tenantRepository.save(any(Tenant.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    when(contractRepository.findFirstByTenantIdAndStatusIn(eq(tenantId), any()))
+        .thenReturn(Optional.empty());
+    when(vehicleRepository.findByTenantId(tenantId)).thenReturn(List.of());
+    when(contractRepository.findByTenantId(tenantId)).thenReturn(List.of());
 
-    assertThatThrownBy(() -> tenantService.updateTenant(tenantId, request))
-        .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.PHONE_DUPLICATED);
+    TenantDetailResponse updated = tenantService.updateTenant(tenantId, request);
+    assertThat(updated.phone()).isEqualTo("0911111111");
   }
 
   @Test
@@ -213,14 +213,12 @@ class TenantServiceImplTest {
             .build();
 
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
-    when(tenantRepository.findByPhone("0912345678")).thenReturn(Optional.empty());
-    when(userRepository.findByPhone("0912345678")).thenReturn(Optional.empty());
     when(tenantRepository.save(any(Tenant.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
-    when(contractRepository.findFirstByTenantIdAndStatusInAndDeletedAtIsNull(eq(tenantId), any()))
+    when(contractRepository.findFirstByTenantIdAndStatusIn(eq(tenantId), any()))
         .thenReturn(Optional.of(activeContract));
     when(contractRepository.findByTenantId(tenantId)).thenReturn(List.of(activeContract));
-    when(vehicleRepository.findByTenantIdAndDeletedAtIsNull(tenantId)).thenReturn(List.of(vehicle));
+    when(vehicleRepository.findByTenantId(tenantId)).thenReturn(List.of(vehicle));
 
     TenantDetailResponse detail = tenantService.updateTenant(tenantId, request);
 
@@ -230,7 +228,6 @@ class TenantServiceImplTest {
     assertThat(detail.emergencyContactName()).isEqualTo("Nguyễn Văn Ba");
     assertThat(detail.emergencyContactPhone()).isEqualTo("0988888888");
 
-    verify(userRepository).save(user);
-    assertThat(user.getPhone()).isEqualTo("0912345678");
+    assertThat(user.getEmail()).isEqualTo("nam.nguyen@example.com");
   }
 }

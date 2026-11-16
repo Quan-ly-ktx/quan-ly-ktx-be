@@ -11,6 +11,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -35,14 +36,14 @@ public class PaymentTransaction {
   @GeneratedValue(strategy = GenerationType.UUID)
   private UUID id;
 
-  @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "invoice_id", nullable = false)
+  @OneToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "invoice_id", nullable = false, unique = true)
   private Invoice invoice;
 
   @Column(name = "receipt_code", nullable = false, unique = true)
   private String receiptCode;
 
-  @Column(nullable = false, precision = 12, scale = 2)
+  @Column(nullable = false, precision = 14, scale = 0)
   private BigDecimal amount;
 
   @Enumerated(EnumType.STRING)
@@ -50,16 +51,15 @@ public class PaymentTransaction {
   private PaymentMethod paymentMethod;
 
   @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "confirmed_by_staff_id")
+  @JoinColumn(name = "confirmed_by_staff_id", nullable = false)
   private StaffProfile confirmedByStaff;
 
-  @Column(name = "bank_reference")
-  private String bankReference;
-
-  @Column(name = "proof_image_url")
-  private String proofImageUrl;
-
   @CreationTimestamp
-  @Column(name = "paid_at", nullable = false)
-  private Instant paidAt;
+  @Column(name = "confirmed_at", nullable = false, updatable = false)
+  private Instant confirmedAt;
+
+  // Compatibility helper
+  public Instant getPaidAt() {
+    return confirmedAt;
+  }
 }

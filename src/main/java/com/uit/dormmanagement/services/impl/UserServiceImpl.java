@@ -59,8 +59,7 @@ public class UserServiceImpl implements UserService {
         StaffProfile staff = staffProfileRepository.findByUserId(userId).orElse(null);
         if (staff != null) {
           staffInfo =
-              new UserProfileResponse.StaffInfo(
-                  staff.getId(), staff.getFullName(), staff.getPhone(), staff.isActive());
+              new UserProfileResponse.StaffInfo(staff.getId(), staff.getFullName(), staff.getPhone());
         }
       }
       case TENANT -> {
@@ -74,7 +73,7 @@ public class UserServiceImpl implements UserService {
                   tenant.getGender().name(),
                   tenant.getIdCardNumber(),
                   tenant.getPhone(),
-                  tenant.getEmail(),
+                  tenant.getUser().getEmail(),
                   tenant.getPermanentAddress(),
                   tenant.getDateOfBirth(),
                   tenant.getEmergencyContactName(),
@@ -86,9 +85,7 @@ public class UserServiceImpl implements UserService {
 
     return new UserProfileResponse(
         user.getId(),
-        user.getUsername(),
         user.getEmail(),
-        user.getPhone(),
         user.getRole(),
         user.getStatus(),
         staffInfo,
@@ -104,25 +101,9 @@ public class UserServiceImpl implements UserService {
     if (userRepository.existsByEmail(email)) {
       throw new BaseAppException(AuthErrorCode.DUPLICATE_EMAIL);
     }
-    if (userRepository.existsByPhone(phone)) {
-      throw new BaseAppException(AuthErrorCode.DUPLICATE_PHONE);
-    }
-
-    String baseUsername = email.split("@")[0].toLowerCase().replaceAll("[^a-zA-Z0-9._-]", "");
-    if (baseUsername.isBlank()) {
-      baseUsername = "technician";
-    }
-    String username = baseUsername;
-    int count = 1;
-    while (userRepository.existsByUsername(username)) {
-      username = baseUsername + count++;
-    }
-
     User user =
         User.builder()
-            .username(username)
             .email(email)
-            .phone(phone)
             .passwordHash(passwordEncoder.encode(request.password()))
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
@@ -134,14 +115,12 @@ public class UserServiceImpl implements UserService {
             .user(savedUser)
             .fullName(request.fullName().trim())
             .phone(phone)
-            .active(true)
             .build();
     StaffProfile savedProfile = staffProfileRepository.save(profile);
 
     log.info(
-        "Manager created new technician account: id={}, username={}, email={}",
+        "Manager created new technician account: id={}, email={}",
         savedProfile.getId(),
-        savedUser.getUsername(),
         savedUser.getEmail());
 
     return TechnicianResponse.fromEntity(savedProfile);
@@ -158,14 +137,16 @@ public class UserServiceImpl implements UserService {
           predicates.add(cb.equal(userJoin.get("role"), UserRole.TECHNICIAN));
 
           if (active != null) {
-            predicates.add(cb.equal(root.get("active"), active));
+            predicates.add(
+                cb.equal(
+                    userJoin.get("status"), active ? UserStatus.ACTIVE : UserStatus.LOCKED));
           }
 
           if (search != null && !search.isBlank()) {
             String pattern = "%" + search.trim().toLowerCase() + "%";
             Predicate nameMatch = cb.like(cb.lower(root.get("fullName")), pattern);
             Predicate emailMatch = cb.like(cb.lower(userJoin.get("email")), pattern);
-            Predicate phoneMatch = cb.like(userJoin.get("phone"), "%" + search.trim() + "%");
+            Predicate phoneMatch = cb.like(root.get("phone"), "%" + search.trim() + "%");
             predicates.add(cb.or(nameMatch, emailMatch, phoneMatch));
           }
 
@@ -189,7 +170,6 @@ public class UserServiceImpl implements UserService {
     StaffProfile profile = findTechnicianByIdOrUserId(id);
     boolean newActive = Boolean.TRUE.equals(request.active());
 
-    profile.setActive(newActive);
     User user = profile.getUser();
     if (user != null) {
       user.setStatus(newActive ? UserStatus.ACTIVE : UserStatus.LOCKED);
@@ -219,12 +199,7 @@ public class UserServiceImpl implements UserService {
       throw new BaseAppException(AuthErrorCode.DUPLICATE_EMAIL);
     }
 
-    if (!newPhone.equals(user.getPhone()) && userRepository.existsByPhone(newPhone)) {
-      throw new BaseAppException(AuthErrorCode.DUPLICATE_PHONE);
-    }
-
     user.setEmail(newEmail);
-    user.setPhone(newPhone);
     userRepository.save(user);
 
     profile.setFullName(newFullName);

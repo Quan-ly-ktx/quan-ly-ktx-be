@@ -18,7 +18,7 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
 
   Optional<Tenant> findByIdCardNumber(String idCardNumber);
 
-  Optional<Tenant> findByEmail(String email);
+  Optional<Tenant> findByUser_Email(String email);
 
   Optional<Tenant> findByPhone(String phone);
 
@@ -27,10 +27,6 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
   boolean existsByTenantCode(String tenantCode);
 
   boolean existsByIdCardNumber(String idCardNumber);
-
-  boolean existsByEmail(String email);
-
-  boolean existsByPhone(String phone);
 
   boolean existsByIdCardNumberAndResidentStatus(String idCardNumber, ResidentStatus residentStatus);
 
@@ -52,7 +48,7 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
       value =
           """
           SELECT DISTINCT t FROM Tenant t
-          LEFT JOIN Contract c ON c.tenant.id = t.id AND c.status = 'ACTIVE' AND c.deletedAt IS NULL
+          LEFT JOIN Contract c ON c.tenant.id = t.id AND c.status = 'ACTIVE'
           WHERE (:roomId IS NULL OR c.bed.room.id = :roomId)
             AND (:status IS NULL OR t.residentStatus = :status)
             AND (:search IS NULL OR :search = ''
@@ -60,12 +56,12 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
                  OR LOWER(t.tenantCode) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(t.phone) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(t.idCardNumber) LIKE LOWER(CONCAT('%', :search, '%'))
-                 OR LOWER(t.email) LIKE LOWER(CONCAT('%', :search, '%')))
+                 OR LOWER(t.user.email) LIKE LOWER(CONCAT('%', :search, '%')))
           """,
       countQuery =
           """
           SELECT COUNT(DISTINCT t) FROM Tenant t
-          LEFT JOIN Contract c ON c.tenant.id = t.id AND c.status = 'ACTIVE' AND c.deletedAt IS NULL
+          LEFT JOIN Contract c ON c.tenant.id = t.id AND c.status = 'ACTIVE'
           WHERE (:roomId IS NULL OR c.bed.room.id = :roomId)
             AND (:status IS NULL OR t.residentStatus = :status)
             AND (:search IS NULL OR :search = ''
@@ -73,7 +69,7 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
                  OR LOWER(t.tenantCode) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(t.phone) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(t.idCardNumber) LIKE LOWER(CONCAT('%', :search, '%'))
-                 OR LOWER(t.email) LIKE LOWER(CONCAT('%', :search, '%')))
+                 OR LOWER(t.user.email) LIKE LOWER(CONCAT('%', :search, '%')))
           """)
   Page<Tenant> findActiveTenantsWithFilters(
       @Param("search") String search,

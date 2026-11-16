@@ -37,7 +37,7 @@ public class VehicleServiceImpl implements VehicleService {
   private final StorageService storageService;
 
   private static final List<VehicleStatus> OCCUPIED_VEHICLE_STATUSES =
-      List.of(VehicleStatus.PENDING, VehicleStatus.ACTIVE);
+      List.of(VehicleStatus.PENDING_CARD, VehicleStatus.ISSUED);
 
   @Override
   @Transactional(readOnly = true)
@@ -71,16 +71,18 @@ public class VehicleServiceImpl implements VehicleService {
 
     validateVehicleQuota(tenant.getId());
 
-    String plate = request.licensePlate().trim().toUpperCase();
-    validateLicensePlateUnique(plate, null);
+    String plate = request.licensePlate() != null ? request.licensePlate().trim().toUpperCase() : null;
+    if (plate != null && !plate.isEmpty()) {
+      validateLicensePlateUnique(plate, null);
+    }
 
-    VehicleStatus initialStatus = VehicleStatus.PENDING;
+    VehicleStatus initialStatus = VehicleStatus.PENDING_CARD;
     String cleanCardCode = null;
 
     if (request.cardCode() != null && !request.cardCode().trim().isEmpty()) {
       cleanCardCode = request.cardCode().trim();
       validateCardCodeUnique(cleanCardCode, null);
-      initialStatus = VehicleStatus.ACTIVE;
+      initialStatus = VehicleStatus.ISSUED;
     }
 
     Vehicle vehicle =
@@ -92,8 +94,9 @@ public class VehicleServiceImpl implements VehicleService {
             .color(request.color().trim())
             .cardCode(cleanCardCode)
             .status(initialStatus)
-            .registrationFrontUrl(request.registrationFrontUrl())
-            .registrationBackUrl(request.registrationBackUrl())
+            .registrationFrontFileKey(request.registrationFrontUrl())
+            .registrationBackFileKey(request.registrationBackUrl())
+            .issuedAt(initialStatus == VehicleStatus.ISSUED ? Instant.now() : null)
             .build();
 
     Vehicle saved = vehicleRepository.save(vehicle);
@@ -110,8 +113,8 @@ public class VehicleServiceImpl implements VehicleService {
             .findById(id)
             .orElseThrow(() -> new BaseAppException(VehicleErrorCode.VEHICLE_NOT_FOUND));
 
-    String plate = request.licensePlate().trim().toUpperCase();
-    if (!plate.equalsIgnoreCase(vehicle.getLicensePlate())) {
+    String plate = request.licensePlate() != null ? request.licensePlate().trim().toUpperCase() : null;
+    if (plate != null && !plate.equalsIgnoreCase(vehicle.getLicensePlate())) {
       validateLicensePlateUnique(plate, id);
     }
 
@@ -133,10 +136,10 @@ public class VehicleServiceImpl implements VehicleService {
             .findById(id)
             .orElseThrow(() -> new BaseAppException(VehicleErrorCode.VEHICLE_NOT_FOUND));
 
-    if (vehicle.getStatus() == VehicleStatus.ACTIVE) {
+    if (vehicle.getStatus() == VehicleStatus.ISSUED) {
       throw new BaseAppException(VehicleErrorCode.VEHICLE_ALREADY_ACTIVE);
     }
-    if (vehicle.getStatus() != VehicleStatus.PENDING) {
+    if (vehicle.getStatus() != VehicleStatus.PENDING_CARD) {
       throw new BaseAppException(VehicleErrorCode.VEHICLE_NOT_PENDING);
     }
 
@@ -144,7 +147,8 @@ public class VehicleServiceImpl implements VehicleService {
     validateCardCodeUnique(cardCode, id);
 
     vehicle.setCardCode(cardCode);
-    vehicle.setStatus(VehicleStatus.ACTIVE);
+    vehicle.setStatus(VehicleStatus.ISSUED);
+    vehicle.setIssuedAt(Instant.now());
 
     Vehicle saved = vehicleRepository.save(vehicle);
     log.info("Issued card {} to vehicle {}", cardCode, saved.getLicensePlate());
@@ -160,6 +164,7 @@ public class VehicleServiceImpl implements VehicleService {
             .orElseThrow(() -> new BaseAppException(VehicleErrorCode.VEHICLE_NOT_FOUND));
 
     vehicle.setStatus(VehicleStatus.REVOKED);
+    vehicle.setRevokedAt(Instant.now());
     Vehicle saved = vehicleRepository.save(vehicle);
     log.info("Revoked vehicle card for vehicle {}", saved.getLicensePlate());
     return toResponse(saved);
@@ -173,9 +178,15 @@ public class VehicleServiceImpl implements VehicleService {
             .findById(id)
             .orElseThrow(() -> new BaseAppException(VehicleErrorCode.VEHICLE_NOT_FOUND));
 
-    vehicle.setDeletedAt(Instant.now());
+    if (vehicle.getStatus() == VehicleStatus.PENDING_CARD) {
+      vehicle.setStatus(VehicleStatus.CANCELLED);
+      vehicle.setCancelledAt(Instant.now());
+    } else {
+      vehicle.setStatus(VehicleStatus.REVOKED);
+      vehicle.setRevokedAt(Instant.now());
+    }
     vehicleRepository.save(vehicle);
-    log.info("Soft deleted vehicle {}", vehicle.getLicensePlate());
+    log.info("Deleted vehicle {}", vehicle.getLicensePlate());
   }
 
   @Override
@@ -187,7 +198,7 @@ public class VehicleServiceImpl implements VehicleService {
             .orElseThrow(() -> new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND));
 
     return vehicleRepository
-        .findFirstByTenantIdAndStatusInAndDeletedAtIsNull(tenant.getId(), OCCUPIED_VEHICLE_STATUSES)
+        .findFirstByTenantIdAndStatusIn(tenant.getId(), OCCUPIED_VEHICLE_STATUSES)
         .map(this::toResponse)
         .orElse(null);
   }
@@ -210,11 +221,13 @@ public class VehicleServiceImpl implements VehicleService {
 
     validateVehicleQuota(tenant.getId());
 
-    String plate = request.licensePlate().trim().toUpperCase();
-    validateLicensePlateUnique(plate, null);
+    String plate = request.licensePlate() != null ? request.licensePlate().trim().toUpperCase() : null;
+    if (plate != null && !plate.isEmpty()) {
+      validateLicensePlateUnique(plate, null);
+    }
 
-    String frontUrl = storageService.uploadFile(frontImage, "vehicles");
-    String backUrl = storageService.uploadFile(backImage, "vehicles");
+    String frontUrl = frontImage != null && !frontImage.isEmpty() ? storageService.uploadFile(frontImage, "vehicles") : null;
+    String backUrl = backImage != null && !backImage.isEmpty() ? storageService.uploadFile(backImage, "vehicles") : null;
 
     Vehicle vehicle =
         Vehicle.builder()
@@ -223,9 +236,9 @@ public class VehicleServiceImpl implements VehicleService {
             .licensePlate(plate)
             .brand(request.brand().trim())
             .color(request.color().trim())
-            .status(VehicleStatus.PENDING)
-            .registrationFrontUrl(frontUrl)
-            .registrationBackUrl(backUrl)
+            .status(VehicleStatus.PENDING_CARD)
+            .registrationFrontFileKey(frontUrl)
+            .registrationBackFileKey(backUrl)
             .build();
 
     Vehicle saved = vehicleRepository.save(vehicle);
@@ -235,7 +248,7 @@ public class VehicleServiceImpl implements VehicleService {
 
   private void validateVehicleQuota(UUID tenantId) {
     long count =
-        vehicleRepository.countByTenantIdAndStatusInAndDeletedAtIsNull(
+        vehicleRepository.countByTenantIdAndStatusIn(
             tenantId, OCCUPIED_VEHICLE_STATUSES);
     if (count >= 1) {
       throw new BaseAppException(VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED);
@@ -244,7 +257,7 @@ public class VehicleServiceImpl implements VehicleService {
 
   private void validateLicensePlateUnique(String plate, UUID currentVehicleId) {
     boolean exists =
-        vehicleRepository.existsByLicensePlateAndStatusInAndDeletedAtIsNull(
+        vehicleRepository.existsByLicensePlateAndStatusIn(
             plate, OCCUPIED_VEHICLE_STATUSES);
     if (exists) {
       throw new BaseAppException(VehicleErrorCode.LICENSE_PLATE_DUPLICATED);
@@ -253,8 +266,8 @@ public class VehicleServiceImpl implements VehicleService {
 
   private void validateCardCodeUnique(String cardCode, UUID currentVehicleId) {
     boolean exists =
-        vehicleRepository.existsByCardCodeAndStatusAndDeletedAtIsNull(
-            cardCode, VehicleStatus.ACTIVE);
+        vehicleRepository.existsByCardCodeAndStatus(
+            cardCode, VehicleStatus.ISSUED);
     if (exists) {
       throw new BaseAppException(VehicleErrorCode.CARD_CODE_DUPLICATED);
     }

@@ -77,12 +77,19 @@ public class MaintenanceTicket {
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
   @Builder.Default
-  private TicketStatus status = TicketStatus.OPEN;
+  private TicketStatus status = TicketStatus.UNASSIGNED;
 
-  @Column private String deadline;
+  @Column(name = "report_image_file_key")
+  private String reportImageFileKey;
+
+  @Column(name = "deadline_at")
+  private Instant deadlineAt;
 
   @Column(name = "resolution_notes", columnDefinition = "TEXT")
   private String resolutionNotes;
+
+  @Column(name = "resolution_image_file_key")
+  private String resolutionImageFileKey;
 
   @Column(name = "resolved_at")
   private Instant resolvedAt;
@@ -94,4 +101,9 @@ public class MaintenanceTicket {
   @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL, orphanRemoval = true)
   @Builder.Default
   private List<TicketReplacementPart> replacementParts = new ArrayList<>();
+
+  // Compatibility helper
+  public String getDeadline() {
+    return deadlineAt != null ? deadlineAt.toString() : null;
+  }
 }

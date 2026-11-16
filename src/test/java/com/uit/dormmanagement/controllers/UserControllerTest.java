@@ -70,9 +70,7 @@ class UserControllerTest {
     User user =
         User.builder()
             .id(userId)
-            .username("manager")
             .email("manager@dorm.vn")
-            .phone("0901000001")
             .passwordHash("$2a$12$hash")
             .role(UserRole.MANAGER)
             .status(UserStatus.ACTIVE)
@@ -109,13 +107,11 @@ class UserControllerTest {
   void shouldReturnCurrentUserProfile() throws Exception {
     UserProfileResponse.StaffInfo staffInfo =
         new UserProfileResponse.StaffInfo(
-            UUID.randomUUID(), "Nguyễn Văn Quản Lý", "0901000001", true);
+            UUID.randomUUID(), "Nguyễn Văn Quản Lý", "0901000001");
     UserProfileResponse profileResponse =
         new UserProfileResponse(
             userId,
-            "manager",
             "manager@dorm.vn",
-            "0901000001",
             UserRole.MANAGER,
             UserStatus.ACTIVE,
             staffInfo,
@@ -129,7 +125,7 @@ class UserControllerTest {
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.message").value("Lấy thông tin tài khoản thành công"))
         .andExpect(jsonPath("$.data.id").value(userId.toString()))
-        .andExpect(jsonPath("$.data.username").value("manager"))
+        .andExpect(jsonPath("$.data.email").value("manager@dorm.vn"))
         .andExpect(jsonPath("$.data.role").value("MANAGER"))
         .andExpect(jsonPath("$.data.staffProfile.fullName").value("Nguyễn Văn Quản Lý"));
   }
@@ -145,11 +141,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.vv@dorm.vn",
             "0908112245",
             "Võ Văn Thịnh",
-            true,
             UserStatus.ACTIVE,
             Instant.now());
 
@@ -174,11 +168,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.vv@dorm.vn",
             "0908112245",
             "Võ Văn Thịnh",
-            true,
             UserStatus.ACTIVE,
             Instant.now());
     Page<TechnicianResponse> page = new PageImpl<>(List.of(item), PageRequest.of(0, 10), 1);
@@ -200,11 +192,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.vv@dorm.vn",
             "0908112245",
             "Võ Văn Thịnh",
-            true,
             UserStatus.ACTIVE,
             Instant.now());
 
@@ -227,11 +217,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.vv@dorm.vn",
             "0908112245",
             "Võ Văn Thịnh",
-            false,
             UserStatus.LOCKED,
             Instant.now());
 
@@ -245,7 +233,7 @@ class UserControllerTest {
                 .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
-        .andExpect(jsonPath("$.data.active").value(false));
+        .andExpect(jsonPath("$.data.userStatus").value("LOCKED"));
   }
 
   @Test
@@ -258,11 +246,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.new@dorm.vn",
             "0909999888",
             "Võ Văn Thịnh Updated",
-            true,
             UserStatus.ACTIVE,
             Instant.now());
 

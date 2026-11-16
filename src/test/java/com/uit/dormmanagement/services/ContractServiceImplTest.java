@@ -28,8 +28,8 @@ import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractDocumentRepository;
+import com.uit.dormmanagement.repositories.ContractRenewalRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
-import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.impl.ContractServiceImpl;
@@ -57,9 +57,9 @@ import org.springframework.mock.web.MockMultipartFile;
 class ContractServiceImplTest {
 
   @Mock private ContractRepository contractRepository;
+  @Mock private ContractRenewalRepository contractRenewalRepository;
   @Mock private ContractDocumentRepository contractDocumentRepository;
   @Mock private BedRepository bedRepository;
-  @Mock private RoomRepository roomRepository;
   @Mock private TenantRepository tenantRepository;
   @Mock private VehicleRepository vehicleRepository;
   @Mock private StorageService storageService;
@@ -77,7 +77,7 @@ class ContractServiceImplTest {
   void setUp() {
     contractId = UUID.randomUUID();
 
-    room = Room.builder().id(UUID.randomUUID()).roomNumber("P.302").occupiedBeds(1).build();
+    room = Room.builder().id(UUID.randomUUID()).roomNumber("P.302").build();
     bed =
         Bed.builder()
             .id(UUID.randomUUID())
@@ -102,9 +102,11 @@ class ContractServiceImplTest {
             .contractCode("HD-2026-0187")
             .tenant(tenant)
             .bed(bed)
-            .startDate(LocalDate.of(2026, 9, 1))
-            .endDate(LocalDate.of(2027, 9, 1))
-            .monthlyRent(new BigDecimal("1500000.00"))
+            .roomCodeSnapshot("P.401")
+            .bedCodeSnapshot("G1")
+            .startOn(LocalDate.of(2026, 9, 1))
+            .originalEndOn(LocalDate.of(2027, 9, 1))
+            .originalMonthlyRent(new BigDecimal("1500000.00"))
             .depositAmount(new BigDecimal("1500000.00"))
             .status(ContractStatus.ACTIVE)
             .documents(new ArrayList<>())
@@ -120,7 +122,7 @@ class ContractServiceImplTest {
             .brand("Honda")
             .color("Đen")
             .cardCode("THE-0187")
-            .status(VehicleStatus.ACTIVE)
+            .status(VehicleStatus.ISSUED)
             .build();
   }
 
@@ -153,6 +155,7 @@ class ContractServiceImplTest {
             "annexDocuments", "phu-luc.pdf", "application/pdf", new byte[] {1, 2, 3});
 
     when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     when(storageService.uploadFile(annexDoc, "contracts"))
         .thenReturn("/uploads/contracts/phu-luc.pdf");
     when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -188,22 +191,19 @@ class ContractServiceImplTest {
       "terminateContract (Checkout): should cascade to Bed, Room, Tenant, and Vehicle in 1 transaction")
   void terminateContract_shouldCascadeToBedTenantAndVehicle() {
     when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
-    when(vehicleRepository.findByTenantIdAndDeletedAtIsNull(tenant.getId()))
+    when(vehicleRepository.findByTenantId(tenant.getId()))
         .thenReturn(List.of(vehicle));
     when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
 
     ContractDetailResponse res = contractService.terminateContract(contractId);
 
-    assertThat(res.status()).isEqualTo(ContractStatus.TERMINATED);
-    assertThat(contract.getStatus()).isEqualTo(ContractStatus.TERMINATED);
+    assertThat(res.status()).isEqualTo(ContractStatus.LIQUIDATED);
+    assertThat(contract.getStatus()).isEqualTo(ContractStatus.LIQUIDATED);
     assertThat(bed.getStatus()).isEqualTo(BedStatus.AVAILABLE);
-    assertThat(room.getOccupiedBeds()).isEqualTo(0);
     assertThat(tenant.getResidentStatus()).isEqualTo(ResidentStatus.CHECKED_OUT);
-    assertThat(tenant.getDeletedAt()).isNull(); // Soft delete preserves deletedAt = null
     assertThat(vehicle.getStatus()).isEqualTo(VehicleStatus.REVOKED);
 
     verify(bedRepository).save(bed);
-    verify(roomRepository).save(room);
     verify(tenantRepository).save(tenant);
     verify(vehicleRepository).save(vehicle);
   }
@@ -212,7 +212,7 @@ class ContractServiceImplTest {
   @DisplayName(
       "terminateContract: when contract already terminated should throw CONTRACT_ALREADY_TERMINATED")
   void terminateContract_whenAlreadyTerminated_shouldThrow() {
-    contract.setStatus(ContractStatus.TERMINATED);
+    contract.setStatus(ContractStatus.LIQUIDATED);
     when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
 
     assertThatThrownBy(() -> contractService.terminateContract(contractId))
@@ -273,8 +273,9 @@ class ContractServiceImplTest {
         ContractDocument.builder()
             .id(docId)
             .contract(contract)
-            .fileName("page1.jpg")
-            .fileUrl("/uploads/contracts/page1.jpg")
+            .originalFilename("page1.jpg")
+            .storageFileKey("/uploads/contracts/page1.jpg")
+            .mimeType("image/jpeg")
             .build();
 
     when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));

@@ -11,8 +11,8 @@ import org.springframework.stereotype.Repository;
 public interface ContractDocumentRepository extends JpaRepository<ContractDocument, UUID> {
   List<ContractDocument> findByContractId(UUID contractId);
 
-  List<ContractDocument> findByContractIdAndDocumentCategory(
-      UUID contractId, ContractDocumentCategory documentCategory);
+  List<ContractDocument> findByContractIdAndDocumentType(
+      UUID contractId, ContractDocumentCategory documentType);
 
   List<ContractDocument> findByContractIdOrderByUploadedAtDesc(UUID contractId);
 }

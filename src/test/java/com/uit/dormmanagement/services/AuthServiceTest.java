@@ -18,6 +18,9 @@ import com.uit.dormmanagement.dtos.request.auth.VerifyOtpRequest;
 import com.uit.dormmanagement.dtos.response.auth.AuthResponse;
 import com.uit.dormmanagement.dtos.response.auth.VerifyResetPasswordOtpResponse;
 import com.uit.dormmanagement.entities.User;
+import com.uit.dormmanagement.entities.Tenant;
+import com.uit.dormmanagement.enums.GenderPolicy;
+import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
@@ -64,9 +67,7 @@ class AuthServiceTest {
     testUser =
         User.builder()
             .id(userId)
-            .username("manager01")
             .email("manager@dorm.vn")
-            .phone("0901000001")
             .passwordHash("$2a$12$hashedPassword")
             .role(UserRole.MANAGER)
             .status(UserStatus.ACTIVE)
@@ -76,10 +77,10 @@ class AuthServiceTest {
   @Test
   @DisplayName("login should succeed with valid credentials and return AuthResponse")
   void shouldLoginSuccessfully() {
-    LoginRequest request = new LoginRequest("manager01", "Password@123");
+    LoginRequest request = new LoginRequest("manager@dorm.vn", "Password@123");
 
-    when(loginAttemptService.isLocked("manager01")).thenReturn(false);
-    when(userRepository.findByUsername("manager01")).thenReturn(Optional.of(testUser));
+    when(loginAttemptService.isLocked("manager@dorm.vn")).thenReturn(false);
+    when(userRepository.findByEmail("manager@dorm.vn")).thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("Password@123", testUser.getPasswordHash())).thenReturn(true);
     when(jwtService.generateAccessToken(eq(testUser), anyString())).thenReturn("mock-access-token");
     when(jwtService.generateRefreshToken(eq(testUser), anyString()))
@@ -92,35 +93,90 @@ class AuthServiceTest {
     assertThat(response.accessToken()).isEqualTo("mock-access-token");
     assertThat(response.refreshToken()).isEqualTo("mock-refresh-token");
     assertThat(response.tokenType()).isEqualTo("Bearer");
-    assertThat(response.user().username()).isEqualTo("manager01");
+    assertThat(response.user().email()).isEqualTo("manager@dorm.vn");
 
-    verify(loginAttemptService).resetAttempts("manager01");
+    verify(loginAttemptService).resetAttempts("manager@dorm.vn");
     verify(tokenRevocationService)
         .recordRefreshToken(eq(userId), anyString(), eq("mock-refresh-token"), eq(604800L));
+  }
+
+  @Test
+  @DisplayName("tenant login should resolve the account through the unique CCCD")
+  void tenantLoginShouldResolveCccdToUser() {
+    User tenantUser =
+        User.builder()
+            .id(userId)
+            .email("tenant@example.test")
+            .passwordHash("tenant-hash")
+            .role(UserRole.TENANT)
+            .status(UserStatus.ACTIVE)
+            .build();
+    Tenant tenant =
+        Tenant.builder()
+            .user(tenantUser)
+            .idCardNumber("079203001187")
+            .residentStatus(ResidentStatus.ACTIVE)
+            .gender(GenderPolicy.MALE)
+            .build();
+
+    when(loginAttemptService.isLocked("079203001187")).thenReturn(false);
+    when(userRepository.findByEmail("079203001187")).thenReturn(Optional.empty());
+    when(tenantRepository.findByIdCardNumber("079203001187")).thenReturn(Optional.of(tenant));
+    when(passwordEncoder.matches("Password@123", "tenant-hash")).thenReturn(true);
+    when(jwtService.generateAccessToken(eq(tenantUser), anyString())).thenReturn("access");
+    when(jwtService.generateRefreshToken(eq(tenantUser), anyString())).thenReturn("refresh");
+    when(jwtService.getAccessTokenExpirationSeconds()).thenReturn(86400L);
+    when(jwtService.getRefreshTokenExpirationSeconds()).thenReturn(604800L);
+
+    AuthResponse response =
+        authService.login(new LoginRequest("079203001187", "Password@123"));
+
+    assertThat(response.user().email()).isEqualTo("tenant@example.test");
+    verify(loginAttemptService).resetAttempts("079203001187");
+  }
+
+  @Test
+  @DisplayName("tenant email must not resolve as a login identifier")
+  void tenantEmailMustNotBeUsedForLogin() {
+    User tenantUser =
+        User.builder()
+            .id(userId)
+            .email("tenant@example.test")
+            .passwordHash("tenant-hash")
+            .role(UserRole.TENANT)
+            .status(UserStatus.ACTIVE)
+            .build();
+    when(loginAttemptService.isLocked("tenant@example.test")).thenReturn(false);
+    when(userRepository.findByEmail("tenant@example.test")).thenReturn(Optional.of(tenantUser));
+    when(tenantRepository.findByIdCardNumber("tenant@example.test")).thenReturn(Optional.empty());
+
+    assertThatThrownBy(
+            () -> authService.login(new LoginRequest("tenant@example.test", "Password@123")))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.INVALID_CREDENTIALS);
   }
 
   @Test
   @DisplayName(
       "login should throw ACCOUNT_TEMPORARILY_LOCKED when identifier is locked by rate limit")
   void shouldRejectLoginWhenAccountIsTemporarilyLocked() {
-    LoginRequest request = new LoginRequest("manager01", "Password@123");
-    when(loginAttemptService.isLocked("manager01")).thenReturn(true);
+    LoginRequest request = new LoginRequest("manager@dorm.vn", "Password@123");
+    when(loginAttemptService.isLocked("manager@dorm.vn")).thenReturn(true);
 
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(BaseAppException.class)
         .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_TEMPORARILY_LOCKED);
 
-    verify(userRepository, never()).findByUsername(anyString());
   }
 
   @Test
   @DisplayName("login should throw ACCOUNT_LOCKED when user status is LOCKED by admin")
   void shouldRejectLoginWhenUserStatusIsLockedByAdmin() {
-    LoginRequest request = new LoginRequest("manager01", "Password@123");
+    LoginRequest request = new LoginRequest("manager@dorm.vn", "Password@123");
     testUser.setStatus(UserStatus.LOCKED);
 
-    when(loginAttemptService.isLocked("manager01")).thenReturn(false);
-    when(userRepository.findByUsername("manager01")).thenReturn(Optional.of(testUser));
+    when(loginAttemptService.isLocked("manager@dorm.vn")).thenReturn(false);
+    when(userRepository.findByEmail("manager@dorm.vn")).thenReturn(Optional.of(testUser));
 
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(BaseAppException.class)
@@ -131,17 +187,17 @@ class AuthServiceTest {
   @DisplayName(
       "login should record failed attempt and throw INVALID_CREDENTIALS when password fails")
   void shouldRejectLoginWhenPasswordMismatch() {
-    LoginRequest request = new LoginRequest("manager01", "WrongPassword");
+    LoginRequest request = new LoginRequest("manager@dorm.vn", "WrongPassword");
 
-    when(loginAttemptService.isLocked("manager01")).thenReturn(false);
-    when(userRepository.findByUsername("manager01")).thenReturn(Optional.of(testUser));
+    when(loginAttemptService.isLocked("manager@dorm.vn")).thenReturn(false);
+    when(userRepository.findByEmail("manager@dorm.vn")).thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("WrongPassword", testUser.getPasswordHash())).thenReturn(false);
 
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(BaseAppException.class)
         .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.INVALID_CREDENTIALS);
 
-    verify(loginAttemptService).recordFailedAttempt("manager01");
+    verify(loginAttemptService).recordFailedAttempt("manager@dorm.vn");
   }
 
   @Test
@@ -154,7 +210,7 @@ class AuthServiceTest {
     TokenPayload payload =
         new TokenPayload(
             userId,
-            "manager01",
+            "manager@dorm.vn",
             "manager@dorm.vn",
             "MANAGER",
             jti,
@@ -191,7 +247,7 @@ class AuthServiceTest {
     TokenPayload payload =
         new TokenPayload(
             userId,
-            "manager01",
+            "manager@dorm.vn",
             "manager@dorm.vn",
             "MANAGER",
             jti,

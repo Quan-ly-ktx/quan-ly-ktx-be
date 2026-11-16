@@ -11,7 +11,6 @@ import com.uit.dormmanagement.dtos.request.vehicle.IssueCardRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.TenantRegisterVehicleRequest;
 import com.uit.dormmanagement.dtos.response.vehicle.VehicleResponse;
 import com.uit.dormmanagement.entities.Tenant;
-import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
@@ -48,29 +47,30 @@ class VehicleServiceImplTest {
 
   @InjectMocks private VehicleServiceImpl vehicleService;
 
-  private UUID tenantId;
   private UUID userId;
-  private Tenant tenant;
+  private UUID tenantId;
   private UUID vehicleId;
+  private Tenant tenant;
   private Vehicle vehicle;
 
   @BeforeEach
   void setUp() {
-    tenantId = UUID.randomUUID();
     userId = UUID.randomUUID();
-    User user = User.builder().id(userId).email("nam.nguyen@example.com").build();
+    tenantId = UUID.randomUUID();
+    vehicleId = UUID.randomUUID();
 
     tenant =
         Tenant.builder()
             .id(tenantId)
-            .user(user)
-            .tenantCode("NT-0187")
+            .tenantCode("SV-2026-0001")
             .fullName("Nguyễn Hoàng Nam")
+            .idCardNumber("079204001234")
             .gender(GenderPolicy.MALE)
+            .phone("0901234567")
+            .permanentAddress("123 Lê Lợi, Q1, TP.HCM")
             .residentStatus(ResidentStatus.ACTIVE)
             .build();
 
-    vehicleId = UUID.randomUUID();
     vehicle =
         Vehicle.builder()
             .id(vehicleId)
@@ -80,7 +80,7 @@ class VehicleServiceImplTest {
             .brand("Honda")
             .color("Đen")
             .cardCode("THE-0187")
-            .status(VehicleStatus.ACTIVE)
+            .status(VehicleStatus.ISSUED)
             .createdAt(Instant.now())
             .build();
   }
@@ -90,11 +90,11 @@ class VehicleServiceImplTest {
   void getVehicles_shouldReturnPagedResponses() {
     Pageable pageable = PageRequest.of(0, 10);
     when(vehicleRepository.findVehiclesWithFilters(
-            eq("Honda"), eq(VehicleStatus.ACTIVE), eq(pageable)))
+            eq("Honda"), eq(VehicleStatus.ISSUED), eq(pageable)))
         .thenReturn(new PageImpl<>(List.of(vehicle), pageable, 1));
 
     Page<VehicleResponse> page =
-        vehicleService.getVehicles(pageable, "  Honda  ", VehicleStatus.ACTIVE);
+        vehicleService.getVehicles(pageable, "  Honda  ", VehicleStatus.ISSUED);
 
     assertThat(page.getTotalElements()).isEqualTo(1);
     VehicleResponse res = page.getContent().getFirst();
@@ -103,9 +103,19 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName(
-      "registerVehicle: when tenant already has active or pending vehicle should throw VEHICLE_QUOTA_EXCEEDED")
-  void registerVehicle_whenTenantAlreadyHasActiveVehicle_shouldThrowQuotaExceeded() {
+  @DisplayName("getVehicleById: when found should return vehicle response")
+  void getVehicleById_whenFound_shouldReturn() {
+    when(vehicleRepository.findById(vehicleId)).thenReturn(Optional.of(vehicle));
+
+    VehicleResponse res = vehicleService.getVehicleById(vehicleId);
+
+    assertThat(res.id()).isEqualTo(vehicleId);
+    assertThat(res.licensePlate()).isEqualTo("59-X3 789.12");
+  }
+
+  @Test
+  @DisplayName("registerVehicle: when tenant already has active vehicle should throw VEHICLE_QUOTA_EXCEEDED")
+  void registerVehicle_whenQuotaExceeded_shouldThrow() {
     TenantRegisterVehicleRequest request =
         TenantRegisterVehicleRequest.builder()
             .vehicleType(VehicleType.SCOOTER)
@@ -120,7 +130,7 @@ class VehicleServiceImplTest {
         new MockMultipartFile("backImage", "back.jpg", "image/jpeg", new byte[] {3, 4});
 
     when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.countByTenantIdAndStatusInAndDeletedAtIsNull(eq(tenantId), any()))
+    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any()))
         .thenReturn(1L);
 
     assertThatThrownBy(() -> vehicleService.registerVehicle(userId, request, front, back))
@@ -147,9 +157,9 @@ class VehicleServiceImplTest {
         new MockMultipartFile("backImage", "back.jpg", "image/jpeg", new byte[] {3, 4});
 
     when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.countByTenantIdAndStatusInAndDeletedAtIsNull(eq(tenantId), any()))
+    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any()))
         .thenReturn(0L);
-    when(vehicleRepository.existsByLicensePlateAndStatusInAndDeletedAtIsNull(
+    when(vehicleRepository.existsByLicensePlateAndStatusIn(
             eq("59-X3 999.99"), any()))
         .thenReturn(false);
     when(storageService.uploadFile(front, "vehicles")).thenReturn("/uploads/vehicles/front.jpg");
@@ -158,7 +168,7 @@ class VehicleServiceImplTest {
 
     VehicleResponse res = vehicleService.registerVehicle(userId, request, front, back);
 
-    assertThat(res.status()).isEqualTo(VehicleStatus.PENDING);
+    assertThat(res.status()).isEqualTo(VehicleStatus.PENDING_CARD);
     assertThat(res.registrationFrontUrl()).isEqualTo("/uploads/vehicles/front.jpg");
     assertThat(res.registrationBackUrl()).isEqualTo("/uploads/vehicles/back.jpg");
     assertThat(res.licensePlate()).isEqualTo("59-X3 999.99");
@@ -167,19 +177,19 @@ class VehicleServiceImplTest {
   @Test
   @DisplayName("issueCard: when vehicle is pending and cardCode unique should activate vehicle")
   void issueCard_whenPendingAndUniqueCard_shouldActivate() {
-    vehicle.setStatus(VehicleStatus.PENDING);
+    vehicle.setStatus(VehicleStatus.PENDING_CARD);
     vehicle.setCardCode(null);
 
     IssueCardRequest req = IssueCardRequest.builder().cardCode("THE-0187").build();
     when(vehicleRepository.findById(vehicleId)).thenReturn(Optional.of(vehicle));
-    when(vehicleRepository.existsByCardCodeAndStatusAndDeletedAtIsNull(
-            "THE-0187", VehicleStatus.ACTIVE))
+    when(vehicleRepository.existsByCardCodeAndStatus(
+            "THE-0187", VehicleStatus.ISSUED))
         .thenReturn(false);
     when(vehicleRepository.save(any(Vehicle.class))).thenAnswer(inv -> inv.getArgument(0));
 
     VehicleResponse res = vehicleService.issueCard(vehicleId, req);
 
-    assertThat(res.status()).isEqualTo(VehicleStatus.ACTIVE);
+    assertThat(res.status()).isEqualTo(VehicleStatus.ISSUED);
     assertThat(res.cardCode()).isEqualTo("THE-0187");
   }
 
@@ -187,11 +197,11 @@ class VehicleServiceImplTest {
   @DisplayName(
       "issueCard: when cardCode already in use by active vehicle should throw CARD_CODE_DUPLICATED")
   void issueCard_whenCardCodeDuplicated_shouldThrow() {
-    vehicle.setStatus(VehicleStatus.PENDING);
+    vehicle.setStatus(VehicleStatus.PENDING_CARD);
     IssueCardRequest req = IssueCardRequest.builder().cardCode("THE-0187").build();
     when(vehicleRepository.findById(vehicleId)).thenReturn(Optional.of(vehicle));
-    when(vehicleRepository.existsByCardCodeAndStatusAndDeletedAtIsNull(
-            "THE-0187", VehicleStatus.ACTIVE))
+    when(vehicleRepository.existsByCardCodeAndStatus(
+            "THE-0187", VehicleStatus.ISSUED))
         .thenReturn(true);
 
     assertThatThrownBy(() -> vehicleService.issueCard(vehicleId, req))
@@ -212,13 +222,15 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("deleteVehicle: should soft delete vehicle")
-  void deleteVehicle_shouldSoftDelete() {
+  @DisplayName("deleteVehicle: should cancel pending vehicle")
+  void deleteVehicle_shouldCancelPendingVehicle() {
+    vehicle.setStatus(VehicleStatus.PENDING_CARD);
     when(vehicleRepository.findById(vehicleId)).thenReturn(Optional.of(vehicle));
 
     vehicleService.deleteVehicle(vehicleId);
 
     verify(vehicleRepository).save(vehicle);
-    assertThat(vehicle.getDeletedAt()).isNotNull();
+    assertThat(vehicle.getStatus()).isEqualTo(VehicleStatus.CANCELLED);
+    assertThat(vehicle.getCancelledAt()).isNotNull();
   }
 }

@@ -24,6 +24,7 @@ import com.uit.dormmanagement.repositories.AmenityRepository;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
 import com.uit.dormmanagement.repositories.RoomAmenityRepository;
+import com.uit.dormmanagement.repositories.RoomCodeRegistryRepository;
 import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.services.impl.RoomServiceImpl;
 import java.math.BigDecimal;
@@ -47,6 +48,7 @@ class RoomServiceTest {
   @Mock private RoomRepository roomRepository;
   @Mock private BedRepository bedRepository;
   @Mock private RoomAmenityRepository roomAmenityRepository;
+  @Mock private RoomCodeRegistryRepository roomCodeRegistryRepository;
   @Mock private AmenityRepository amenityRepository;
   @Mock private ContractRepository contractRepository;
 
@@ -63,16 +65,14 @@ class RoomServiceTest {
             .id(roomId)
             .roomNumber("P.302")
             .floor(3)
-            .roomType(RoomType.FOUR_BEDS)
             .genderPolicy(GenderPolicy.MALE)
-            .totalBeds(4)
-            .occupiedBeds(0)
+            .totalBeds((short) 4)
             .basePrice(new BigDecimal("1500000.00"))
             .build();
   }
 
   @Test
-  @DisplayName("createRoom should create room and generate N beds inheriting basePrice")
+  @DisplayName("createRoom should create room, current code, and N beds")
   void createRoom_success() {
     CreateRoomRequest request =
         new CreateRoomRequest(
@@ -106,9 +106,18 @@ class RoomServiceTest {
     assertThat(generatedBeds).hasSize(4);
     assertThat(generatedBeds.get(0).getBedCode()).isEqualTo("G01");
     assertThat(generatedBeds.get(0).getSlotKey()).isEqualTo("P.302-G01");
-    assertThat(generatedBeds.get(0).getPrice()).isEqualByComparingTo(new BigDecimal("1500000.00"));
+    assertThat(generatedBeds.get(0).getRoom().getBasePrice())
+        .isEqualByComparingTo(new BigDecimal("1500000.00"));
     assertThat(generatedBeds.get(0).getStatus()).isEqualTo(BedStatus.AVAILABLE);
     assertThat(generatedBeds.get(3).getBedCode()).isEqualTo("G04");
+    verify(roomCodeRegistryRepository)
+        .save(
+            org.mockito.ArgumentMatchers.argThat(
+                registry ->
+                    registry.getCode().equals("P.302")
+                        && registry.getRoom().getId().equals(roomId)
+                        && registry.isCurrent()
+                        && !registry.isUsedInBusiness()));
   }
 
   @Test
@@ -151,7 +160,7 @@ class RoomServiceTest {
   @Test
   @DisplayName("updateRoom should reject genderPolicy change when occupiedBeds > 0")
   void updateRoom_whenOccupied_shouldRejectGenderPolicyChange() {
-    testRoom.setOccupiedBeds(2);
+    when(bedRepository.countByRoomIdAndStatus(roomId, BedStatus.OCCUPIED)).thenReturn(2L);
     when(roomRepository.findById(roomId)).thenReturn(Optional.of(testRoom));
 
     UpdateRoomRequest request =
@@ -166,20 +175,18 @@ class RoomServiceTest {
   }
 
   @Test
-  @DisplayName("updateRoom should synchronize price of all child beds when basePrice changes")
-  void updateRoom_shouldSyncBedPrices() {
+  @DisplayName("updateRoom should derive every Bed display price from Room.basePrice")
+  void updateRoom_shouldReturnDerivedBedPrices() {
     Bed bed1 =
         Bed.builder()
             .id(UUID.randomUUID())
             .room(testRoom)
-            .price(new BigDecimal("1500000.00"))
             .status(BedStatus.AVAILABLE)
             .build();
     Bed bed2 =
         Bed.builder()
             .id(UUID.randomUUID())
             .room(testRoom)
-            .price(new BigDecimal("1500000.00"))
             .status(BedStatus.AVAILABLE)
             .build();
 
@@ -190,17 +197,59 @@ class RoomServiceTest {
     UpdateRoomRequest request =
         new UpdateRoomRequest(GenderPolicy.MALE, new BigDecimal("1800000.00"), List.of());
 
-    roomService.updateRoom(roomId, request);
+    RoomDetailResponse response = roomService.updateRoom(roomId, request);
 
-    assertThat(bed1.getPrice()).isEqualByComparingTo(new BigDecimal("1800000.00"));
-    assertThat(bed2.getPrice()).isEqualByComparingTo(new BigDecimal("1800000.00"));
-    verify(bedRepository).saveAll(any());
+    assertThat(testRoom.getBasePrice()).isEqualByComparingTo(new BigDecimal("1800000.00"));
+    assertThat(response.beds()).extracting("price").containsOnly(new BigDecimal("1800000.00"));
+  }
+
+  @Test
+  @DisplayName("updateRoom rename should preserve used old code and update persisted Bed slot keys")
+  void updateRoom_renameShouldUpdateRegistryAndBedSlotKeys() {
+    Bed bed =
+        Bed.builder()
+            .id(UUID.randomUUID())
+            .room(testRoom)
+            .bedCode("G01")
+            .slotKey("P.302-G01")
+            .status(BedStatus.AVAILABLE)
+            .build();
+    com.uit.dormmanagement.entities.RoomCodeRegistry oldCode =
+        com.uit.dormmanagement.entities.RoomCodeRegistry.builder()
+            .code("P.302")
+            .room(testRoom)
+            .current(true)
+            .usedInBusiness(true)
+            .build();
+
+    when(roomRepository.findById(roomId)).thenReturn(Optional.of(testRoom));
+    when(roomCodeRegistryRepository.findById("P.303")).thenReturn(Optional.empty());
+    when(roomCodeRegistryRepository.findByRoom_IdAndCurrentTrue(roomId))
+        .thenReturn(Optional.of(oldCode));
+    when(bedRepository.findByRoomIdOrderByBedCodeAsc(roomId)).thenReturn(List.of(bed));
+    when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    roomService.updateRoom(
+        roomId,
+        new UpdateRoomRequest(
+            "P.303", GenderPolicy.MALE, new BigDecimal("1500000"), null));
+
+    assertThat(testRoom.getRoomNumber()).isEqualTo("P.303");
+    assertThat(oldCode.isCurrent()).isFalse();
+    assertThat(oldCode.isUsedInBusiness()).isTrue();
+    assertThat(bed.getSlotKey()).isEqualTo("P.303-G01");
+    verify(roomCodeRegistryRepository).saveAndFlush(oldCode);
+    verify(bedRepository).saveAll(List.of(bed));
+    verify(roomCodeRegistryRepository)
+        .save(
+            org.mockito.ArgumentMatchers.argThat(
+                registry -> registry.getCode().equals("P.303") && registry.isCurrent()));
   }
 
   @Test
   @DisplayName("deleteRoom should throw CANNOT_DELETE_OCCUPIED_ROOM when occupiedBeds > 0")
   void deleteRoom_whenOccupied_shouldThrow() {
-    testRoom.setOccupiedBeds(1);
+    when(bedRepository.countByRoomIdAndStatus(roomId, BedStatus.OCCUPIED)).thenReturn(1L);
     when(roomRepository.findById(roomId)).thenReturn(Optional.of(testRoom));
 
     assertThatThrownBy(() -> roomService.deleteRoom(roomId))
@@ -215,8 +264,8 @@ class RoomServiceTest {
   @DisplayName("deleteRoom should throw CANNOT_DELETE_OCCUPIED_ROOM when active contracts exist")
   void deleteRoom_whenActiveContractsExist_shouldThrow() {
     when(roomRepository.findById(roomId)).thenReturn(Optional.of(testRoom));
-    when(contractRepository.existsByBed_Room_IdAndStatusInAndDeletedAtIsNull(
-            eq(roomId), eq(Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON))))
+    when(contractRepository.existsByBed_Room_IdAndStatusIn(
+            eq(roomId), eq(Set.of(ContractStatus.ACTIVE))))
         .thenReturn(true);
 
     assertThatThrownBy(() -> roomService.deleteRoom(roomId))
@@ -231,13 +280,13 @@ class RoomServiceTest {
   @DisplayName("deleteRoom should soft delete room when vacant and only terminated contracts exist")
   void deleteRoom_whenVacantAndNoActiveContracts_shouldSoftDelete() {
     when(roomRepository.findById(roomId)).thenReturn(Optional.of(testRoom));
-    when(contractRepository.existsByBed_Room_IdAndStatusInAndDeletedAtIsNull(
-            eq(roomId), eq(Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON))))
+    when(contractRepository.existsByBed_Room_IdAndStatusIn(
+            eq(roomId), eq(Set.of(ContractStatus.ACTIVE))))
         .thenReturn(false);
 
     roomService.deleteRoom(roomId);
 
-    assertThat(testRoom.getDeletedAt()).isNotNull();
+    assertThat(testRoom.getArchivedAt()).isNotNull();
     verify(roomRepository).save(testRoom);
   }
 
@@ -250,7 +299,6 @@ class RoomServiceTest {
             .room(testRoom)
             .bedCode("G01")
             .slotKey("P.302-G01")
-            .price(new BigDecimal("1500000.00"))
             .status(BedStatus.OCCUPIED)
             .build();
 
@@ -267,13 +315,13 @@ class RoomServiceTest {
             .bed(bed1)
             .tenant(tenant)
             .status(ContractStatus.ACTIVE)
-            .endDate(LocalDate.now().plusMonths(3))
+            .originalEndOn(LocalDate.now().plusMonths(3))
             .build();
 
     when(roomRepository.findRoomsWithFilters(3, GenderPolicy.MALE, null))
         .thenReturn(List.of(testRoom));
     when(bedRepository.findByRoomIdOrderByBedCodeAsc(roomId)).thenReturn(List.of(bed1));
-    when(contractRepository.findByBedIdInAndStatusInAndDeletedAtIsNull(any(), any()))
+    when(contractRepository.findByBedIdInAndStatusIn(any(), any()))
         .thenReturn(List.of(contract));
 
     List<RoomDetailResponse> matrix = roomService.getRoomMatrix(3, GenderPolicy.MALE, null);

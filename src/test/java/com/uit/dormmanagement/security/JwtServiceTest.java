@@ -27,9 +27,7 @@ class JwtServiceTest {
     demoUser =
         User.builder()
             .id(UUID.randomUUID())
-            .username("manager01")
             .email("manager@dorm.vn")
-            .phone("0901000001")
             .passwordHash("$2a$12$hash")
             .role(UserRole.MANAGER)
             .status(UserStatus.ACTIVE)
@@ -46,7 +44,7 @@ class JwtServiceTest {
 
     TokenPayload payload = jwtService.parseAndValidateToken(token);
     assertThat(payload.userId()).isEqualTo(demoUser.getId());
-    assertThat(payload.username()).isEqualTo("manager01");
+    assertThat(payload.username()).isEqualTo("manager@dorm.vn");
     assertThat(payload.email()).isEqualTo("manager@dorm.vn");
     assertThat(payload.role()).isEqualTo("MANAGER");
     assertThat(payload.jti()).isEqualTo(jti);
@@ -64,7 +62,7 @@ class JwtServiceTest {
 
     TokenPayload payload = jwtService.parseAndValidateToken(token);
     assertThat(payload.userId()).isEqualTo(demoUser.getId());
-    assertThat(payload.username()).isEqualTo("manager01");
+    assertThat(payload.username()).isEqualTo("manager@dorm.vn");
     assertThat(payload.jti()).isEqualTo(jti);
     assertThat(payload.tokenType()).isEqualTo("REFRESH");
   }

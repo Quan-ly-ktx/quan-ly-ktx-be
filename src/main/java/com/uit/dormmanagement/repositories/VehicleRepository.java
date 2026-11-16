@@ -27,25 +27,22 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
 
   List<Vehicle> findByStatus(VehicleStatus status);
 
-  List<Vehicle> findByTenantIdAndDeletedAtIsNull(UUID tenantId);
-
-  long countByTenantIdAndStatusInAndDeletedAtIsNull(
+  long countByTenantIdAndStatusIn(
       UUID tenantId, Collection<VehicleStatus> statuses);
 
-  Optional<Vehicle> findFirstByTenantIdAndStatusInAndDeletedAtIsNull(
+  Optional<Vehicle> findFirstByTenantIdAndStatusIn(
       UUID tenantId, Collection<VehicleStatus> statuses);
 
-  boolean existsByLicensePlateAndStatusInAndDeletedAtIsNull(
+  boolean existsByLicensePlateAndStatusIn(
       String licensePlate, Collection<VehicleStatus> statuses);
 
-  boolean existsByCardCodeAndStatusAndDeletedAtIsNull(String cardCode, VehicleStatus status);
+  boolean existsByCardCodeAndStatus(String cardCode, VehicleStatus status);
 
   @Query(
       value =
           """
           SELECT v FROM Vehicle v
-          WHERE v.deletedAt IS NULL
-            AND (:status IS NULL OR v.status = :status)
+          WHERE (:status IS NULL OR v.status = :status)
             AND (:search IS NULL OR :search = ''
                  OR LOWER(v.licensePlate) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(v.brand) LIKE LOWER(CONCAT('%', :search, '%'))
@@ -57,8 +54,7 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
       countQuery =
           """
           SELECT COUNT(v) FROM Vehicle v
-          WHERE v.deletedAt IS NULL
-            AND (:status IS NULL OR v.status = :status)
+          WHERE (:status IS NULL OR v.status = :status)
             AND (:search IS NULL OR :search = ''
                  OR LOWER(v.licensePlate) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(v.brand) LIKE LOWER(CONCAT('%', :search, '%'))

@@ -11,6 +11,9 @@ public enum RoomErrorCode implements AppErrorCode {
   ROOM_NOT_FOUND("ROOM_404", "Không tìm thấy thông tin phòng tương ứng", HttpStatus.NOT_FOUND),
   BED_NOT_FOUND("BED_404", "Không tìm thấy vị trí giường tương ứng", HttpStatus.NOT_FOUND),
   ROOM_NUMBER_DUPLICATED("ROOM_409", "Số phòng đã tồn tại trong tòa nhà", HttpStatus.CONFLICT),
+  ROOM_CODE_PROTECTED(
+      "ROOM_409_CODE_PROTECTED", "Mã phòng đã được sử dụng trong hồ sơ nghiệp vụ", HttpStatus.CONFLICT),
+  AMENITY_NOT_FOUND("ROOM_404_AMENITY", "Không tìm thấy một hoặc nhiều tiện nghi", HttpStatus.NOT_FOUND),
   GENDER_POLICY_MISMATCH(
       "ROOM_400_GENDER",
       "Chính sách giới tính phòng không khớp với giới tính khách thuê (BR-02)",

@@ -13,6 +13,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -21,11 +22,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.SQLRestriction;
 
 @Entity
-@Table(name = "vehicles")
-@SQLRestriction("deleted_at IS NULL")
+@Table(
+    name = "vehicles",
+    uniqueConstraints = {
+      @UniqueConstraint(name = "uq_vehicles_id_tenant_id", columnNames = {"id", "tenant_id"})
+    })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -45,14 +48,20 @@ public class Vehicle {
   @Column(name = "vehicle_type", nullable = false)
   private VehicleType vehicleType;
 
-  @Column(name = "license_plate", nullable = false)
+  @Column(name = "license_plate")
   private String licensePlate;
 
-  @Column(name = "brand", nullable = false)
+  @Column(nullable = false)
   private String brand;
 
-  @Column(name = "color", nullable = false)
+  @Column(nullable = false)
   private String color;
+
+  @Column(name = "registration_front_file_key")
+  private String registrationFrontFileKey;
+
+  @Column(name = "registration_back_file_key")
+  private String registrationBackFileKey;
 
   @Column(name = "card_code")
   private String cardCode;
@@ -60,18 +69,48 @@ public class Vehicle {
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
   @Builder.Default
-  private VehicleStatus status = VehicleStatus.PENDING;
-
-  @Column(name = "registration_front_url")
-  private String registrationFrontUrl;
-
-  @Column(name = "registration_back_url")
-  private String registrationBackUrl;
+  private VehicleStatus status = VehicleStatus.PENDING_CARD;
 
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
-  @Column(name = "deleted_at")
-  private Instant deletedAt;
+  @Column(name = "issued_at")
+  private Instant issuedAt;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "rejected_by_staff_id")
+  private StaffProfile rejectedByStaff;
+
+  @Column(name = "rejection_reason")
+  private String rejectionReason;
+
+  @Column(name = "rejected_at")
+  private Instant rejectedAt;
+
+  @Column(name = "revoked_at")
+  private Instant revokedAt;
+
+  @Column(name = "cancelled_at")
+  private Instant cancelledAt;
+
+  @Column(name = "replaced_at")
+  private Instant replacedAt;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "replaced_by_vehicle_id")
+  private Vehicle replacedByVehicle;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "replaced_vehicle_id")
+  private Vehicle replacedVehicle;
+
+  // Compatibility helpers
+  public String getRegistrationFrontUrl() {
+    return registrationFrontFileKey;
+  }
+
+  public String getRegistrationBackUrl() {
+    return registrationBackFileKey;
+  }
 }

@@ -37,7 +37,7 @@ public class AuthController extends AbstractBaseController {
 
   @Operation(
       summary = "User login",
-      description = "Authenticate using username, email, or phone with password")
+      description = "Authenticate staff using email and tenants using CCCD, with password")
   @PostMapping("/login")
   public ResponseEntity<SingleResponse<AuthResponse>> login(
       @Valid @RequestBody LoginRequest request) {

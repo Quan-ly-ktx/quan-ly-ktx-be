@@ -50,9 +50,8 @@ class BedServiceTest {
             .id(UUID.randomUUID())
             .roomNumber("P.302")
             .floor(3)
-            .roomType(RoomType.FOUR_BEDS)
             .genderPolicy(GenderPolicy.MALE)
-            .totalBeds(4)
+            .totalBeds((short) 4)
             .basePrice(new BigDecimal("1500000.00"))
             .build();
 
@@ -62,7 +61,6 @@ class BedServiceTest {
             .room(testRoom)
             .bedCode("G01")
             .slotKey("P.302-G01")
-            .price(new BigDecimal("1500000.00"))
             .status(BedStatus.AVAILABLE)
             .build();
   }
@@ -72,7 +70,7 @@ class BedServiceTest {
       "updateBedStatus should successfully set status to MAINTENANCE when bed is AVAILABLE")
   void updateBedStatus_whenAvailable_shouldSetMaintenance() {
     when(bedRepository.findById(bedId)).thenReturn(Optional.of(testBed));
-    when(contractRepository.existsByBedIdAndStatusInAndDeletedAtIsNull(eq(bedId), any()))
+    when(contractRepository.existsByBedIdAndStatusIn(eq(bedId), any()))
         .thenReturn(false);
     when(bedRepository.save(any(Bed.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -105,7 +103,7 @@ class BedServiceTest {
       "updateBedStatus should throw CANNOT_MAINTAIN_OCCUPIED_BED when active contract exists")
   void updateBedStatus_whenActiveContractExists_shouldThrow() {
     when(bedRepository.findById(bedId)).thenReturn(Optional.of(testBed));
-    when(contractRepository.existsByBedIdAndStatusInAndDeletedAtIsNull(eq(bedId), any()))
+    when(contractRepository.existsByBedIdAndStatusIn(eq(bedId), any()))
         .thenReturn(true);
 
     UpdateBedStatusRequest request = new UpdateBedStatusRequest(BedStatus.MAINTENANCE);

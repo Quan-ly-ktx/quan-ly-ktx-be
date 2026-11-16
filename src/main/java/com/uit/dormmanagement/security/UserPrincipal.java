@@ -48,9 +48,9 @@ public class UserPrincipal implements UserDetails {
 
     return new UserPrincipal(
         user.getId(),
-        user.getUsername(),
         user.getEmail(),
-        user.getPhone(),
+        user.getEmail(),
+        null,
         user.getPasswordHash(),
         user.getRole(),
         user.getStatus(),

@@ -13,16 +13,19 @@ import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.RoomAmenity;
 import com.uit.dormmanagement.entities.RoomAmenityId;
+import com.uit.dormmanagement.entities.RoomCodeRegistry;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
+import com.uit.dormmanagement.enums.RoomType;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.repositories.AmenityRepository;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
 import com.uit.dormmanagement.repositories.RoomAmenityRepository;
+import com.uit.dormmanagement.repositories.RoomCodeRegistryRepository;
 import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.services.RoomService;
 import java.time.Instant;
@@ -47,6 +50,7 @@ public class RoomServiceImpl implements RoomService {
   private final RoomRepository roomRepository;
   private final BedRepository bedRepository;
   private final RoomAmenityRepository roomAmenityRepository;
+  private final RoomCodeRegistryRepository roomCodeRegistryRepository;
   private final AmenityRepository amenityRepository;
   private final ContractRepository contractRepository;
 
@@ -70,8 +74,8 @@ public class RoomServiceImpl implements RoomService {
         bedIds.isEmpty()
             ? Collections.emptyMap()
             : contractRepository
-                .findByBedIdInAndStatusInAndDeletedAtIsNull(
-                    bedIds, Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON))
+                .findByBedIdInAndStatusIn(
+                    bedIds, Set.of(ContractStatus.ACTIVE))
                 .stream()
                 .collect(
                     Collectors.toMap(c -> c.getBed().getId(), Function.identity(), (c1, c2) -> c1));
@@ -96,7 +100,9 @@ public class RoomServiceImpl implements RoomService {
   @Override
   @Transactional
   public RoomDetailResponse createRoom(CreateRoomRequest request) {
-    if (roomRepository.existsByRoomNumber(request.roomNumber())) {
+    String roomNumber = canonicalRoomNumber(request.roomNumber());
+    if (roomRepository.existsByRoomNumber(roomNumber)
+        || roomCodeRegistryRepository.existsById(roomNumber)) {
       throw new BaseAppException(RoomErrorCode.ROOM_NUMBER_DUPLICATED);
     }
 
@@ -104,16 +110,16 @@ public class RoomServiceImpl implements RoomService {
 
     Room room =
         Room.builder()
-            .roomNumber(request.roomNumber())
+            .roomNumber(roomNumber)
             .floor(request.floor())
-            .roomType(request.roomType())
             .genderPolicy(request.genderPolicy())
-            .totalBeds(totalBeds)
-            .occupiedBeds(0)
+            .totalBeds((short) totalBeds)
             .basePrice(request.basePrice())
             .build();
 
     Room savedRoom = roomRepository.save(room);
+    roomCodeRegistryRepository.save(
+        RoomCodeRegistry.builder().code(roomNumber).room(savedRoom).current(true).build());
 
     List<Bed> beds = new ArrayList<>(totalBeds);
     for (int i = 1; i <= totalBeds; i++) {
@@ -123,27 +129,14 @@ public class RoomServiceImpl implements RoomService {
           Bed.builder()
               .room(savedRoom)
               .bedCode(bedCode)
-              .slotKey(slotKey)
-              .price(savedRoom.getBasePrice())
+              .slotKey(slotKey.toUpperCase())
               .status(BedStatus.AVAILABLE)
               .build());
     }
     bedRepository.saveAll(beds);
 
     if (request.amenities() != null && !request.amenities().isEmpty()) {
-      for (RoomAmenityRequest item : request.amenities()) {
-        amenityRepository
-            .findById(item.amenityId())
-            .ifPresent(
-                amenity ->
-                    roomAmenityRepository.save(
-                        RoomAmenity.builder()
-                            .id(new RoomAmenityId(savedRoom.getId(), amenity.getId()))
-                            .room(savedRoom)
-                            .amenity(amenity)
-                            .quantity(item.quantity())
-                            .build()));
-      }
+      attachAmenities(savedRoom, request.amenities());
     }
 
     List<BedSlotResponse> bedSlots =
@@ -161,8 +154,12 @@ public class RoomServiceImpl implements RoomService {
             .findById(roomId)
             .orElseThrow(() -> new BaseAppException(RoomErrorCode.ROOM_NOT_FOUND));
 
+    if (request.roomNumber() != null && !request.roomNumber().isBlank()) {
+      renameRoom(room, canonicalRoomNumber(request.roomNumber()));
+    }
+
     if (request.genderPolicy() != null && request.genderPolicy() != room.getGenderPolicy()) {
-      if (room.getOccupiedBeds() > 0) {
+      if (bedRepository.countByRoomIdAndStatus(roomId, BedStatus.OCCUPIED) > 0) {
         throw new BaseAppException(RoomErrorCode.CANNOT_CHANGE_GENDER_POLICY);
       }
       room.setGenderPolicy(request.genderPolicy());
@@ -170,28 +167,11 @@ public class RoomServiceImpl implements RoomService {
 
     if (request.basePrice() != null) {
       room.setBasePrice(request.basePrice());
-      List<Bed> beds = bedRepository.findByRoomIdOrderByBedCodeAsc(roomId);
-      for (Bed bed : beds) {
-        bed.setPrice(request.basePrice());
-      }
-      bedRepository.saveAll(beds);
     }
 
     if (request.amenities() != null) {
       roomAmenityRepository.deleteByRoomId(roomId);
-      for (RoomAmenityRequest item : request.amenities()) {
-        amenityRepository
-            .findById(item.amenityId())
-            .ifPresent(
-                amenity ->
-                    roomAmenityRepository.save(
-                        RoomAmenity.builder()
-                            .id(new RoomAmenityId(roomId, amenity.getId()))
-                            .room(room)
-                            .amenity(amenity)
-                            .quantity(item.quantity())
-                            .build()));
-      }
+      attachAmenities(room, request.amenities());
     }
 
     Room savedRoom = roomRepository.save(room);
@@ -202,8 +182,8 @@ public class RoomServiceImpl implements RoomService {
         bedIds.isEmpty()
             ? Collections.emptyMap()
             : contractRepository
-                .findByBedIdInAndStatusInAndDeletedAtIsNull(
-                    bedIds, Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON))
+                .findByBedIdInAndStatusIn(
+                    bedIds, Set.of(ContractStatus.ACTIVE))
                 .stream()
                 .collect(
                     Collectors.toMap(c -> c.getBed().getId(), Function.identity(), (c1, c2) -> c1));
@@ -223,19 +203,43 @@ public class RoomServiceImpl implements RoomService {
             .findById(roomId)
             .orElseThrow(() -> new BaseAppException(RoomErrorCode.ROOM_NOT_FOUND));
 
-    if (room.getOccupiedBeds() > 0) {
+    if (bedRepository.countByRoomIdAndStatus(roomId, BedStatus.OCCUPIED) > 0) {
       throw new BaseAppException(RoomErrorCode.CANNOT_DELETE_OCCUPIED_ROOM);
     }
 
     boolean hasActiveContracts =
-        contractRepository.existsByBed_Room_IdAndStatusInAndDeletedAtIsNull(
-            roomId, Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON));
+        contractRepository.existsByBed_Room_IdAndStatusIn(
+            roomId, Set.of(ContractStatus.ACTIVE));
     if (hasActiveContracts) {
       throw new BaseAppException(RoomErrorCode.CANNOT_DELETE_OCCUPIED_ROOM);
     }
 
-    room.setDeletedAt(Instant.now());
+    room.setArchivedAt(Instant.now());
     roomRepository.save(room);
+  }
+
+  @Override
+  @Transactional
+  public void restoreRoom(UUID roomId) {
+    int restored = roomRepository.restoreArchivedRoom(roomId, Instant.now());
+    if (restored == 0) {
+      throw new BaseAppException(RoomErrorCode.ROOM_NOT_FOUND);
+    }
+  }
+
+  @Override
+  @Transactional
+  public void deleteIncorrectRoom(UUID roomId) {
+    Room room =
+        roomRepository.findByIdForUpdate(roomId)
+            .orElseThrow(() -> new BaseAppException(RoomErrorCode.ROOM_NOT_FOUND));
+    if (roomCodeRegistryRepository.existsByRoom_IdAndUsedInBusinessTrue(roomId)) {
+      throw new BaseAppException(RoomErrorCode.ROOM_CODE_PROTECTED);
+    }
+    roomAmenityRepository.deleteByRoomId(roomId);
+    bedRepository.deleteAll(bedRepository.findByRoomIdOrderByBedCodeAsc(roomId));
+    roomCodeRegistryRepository.deleteUnusedCodes(roomId);
+    roomRepository.delete(room);
   }
 
   @Override
@@ -252,8 +256,8 @@ public class RoomServiceImpl implements RoomService {
         bedIds.isEmpty()
             ? Collections.emptyMap()
             : contractRepository
-                .findByBedIdInAndStatusInAndDeletedAtIsNull(
-                    bedIds, Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON))
+                .findByBedIdInAndStatusIn(
+                    bedIds, Set.of(ContractStatus.ACTIVE))
                 .stream()
                 .collect(
                     Collectors.toMap(c -> c.getBed().getId(), Function.identity(), (c1, c2) -> c1));
@@ -277,10 +281,10 @@ public class RoomServiceImpl implements RoomService {
                 room.getId(),
                 room.getRoomNumber(),
                 room.getFloor(),
-                room.getRoomType(),
+                roomTypeFor(room),
                 room.getGenderPolicy(),
                 room.getTotalBeds(),
-                room.getOccupiedBeds(),
+                occupiedBedCount(room.getId()),
                 room.getBasePrice(),
                 getAmenityItems(room.getId())));
   }
@@ -294,7 +298,6 @@ public class RoomServiceImpl implements RoomService {
                     ra.getAmenity().getId(),
                     ra.getAmenity().getCode(),
                     ra.getAmenity().getName(),
-                    ra.getAmenity().getCategory(),
                     ra.getQuantity()))
         .toList();
   }
@@ -309,7 +312,7 @@ public class RoomServiceImpl implements RoomService {
     }
 
     return new BedSlotResponse(
-        bed.getId(), bed.getBedCode(), bed.getSlotKey(), bed.getPrice(), bed.getStatus(), occupant);
+        bed.getId(), bed.getBedCode(), bed.getSlotKey(), bed.getRoom().getBasePrice(), bed.getStatus(), occupant);
   }
 
   private RoomDetailResponse toRoomDetailResponse(
@@ -318,12 +321,84 @@ public class RoomServiceImpl implements RoomService {
         room.getId(),
         room.getRoomNumber(),
         room.getFloor(),
-        room.getRoomType(),
+        roomTypeFor(room),
         room.getGenderPolicy(),
         room.getTotalBeds(),
-        room.getOccupiedBeds(),
+        occupiedBedCount(room.getId()),
         room.getBasePrice(),
         amenities,
         beds);
+  }
+
+  private void attachAmenities(Room room, List<RoomAmenityRequest> requested) {
+    Set<UUID> requestedIds = requested.stream().map(RoomAmenityRequest::amenityId).collect(Collectors.toSet());
+    List<com.uit.dormmanagement.entities.Amenity> found = amenityRepository.findAllById(requestedIds);
+    if (found.size() != requestedIds.size()) {
+      throw new BaseAppException(RoomErrorCode.AMENITY_NOT_FOUND);
+    }
+    Map<UUID, com.uit.dormmanagement.entities.Amenity> amenityById =
+        found.stream().collect(Collectors.toMap(com.uit.dormmanagement.entities.Amenity::getId, Function.identity()));
+    for (RoomAmenityRequest item : requested) {
+      com.uit.dormmanagement.entities.Amenity amenity = amenityById.get(item.amenityId());
+      roomAmenityRepository.save(
+          RoomAmenity.builder()
+              .id(new RoomAmenityId(room.getId(), amenity.getId()))
+              .room(room)
+              .amenity(amenity)
+              .quantity(item.quantity())
+              .build());
+    }
+  }
+
+  private void renameRoom(Room room, String newCode) {
+    String oldCode = room.getRoomNumber();
+    if (oldCode.equals(newCode)) {
+      return;
+    }
+    if (roomRepository.existsByRoomNumber(newCode)) {
+      throw new BaseAppException(RoomErrorCode.ROOM_NUMBER_DUPLICATED);
+    }
+    RoomCodeRegistry existingCode = roomCodeRegistryRepository.findById(newCode).orElse(null);
+    if (existingCode != null) {
+      throw new BaseAppException(
+          existingCode.isUsedInBusiness()
+              ? RoomErrorCode.ROOM_CODE_PROTECTED
+              : RoomErrorCode.ROOM_NUMBER_DUPLICATED);
+    }
+
+    RoomCodeRegistry currentCode =
+        roomCodeRegistryRepository.findByRoom_IdAndCurrentTrue(room.getId())
+            .orElseThrow(() -> new IllegalStateException("Room has no current registry code"));
+    currentCode.setCurrent(false);
+    if (currentCode.isUsedInBusiness()) {
+      roomCodeRegistryRepository.saveAndFlush(currentCode);
+    } else {
+      roomCodeRegistryRepository.delete(currentCode);
+      roomCodeRegistryRepository.flush();
+    }
+    roomCodeRegistryRepository.save(
+        RoomCodeRegistry.builder().code(newCode).room(room).current(true).build());
+
+    room.setRoomNumber(newCode);
+    List<Bed> roomBeds = bedRepository.findByRoomIdOrderByBedCodeAsc(room.getId());
+    roomBeds.forEach(bed -> bed.setSlotKey(newCode + "-" + bed.getBedCode()));
+    bedRepository.saveAll(roomBeds);
+  }
+
+  private int occupiedBedCount(UUID roomId) {
+    return Math.toIntExact(bedRepository.countByRoomIdAndStatus(roomId, BedStatus.OCCUPIED));
+  }
+
+  private RoomType roomTypeFor(Room room) {
+    return switch (room.getTotalBeds()) {
+      case 4 -> RoomType.FOUR_BEDS;
+      case 6 -> RoomType.SIX_BEDS;
+      case 8 -> RoomType.EIGHT_BEDS;
+      default -> throw new IllegalStateException("Unsupported room capacity: " + room.getTotalBeds());
+    };
+  }
+
+  private String canonicalRoomNumber(String roomNumber) {
+    return roomNumber.trim().toUpperCase();
   }
 }

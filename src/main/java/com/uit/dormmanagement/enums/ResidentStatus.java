@@ -7,8 +7,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum ResidentStatus {
   ACTIVE("Đang ở"),
-  CHECKED_OUT("Đã trả phòng"),
-  RESERVED("Bảo lưu");
+  CHECKED_OUT("Đã trả phòng");
 
   private final String displayName;
 }

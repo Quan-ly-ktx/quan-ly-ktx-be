@@ -60,9 +60,7 @@ class UserServiceTest {
     User user =
         User.builder()
             .id(userId)
-            .username("manager")
             .email("manager@dorm.vn")
-            .phone("0901000001")
             .role(UserRole.MANAGER)
             .status(UserStatus.ACTIVE)
             .build();
@@ -73,7 +71,6 @@ class UserServiceTest {
             .user(user)
             .fullName("Nguyễn Văn Quản Lý")
             .phone("0901000001")
-            .active(true)
             .build();
 
     when(userRepository.findById(userId)).thenReturn(Optional.of(user));
@@ -82,7 +79,7 @@ class UserServiceTest {
     UserProfileResponse response = userService.getCurrentUserProfile(userId);
 
     assertThat(response.id()).isEqualTo(userId);
-    assertThat(response.username()).isEqualTo("manager");
+    assertThat(response.email()).isEqualTo("manager@dorm.vn");
     assertThat(response.role()).isEqualTo(UserRole.MANAGER);
     assertThat(response.staffProfile()).isNotNull();
     assertThat(response.staffProfile().fullName()).isEqualTo("Nguyễn Văn Quản Lý");
@@ -96,9 +93,7 @@ class UserServiceTest {
     User user =
         User.builder()
             .id(userId)
-            .username("tenant")
             .email("tenant@dorm.vn")
-            .phone("0903000003")
             .role(UserRole.TENANT)
             .status(UserStatus.ACTIVE)
             .build();
@@ -112,7 +107,6 @@ class UserServiceTest {
             .gender(GenderPolicy.MALE)
             .idCardNumber("079201000001")
             .phone("0903000003")
-            .email("tenant@dorm.vn")
             .permanentAddress("Thủ Đức")
             .dateOfBirth(LocalDate.of(2001, 5, 15))
             .residentStatus(ResidentStatus.ACTIVE)
@@ -150,16 +144,12 @@ class UserServiceTest {
             "Võ Văn Thịnh", "thinh.vv@dorm.vn", "0908112245", "Password@123");
 
     when(userRepository.existsByEmail("thinh.vv@dorm.vn")).thenReturn(false);
-    when(userRepository.existsByPhone("0908112245")).thenReturn(false);
-    when(userRepository.existsByUsername("thinh.vv")).thenReturn(false);
     when(passwordEncoder.encode("Password@123")).thenReturn("$2a$12$encodedHash");
 
     User savedUser =
         User.builder()
             .id(UUID.randomUUID())
-            .username("thinh.vv")
             .email("thinh.vv@dorm.vn")
-            .phone("0908112245")
             .passwordHash("$2a$12$encodedHash")
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
@@ -172,7 +162,6 @@ class UserServiceTest {
             .user(savedUser)
             .fullName("Võ Văn Thịnh")
             .phone("0908112245")
-            .active(true)
             .createdAt(Instant.now())
             .build();
     when(staffProfileRepository.save(any(StaffProfile.class))).thenReturn(savedProfile);
@@ -181,8 +170,7 @@ class UserServiceTest {
 
     assertThat(response.fullName()).isEqualTo("Võ Văn Thịnh");
     assertThat(response.email()).isEqualTo("thinh.vv@dorm.vn");
-    assertThat(response.username()).isEqualTo("thinh.vv");
-    assertThat(response.active()).isTrue();
+    assertThat(response.userStatus()).isEqualTo(UserStatus.ACTIVE);
     verify(userRepository).save(any(User.class));
     verify(staffProfileRepository).save(any(StaffProfile.class));
   }
@@ -206,7 +194,6 @@ class UserServiceTest {
     User user =
         User.builder()
             .id(UUID.randomUUID())
-            .username("thinh.vv")
             .email("thinh.vv@dorm.vn")
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
@@ -217,7 +204,6 @@ class UserServiceTest {
             .user(user)
             .fullName("Võ Văn Thịnh")
             .phone("0908112245")
-            .active(true)
             .build();
 
     Page<StaffProfile> page = new PageImpl<>(List.of(profile), pageable, 1);
@@ -239,7 +225,6 @@ class UserServiceTest {
     User user =
         User.builder()
             .id(userId)
-            .username("thinh.vv")
             .email("thinh.vv@dorm.vn")
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
@@ -250,7 +235,6 @@ class UserServiceTest {
             .user(user)
             .fullName("Võ Văn Thịnh")
             .phone("0908112245")
-            .active(true)
             .build();
 
     when(staffProfileRepository.findByIdAndUser_Role(staffId, UserRole.TECHNICIAN))
@@ -260,7 +244,6 @@ class UserServiceTest {
     TechnicianResponse response =
         userService.updateTechnicianStatus(staffId, new UpdateTechnicianStatusRequest(false));
 
-    assertThat(profile.isActive()).isFalse();
     assertThat(user.getStatus()).isEqualTo(UserStatus.LOCKED);
     verify(userRepository).save(user);
     verify(tokenRevocationService).revokeAllUserSessions(userId);
@@ -274,9 +257,7 @@ class UserServiceTest {
     User user =
         User.builder()
             .id(userId)
-            .username("thinh.vv")
             .email("thinh.vv@dorm.vn")
-            .phone("0908112245")
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
             .build();
@@ -286,7 +267,6 @@ class UserServiceTest {
             .user(user)
             .fullName("Võ Văn Thịnh")
             .phone("0908112245")
-            .active(true)
             .build();
 
     UpdateTechnicianRequest request =
@@ -295,14 +275,13 @@ class UserServiceTest {
     when(staffProfileRepository.findByIdAndUser_Role(staffId, UserRole.TECHNICIAN))
         .thenReturn(Optional.of(profile));
     when(userRepository.existsByEmail("thinh.new@dorm.vn")).thenReturn(false);
-    when(userRepository.existsByPhone("0909999888")).thenReturn(false);
     when(staffProfileRepository.save(any(StaffProfile.class))).thenReturn(profile);
 
     TechnicianResponse response = userService.updateTechnician(staffId, request);
 
     assertThat(profile.getFullName()).isEqualTo("Võ Văn Thịnh Updated");
     assertThat(user.getEmail()).isEqualTo("thinh.new@dorm.vn");
-    assertThat(user.getPhone()).isEqualTo("0909999888");
+    assertThat(profile.getPhone()).isEqualTo("0909999888");
     verify(userRepository).save(user);
     verify(staffProfileRepository).save(profile);
   }

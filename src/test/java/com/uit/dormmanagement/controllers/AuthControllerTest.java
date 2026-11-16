@@ -64,9 +64,7 @@ class AuthControllerTest {
     UserResponse userResponse =
         new UserResponse(
             UUID.randomUUID(),
-            "manager",
             "manager@dorm.vn",
-            "0901000001",
             UserRole.MANAGER,
             UserStatus.ACTIVE);
     AuthResponse authResponse =
@@ -83,7 +81,7 @@ class AuthControllerTest {
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.message").value("Đăng nhập thành công"))
         .andExpect(jsonPath("$.data.accessToken").value("access-token-xyz"))
-        .andExpect(jsonPath("$.data.user.username").value("manager"));
+        .andExpect(jsonPath("$.data.user.email").value("manager@dorm.vn"));
   }
 
   @Test
@@ -107,9 +105,7 @@ class AuthControllerTest {
     UserResponse userResponse =
         new UserResponse(
             UUID.randomUUID(),
-            "manager",
             "manager@dorm.vn",
-            "0901000001",
             UserRole.MANAGER,
             UserStatus.ACTIVE);
     AuthResponse authResponse =

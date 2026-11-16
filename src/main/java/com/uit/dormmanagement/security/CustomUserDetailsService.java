@@ -1,6 +1,8 @@
 package com.uit.dormmanagement.security;
 
 import com.uit.dormmanagement.entities.User;
+import com.uit.dormmanagement.enums.UserRole;
+import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CustomUserDetailsService implements UserDetailsService {
 
   private final UserRepository userRepository;
+  private final TenantRepository tenantRepository;
 
   @Override
   @Transactional(readOnly = true)
@@ -28,12 +31,12 @@ public class CustomUserDetailsService implements UserDetailsService {
     }
 
     String trimmed = identifier.trim();
-    Optional<User> userOpt = userRepository.findByUsername(trimmed);
+    Optional<User> userOpt =
+        userRepository
+            .findByEmail(trimmed.toLowerCase(java.util.Locale.ROOT))
+            .filter(user -> user.getRole() != UserRole.TENANT);
     if (userOpt.isEmpty()) {
-      userOpt = userRepository.findByEmail(trimmed);
-    }
-    if (userOpt.isEmpty()) {
-      userOpt = userRepository.findByPhone(trimmed);
+      userOpt = tenantRepository.findByIdCardNumber(trimmed).map(tenant -> tenant.getUser());
     }
 
     return userOpt

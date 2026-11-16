@@ -19,6 +19,10 @@ public interface RoomService {
 
   void deleteRoom(UUID roomId);
 
+  void restoreRoom(UUID roomId);
+
+  void deleteIncorrectRoom(UUID roomId);
+
   RoomDetailResponse getRoomDetails(UUID roomId);
 
   Page<RoomSummaryResponse> getRooms(

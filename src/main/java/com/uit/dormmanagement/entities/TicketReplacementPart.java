@@ -41,9 +41,6 @@ public class TicketReplacementPart {
   @Builder.Default
   private int quantity = 1;
 
-  @Column(name = "unit_cost", nullable = false, precision = 12, scale = 2)
+  @Column(name = "unit_cost", nullable = false, precision = 14, scale = 0)
   private BigDecimal unitCost;
-
-  @Column(name = "total_cost", nullable = false, precision = 12, scale = 2)
-  private BigDecimal totalCost;
 }
