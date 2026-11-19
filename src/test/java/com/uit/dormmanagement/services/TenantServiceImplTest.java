@@ -4,26 +4,35 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.uit.dormmanagement.dtos.request.tenant.UpdateTenantRequest;
+import com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest;
+import com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
+import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantDetailResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Room;
+import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
+import com.uit.dormmanagement.enums.UserRole;
+import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.enums.VehicleType;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
+import com.uit.dormmanagement.exceptions.error.WebErrorCode;
 import com.uit.dormmanagement.repositories.ContractRepository;
+import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
@@ -45,18 +54,27 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
 class TenantServiceImplTest {
 
   @Mock private TenantRepository tenantRepository;
   @Mock private UserRepository userRepository;
+  @Mock private StaffProfileRepository staffProfileRepository;
   @Mock private ContractRepository contractRepository;
   @Mock private VehicleRepository vehicleRepository;
+  @Mock private PasswordRecoveryService passwordRecoveryService;
+  @Mock private UserTokenInvalidationService userTokenInvalidationService;
+  @Mock private RandomPasswordGenerator randomPasswordGenerator;
+  @Mock private PasswordEncoder passwordEncoder;
+  @Mock private UserService userService;
 
   @InjectMocks private TenantServiceImpl tenantService;
 
   private UUID tenantId;
+  private UUID managerUserId;
+  private StaffProfile managerStaff;
   private Tenant tenant;
   private User user;
   private Room room;
@@ -67,10 +85,23 @@ class TenantServiceImplTest {
   @BeforeEach
   void setUp() {
     tenantId = UUID.randomUUID();
+    managerUserId = UUID.randomUUID();
+
+    User managerUser =
+        User.builder()
+            .id(managerUserId)
+            .email("manager@dorm.vn")
+            .role(UserRole.MANAGER)
+            .status(UserStatus.ACTIVE)
+            .build();
+    managerStaff = StaffProfile.builder().id(UUID.randomUUID()).user(managerUser).build();
+
     user =
         User.builder()
             .id(UUID.randomUUID())
             .email("nam.nguyen@example.com")
+            .role(UserRole.TENANT)
+            .status(UserStatus.ACTIVE)
             .build();
 
     tenant =
@@ -87,7 +118,7 @@ class TenantServiceImplTest {
             .createdAt(Instant.now())
             .build();
 
-    room = Room.builder().id(UUID.randomUUID()).roomNumber("P.302").build();
+    room = Room.builder().id(UUID.randomUUID()).roomNumber("P.302").genderPolicy(GenderPolicy.MALE).build();
     bed = Bed.builder().id(UUID.randomUUID()).bedCode("G02").room(room).build();
 
     activeContract =
@@ -138,6 +169,7 @@ class TenantServiceImplTest {
     assertThat(summary.roomNumber()).isEqualTo("P.302");
     assertThat(summary.bedCode()).isEqualTo("G02");
     assertThat(summary.contractEndDate()).isEqualTo(LocalDate.of(2027, 9, 1));
+    assertThat(summary.monthlyRent()).isEqualByComparingTo("1500000.00");
   }
 
   @Test
@@ -173,61 +205,123 @@ class TenantServiceImplTest {
   }
 
   @Test
-  @DisplayName("updateTenant: when tenant not found should throw TENANT_NOT_FOUND")
-  void updateTenant_whenNotFound_shouldThrow() {
-    UpdateTenantRequest request =
-        UpdateTenantRequest.builder().fullName("Nguyễn Hoàng Nam Mới").phone("0912345678").build();
-    when(tenantRepository.findById(tenantId)).thenReturn(Optional.empty());
-
-    assertThatThrownBy(() -> tenantService.updateTenant(tenantId, request))
-        .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.TENANT_NOT_FOUND);
-  }
-
-  @Test
-  @DisplayName("updateTenant: contact phone may be shared by multiple tenants")
-  void updateTenant_whenPhoneAlreadyUsed_shouldUpdate() {
-    UpdateTenantRequest request =
-        UpdateTenantRequest.builder().fullName("Nguyễn Hoàng Nam").phone("0911111111").build();
+  @DisplayName("updateTenantAsManager: should update fields, lock User and Tenant, and invalidate recovery on email change")
+  void updateTenantAsManager_whenValidWithEmailChange_shouldUpdateAndInvalidateRecovery() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
-    when(tenantRepository.save(any(Tenant.class))).thenAnswer(invocation -> invocation.getArgument(0));
-    when(contractRepository.findFirstByTenantIdAndStatusIn(eq(tenantId), any()))
-        .thenReturn(Optional.empty());
-    when(vehicleRepository.findByTenantId(tenantId)).thenReturn(List.of());
-    when(contractRepository.findByTenantId(tenantId)).thenReturn(List.of());
+    when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+    when(tenantRepository.findByIdForUpdate(tenantId)).thenReturn(Optional.of(tenant));
+    when(userRepository.existsByEmail("new.email@example.com")).thenReturn(false);
+    when(tenantRepository.save(any(Tenant.class))).thenAnswer(inv -> inv.getArgument(0));
 
-    TenantDetailResponse updated = tenantService.updateTenant(tenantId, request);
-    assertThat(updated.phone()).isEqualTo("0911111111");
-  }
-
-  @Test
-  @DisplayName("updateTenant: when valid should update fields on tenant and user and return detail")
-  void updateTenant_whenValid_shouldUpdateAndReturnDetail() {
-    UpdateTenantRequest request =
-        UpdateTenantRequest.builder()
-            .fullName("Nguyễn Hoàng Nam Đã Cập Nhật")
+    ManagerUpdateTenantRequest request =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam Mới")
             .phone("0912345678")
             .permanentAddress("456 Hai Bà Trưng, TP.HCM")
-            .emergencyContactName("Nguyễn Văn Ba")
-            .emergencyContactPhone("0988888888")
+            .email("new.email@example.com")
             .build();
 
+    TenantDetailResponse response = tenantService.updateTenantAsManager(managerUserId, tenantId, request);
+
+    assertThat(response.fullName()).isEqualTo("Nguyễn Hoàng Nam Mới");
+    assertThat(response.phone()).isEqualTo("0912345678");
+    assertThat(user.getEmail()).isEqualTo("new.email@example.com");
+    verify(passwordRecoveryService).invalidateRecoveryCredentials(user.getId());
+  }
+
+  @Test
+  @DisplayName("updateTenantAsManager: duplicate idCardNumber should throw ID_CARD_NUMBER_DUPLICATED")
+  void updateTenantAsManager_whenDuplicateCccd_shouldThrow() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
-    when(tenantRepository.save(any(Tenant.class)))
-        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+    when(tenantRepository.findByIdForUpdate(tenantId)).thenReturn(Optional.of(tenant));
+    when(tenantRepository.existsByIdCardNumber("079203009999")).thenReturn(true);
+
+    ManagerUpdateTenantRequest request =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .phone("0987654321")
+            .permanentAddress("123 Lê Lợi")
+            .idCardNumber("079203009999")
+            .build();
+
+    assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, request))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
+  }
+
+  @Test
+  @DisplayName("updateTenantAsManager: gender mismatch with active room gender policy should throw GENDER_MISMATCH_CURRENT_ROOM")
+  void updateTenantAsManager_whenGenderMismatch_shouldThrow() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+    when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+    when(tenantRepository.findByIdForUpdate(tenantId)).thenReturn(Optional.of(tenant));
     when(contractRepository.findFirstByTenantIdAndStatusIn(eq(tenantId), any()))
         .thenReturn(Optional.of(activeContract));
-    when(contractRepository.findByTenantId(tenantId)).thenReturn(List.of(activeContract));
-    when(vehicleRepository.findByTenantId(tenantId)).thenReturn(List.of(vehicle));
 
-    TenantDetailResponse detail = tenantService.updateTenant(tenantId, request);
+    ManagerUpdateTenantRequest request =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .phone("0987654321")
+            .permanentAddress("123 Lê Lợi")
+            .gender(GenderPolicy.FEMALE)
+            .build();
 
-    assertThat(detail.fullName()).isEqualTo("Nguyễn Hoàng Nam Đã Cập Nhật");
-    assertThat(detail.phone()).isEqualTo("0912345678");
-    assertThat(detail.permanentAddress()).isEqualTo("456 Hai Bà Trưng, TP.HCM");
-    assertThat(detail.emergencyContactName()).isEqualTo("Nguyễn Văn Ba");
-    assertThat(detail.emergencyContactPhone()).isEqualTo("0988888888");
+    assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, request))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.GENDER_MISMATCH_CURRENT_ROOM);
+  }
 
-    assertThat(user.getEmail()).isEqualTo("nam.nguyen@example.com");
+  @Test
+  @DisplayName("updateOwnContact: tenant updates own contact fields successfully")
+  void updateOwnContact_whenValid_shouldUpdateAndReturnProfile() {
+    UUID tenantUserId = user.getId();
+    when(tenantRepository.findByUserIdForUpdate(tenantUserId)).thenReturn(Optional.of(tenant));
+    when(userService.getCurrentUserProfile(tenantUserId)).thenReturn(null);
+
+    TenantContactUpdateRequest request =
+        TenantContactUpdateRequest.builder()
+            .phone("0909999888")
+            .permanentAddress("789 Trần Hưng Đạo")
+            .build();
+
+    tenantService.updateOwnContact(tenantUserId, request);
+
+    assertThat(tenant.getPhone()).isEqualTo("0909999888");
+    assertThat(tenant.getPermanentAddress()).isEqualTo("789 Trần Hưng Đạo");
+    verify(tenantRepository).save(tenant);
+  }
+
+  @Test
+  @DisplayName("updateOwnContact: should throw when no fields are provided")
+  void updateOwnContact_whenNoFields_shouldThrow() {
+    UUID tenantUserId = user.getId();
+    TenantContactUpdateRequest request = TenantContactUpdateRequest.builder().build();
+
+    assertThatThrownBy(() -> tenantService.updateOwnContact(tenantUserId, request))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.NO_CONTACT_FIELDS_PROVIDED);
+  }
+
+  @Test
+  @DisplayName("resetTenantPasswordAsManager: manager resets tenant password, saves hash, and invalidates sessions")
+  void resetTenantPasswordAsManager_shouldResetAndInvalidate() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+    when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+    when(randomPasswordGenerator.generate()).thenReturn("GeneratedPass123@");
+    when(passwordEncoder.encode("GeneratedPass123@")).thenReturn("hashedPassword");
+
+    OneTimePasswordResponse response =
+        tenantService.resetTenantPasswordAsManager(managerUserId, tenantId);
+
+    assertThat(response.temporaryPassword()).isEqualTo("GeneratedPass123@");
+    assertThat(user.getPasswordHash()).isEqualTo("hashedPassword");
+    verify(userRepository).save(user);
+    verify(passwordRecoveryService).invalidateRecoveryCredentials(user.getId());
+    verify(userTokenInvalidationService).invalidateAll(user.getId());
   }
 }

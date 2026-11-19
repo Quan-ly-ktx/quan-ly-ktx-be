@@ -2,6 +2,7 @@ package com.uit.dormmanagement.services;
 
 import com.uit.dormmanagement.dtos.request.room.CreateRoomRequest;
 import com.uit.dormmanagement.dtos.request.room.UpdateRoomRequest;
+import com.uit.dormmanagement.dtos.response.room.ArchivedRoomSummaryResponse;
 import com.uit.dormmanagement.dtos.response.room.RoomDetailResponse;
 import com.uit.dormmanagement.dtos.response.room.RoomSummaryResponse;
 import com.uit.dormmanagement.enums.GenderPolicy;
@@ -19,12 +20,15 @@ public interface RoomService {
 
   void deleteRoom(UUID roomId);
 
-  void restoreRoom(UUID roomId);
+  RoomDetailResponse restoreRoom(UUID roomId);
 
   void deleteIncorrectRoom(UUID roomId);
 
   RoomDetailResponse getRoomDetails(UUID roomId);
 
   Page<RoomSummaryResponse> getRooms(
+      Integer floor, GenderPolicy genderPolicy, String search, Pageable pageable);
+
+  Page<ArchivedRoomSummaryResponse> getArchivedRooms(
       Integer floor, GenderPolicy genderPolicy, String search, Pageable pageable);
 }

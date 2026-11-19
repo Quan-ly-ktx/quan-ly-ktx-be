@@ -4,7 +4,7 @@ import java.util.UUID;
 
 public interface TokenRevocationService {
 
-  void recordRefreshToken(UUID userId, String jti, String token, long ttlSeconds);
+  void recordRefreshToken(UUID userId, String jti, long ttlSeconds);
 
   boolean isRefreshTokenValid(UUID userId, String jti);
 

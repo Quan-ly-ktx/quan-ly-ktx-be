@@ -16,7 +16,4 @@ public record CreateTechnicianRequest(
         @Pattern(
             regexp = "^0[0-9]{9}$",
             message = "Số điện thoại phải gồm 10 chữ số bắt đầu bằng số 0")
-        String phone,
-    @NotBlank(message = "Mật khẩu khởi tạo không được để trống")
-        @Size(min = 6, max = 64, message = "Mật khẩu khởi tạo cần tối thiểu 6 ký tự")
-        String password) {}
+        String phone) {}

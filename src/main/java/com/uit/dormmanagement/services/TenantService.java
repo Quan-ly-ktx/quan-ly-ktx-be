@@ -1,6 +1,9 @@
 package com.uit.dormmanagement.services;
 
-import com.uit.dormmanagement.dtos.request.tenant.UpdateTenantRequest;
+import com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest;
+import com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
+import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantDetailResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantSummaryResponse;
 import com.uit.dormmanagement.enums.ResidentStatus;
@@ -15,5 +18,12 @@ public interface TenantService {
 
   TenantDetailResponse getTenantById(UUID id);
 
-  TenantDetailResponse updateTenant(UUID id, UpdateTenantRequest request);
+  TenantDetailResponse updateTenantAsManager(
+      UUID managerUserId, UUID tenantId, ManagerUpdateTenantRequest request);
+
+  UserProfileResponse updateOwnContact(
+      UUID tenantUserId, TenantContactUpdateRequest request);
+
+  OneTimePasswordResponse resetTenantPasswordAsManager(
+      UUID managerUserId, UUID tenantId);
 }

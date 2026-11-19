@@ -2,19 +2,22 @@ package com.uit.dormmanagement.controllers;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.uit.dormmanagement.dtos.request.vehicle.CreateVehicleAdminRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.IssueCardRequest;
+import com.uit.dormmanagement.dtos.request.vehicle.RejectVehicleRequest;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
+import com.uit.dormmanagement.dtos.response.vehicle.VehicleEvidenceContent;
 import com.uit.dormmanagement.dtos.response.vehicle.VehicleResponse;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.UserRole;
@@ -23,6 +26,7 @@ import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.enums.VehicleType;
 import com.uit.dormmanagement.exceptions.AppExceptionHandler;
 import com.uit.dormmanagement.security.UserPrincipal;
+import com.uit.dormmanagement.services.VehicleEvidenceAccessService;
 import com.uit.dormmanagement.services.VehicleService;
 import java.time.Instant;
 import java.util.List;
@@ -35,10 +39,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -54,6 +60,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 class VehicleControllerTest {
 
   @Mock private VehicleService vehicleService;
+  @Mock private VehicleEvidenceAccessService vehicleEvidenceAccessService;
 
   @InjectMocks private AdminVehicleController adminVehicleController;
   @InjectMocks private TenantVehicleController tenantVehicleController;
@@ -108,7 +115,7 @@ class VehicleControllerTest {
 
     adminMockMvc =
         MockMvcBuilders.standaloneSetup(adminVehicleController)
-            .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+            .setCustomArgumentResolvers(principalResolver, new PageableHandlerMethodArgumentResolver())
             .setControllerAdvice(new AppExceptionHandler(responseFactory))
             .build();
 
@@ -147,25 +154,18 @@ class VehicleControllerTest {
   }
 
   @Test
-  @DisplayName("POST /api/v1/admin/vehicles: should create vehicle and return 201")
+  @DisplayName("POST /api/v1/admin/vehicles: multipart create vehicle should return 201")
   void createVehicleAdmin_shouldReturn201() throws Exception {
-    CreateVehicleAdminRequest request =
-        CreateVehicleAdminRequest.builder()
-            .tenantId(tenantId)
-            .vehicleType(VehicleType.SCOOTER)
-            .licensePlate("59-X3 789.12")
-            .brand("Honda")
-            .color("Đen")
-            .cardCode("THE-0187")
-            .build();
-
-    when(vehicleService.createVehicleAdmin(any())).thenReturn(sampleResponse);
+    when(vehicleService.createVehicleAdmin(any(), any(), any())).thenReturn(sampleResponse);
 
     adminMockMvc
         .perform(
-            post("/api/v1/admin/vehicles")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+            multipart("/api/v1/admin/vehicles")
+                .param("tenantId", tenantId.toString())
+                .param("vehicleType", "SCOOTER")
+                .param("licensePlate", "59-X3 789.12")
+                .param("brand", "Honda")
+                .param("color", "Đen"))
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.httpStatus").value(201))
         .andExpect(jsonPath("$.data.licensePlate").value("59-X3 789.12"));
@@ -175,7 +175,7 @@ class VehicleControllerTest {
   @DisplayName("PATCH /api/v1/admin/vehicles/{id}/issue-card: should issue card and return 200")
   void issueCard_shouldReturn200() throws Exception {
     IssueCardRequest req = IssueCardRequest.builder().cardCode("THE-0187").build();
-    when(vehicleService.issueCard(eq(vehicleId), any())).thenReturn(sampleResponse);
+    when(vehicleService.issueCard(any(), eq(vehicleId), any())).thenReturn(sampleResponse);
 
     adminMockMvc
         .perform(
@@ -188,17 +188,62 @@ class VehicleControllerTest {
   }
 
   @Test
+  @DisplayName("PATCH /api/v1/admin/vehicles/{id}/reject: should reject vehicle and return 200")
+  void rejectVehicle_shouldReturn200() throws Exception {
+    RejectVehicleRequest req = RejectVehicleRequest.builder().reason("Ảnh mờ").build();
+    VehicleResponse rejected =
+        VehicleResponse.builder().id(vehicleId).status(VehicleStatus.REJECTED).rejectionReason("Ảnh mờ").build();
+    when(vehicleService.rejectVehicle(any(), eq(vehicleId), eq("Ảnh mờ"))).thenReturn(rejected);
+
+    adminMockMvc
+        .perform(
+            patch("/api/v1/admin/vehicles/{id}/reject", vehicleId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data.status").value("REJECTED"));
+  }
+
+  @Test
   @DisplayName("PATCH /api/v1/admin/vehicles/{id}/revoke-card: should revoke card and return 200")
   void revokeCard_shouldReturn200() throws Exception {
     VehicleResponse revoked =
         VehicleResponse.builder().id(vehicleId).status(VehicleStatus.REVOKED).build();
-    when(vehicleService.revokeCard(vehicleId)).thenReturn(revoked);
+    when(vehicleService.revokeCard(any(), eq(vehicleId))).thenReturn(revoked);
 
     adminMockMvc
         .perform(patch("/api/v1/admin/vehicles/{id}/revoke-card", vehicleId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.data.status").value("REVOKED"));
+  }
+
+  @Test
+  @DisplayName("DELETE /api/v1/admin/vehicles/{id}: should cancel pending vehicle")
+  void deleteVehicle_shouldCancelPending() throws Exception {
+    adminMockMvc
+        .perform(delete("/api/v1/admin/vehicles/{id}", vehicleId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200));
+
+    verify(vehicleService).deleteVehicle(vehicleId);
+  }
+
+  @Test
+  @DisplayName("GET /api/v1/admin/vehicles/{id}/evidence/{side}: streams evidence")
+  void getVehicleEvidence_admin_shouldStream() throws Exception {
+    byte[] data = "front-evidence-bytes".getBytes();
+    VehicleEvidenceContent content =
+        new VehicleEvidenceContent(new ByteArrayResource(data), "image/jpeg", data.length);
+    when(vehicleEvidenceAccessService.loadVehicleEvidence(any(), eq(true), eq(vehicleId), eq("front")))
+        .thenReturn(content);
+
+    adminMockMvc
+        .perform(get("/api/v1/admin/vehicles/{id}/evidence/front", vehicleId))
+        .andExpect(status().isOk())
+        .andExpect(content().contentType(MediaType.IMAGE_JPEG))
+        .andExpect(content().bytes(data));
   }
 
   @Test
@@ -211,6 +256,18 @@ class VehicleControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.data.licensePlate").value("59-X3 789.12"));
+  }
+
+  @Test
+  @DisplayName("GET /api/v1/tenant/vehicles: should return tenant vehicle history")
+  void getVehicleHistory_shouldReturnHistory() throws Exception {
+    when(vehicleService.getVehicleHistory(userId)).thenReturn(List.of(sampleResponse));
+
+    tenantMockMvc
+        .perform(get("/api/v1/tenant/vehicles"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data[0].licensePlate").value("59-X3 789.12"));
   }
 
   @Test

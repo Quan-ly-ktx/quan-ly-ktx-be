@@ -2,6 +2,7 @@ package com.uit.dormmanagement.controllers;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,13 +10,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uit.dormmanagement.dtos.request.auth.ForgotPasswordRequest;
 import com.uit.dormmanagement.dtos.request.auth.LoginRequest;
+import com.uit.dormmanagement.dtos.request.auth.PasswordRecoveryRequest;
 import com.uit.dormmanagement.dtos.request.auth.RefreshTokenRequest;
 import com.uit.dormmanagement.dtos.request.auth.ResetPasswordRequest;
-import com.uit.dormmanagement.dtos.request.auth.VerifyOtpRequest;
+import com.uit.dormmanagement.dtos.request.auth.VerifyRecoveryOtpRequest;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.auth.AuthResponse;
+import com.uit.dormmanagement.dtos.response.auth.PasswordRecoveryRequestedResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserResponse;
 import com.uit.dormmanagement.dtos.response.auth.VerifyResetPasswordOtpResponse;
 import com.uit.dormmanagement.enums.UserRole;
@@ -126,14 +128,27 @@ class AuthControllerTest {
   @Test
   @DisplayName("POST /api/v1/auth/logout should return 200 and invoke authService.logout")
   void shouldLogoutSuccessfully() throws Exception {
+    RefreshTokenRequest request = new RefreshTokenRequest("valid-refresh-token");
+    mockMvc
+        .perform(
+            post("/api/v1/auth/logout")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer some-access-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.message").value("Đăng xuất thành công"));
+
+    verify(authService).logout(eq("Bearer some-access-token"), any(RefreshTokenRequest.class));
+  }
+
+  @Test
+  @DisplayName("POST /api/v1/auth/logout without body should return 400 Bad Request")
+  void shouldRejectLogoutWithoutBody() throws Exception {
     mockMvc
         .perform(
             post("/api/v1/auth/logout")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer some-access-token"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.message").value("Đăng xuất thành công"));
-
-    verify(authService).logout(anyString(), any());
+        .andExpect(status().isBadRequest());
   }
 
   @Test
@@ -150,9 +165,13 @@ class AuthControllerTest {
   }
 
   @Test
-  @DisplayName("POST /api/v1/auth/forgot-password should return 200 on valid email format")
+  @DisplayName("POST /api/v1/auth/forgot-password should return 200 on valid identifier")
   void shouldHandleForgotPassword() throws Exception {
-    ForgotPasswordRequest request = new ForgotPasswordRequest("user@dorm.vn");
+    PasswordRecoveryRequest request = new PasswordRecoveryRequest("user@dorm.vn");
+    UUID reqId = UUID.randomUUID();
+    PasswordRecoveryRequestedResponse response = new PasswordRecoveryRequestedResponse(reqId, 300L);
+
+    when(authService.forgotPassword(any(PasswordRecoveryRequest.class))).thenReturn(response);
 
     mockMvc
         .perform(
@@ -160,18 +179,20 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.httpStatus").value(200));
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data.recoveryRequestId").value(reqId.toString()));
 
-    verify(authService).forgotPassword(any(ForgotPasswordRequest.class));
+    verify(authService).forgotPassword(any(PasswordRecoveryRequest.class));
   }
 
   @Test
   @DisplayName("POST /api/v1/auth/verify-forgot-password-otp should return reset token")
   void shouldVerifyOtpSuccessfully() throws Exception {
-    VerifyOtpRequest request = new VerifyOtpRequest("user@dorm.vn", "123456");
+    UUID reqId = UUID.randomUUID();
+    VerifyRecoveryOtpRequest request = new VerifyRecoveryOtpRequest(reqId, "123456");
     VerifyResetPasswordOtpResponse response = new VerifyResetPasswordOtpResponse("reset-token-abc");
 
-    when(authService.verifyForgotPasswordOtp(any(VerifyOtpRequest.class))).thenReturn(response);
+    when(authService.verifyForgotPasswordOtp(any(VerifyRecoveryOtpRequest.class))).thenReturn(response);
 
     mockMvc
         .perform(
@@ -186,8 +207,7 @@ class AuthControllerTest {
   @DisplayName("POST /api/v1/auth/reset-password should return 200 on successful password reset")
   void shouldResetPasswordSuccessfully() throws Exception {
     ResetPasswordRequest request =
-        new ResetPasswordRequest(
-            "user@dorm.vn", "reset-token", "NewPassword@123", "NewPassword@123");
+        new ResetPasswordRequest("reset-token", "NewPassword@123", "NewPassword@123");
 
     mockMvc
         .perform(

@@ -17,7 +17,7 @@ class DomainErrorCodeTest {
     assertThat(TenantErrorCode.TENANT_NOT_FOUND.getHttpStatus()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(ContractErrorCode.GENDER_MISMATCH.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED.getHttpStatus())
-        .isEqualTo(HttpStatus.BAD_REQUEST);
+        .isEqualTo(HttpStatus.CONFLICT);
   }
 
   @Test
@@ -74,11 +74,11 @@ class DomainErrorCodeTest {
     assertThat(VehicleErrorCode.CARD_CODE_DUPLICATED.getHttpStatus())
         .isEqualTo(HttpStatus.CONFLICT);
     assertThat(VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED.getHttpStatus())
-        .isEqualTo(HttpStatus.BAD_REQUEST);
+        .isEqualTo(HttpStatus.CONFLICT);
     assertThat(VehicleErrorCode.VEHICLE_ALREADY_ACTIVE.getHttpStatus())
-        .isEqualTo(HttpStatus.BAD_REQUEST);
+        .isEqualTo(HttpStatus.CONFLICT);
     assertThat(VehicleErrorCode.VEHICLE_NOT_PENDING.getHttpStatus())
-        .isEqualTo(HttpStatus.BAD_REQUEST);
+        .isEqualTo(HttpStatus.CONFLICT);
 
     for (VehicleErrorCode code : VehicleErrorCode.values()) {
       assertThat(code.getErrorCode()).isNotBlank().startsWith("VEHICLE_");

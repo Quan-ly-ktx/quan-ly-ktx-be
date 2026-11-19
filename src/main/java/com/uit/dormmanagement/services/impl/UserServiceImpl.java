@@ -3,6 +3,8 @@ package com.uit.dormmanagement.services.impl;
 import com.uit.dormmanagement.dtos.request.auth.CreateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianStatusRequest;
+import com.uit.dormmanagement.dtos.response.auth.CreateTechnicianResponse;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
 import com.uit.dormmanagement.dtos.response.auth.TechnicianResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.entities.StaffProfile;
@@ -15,8 +17,11 @@ import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
+import com.uit.dormmanagement.services.PasswordRecoveryService;
+import com.uit.dormmanagement.services.RandomPasswordGenerator;
 import com.uit.dormmanagement.services.TokenRevocationService;
 import com.uit.dormmanagement.services.UserService;
+import com.uit.dormmanagement.services.UserTokenInvalidationService;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
@@ -42,6 +47,9 @@ public class UserServiceImpl implements UserService {
   private final TenantRepository tenantRepository;
   private final PasswordEncoder passwordEncoder;
   private final TokenRevocationService tokenRevocationService;
+  private final UserTokenInvalidationService userTokenInvalidationService;
+  private final RandomPasswordGenerator randomPasswordGenerator;
+  private final PasswordRecoveryService passwordRecoveryService;
 
   @Override
   @Transactional(readOnly = true)
@@ -94,17 +102,19 @@ public class UserServiceImpl implements UserService {
 
   @Override
   @Transactional
-  public TechnicianResponse createTechnician(CreateTechnicianRequest request) {
+  public CreateTechnicianResponse createTechnician(CreateTechnicianRequest request) {
     String email = request.email().trim().toLowerCase();
     String phone = request.phone().trim();
 
     if (userRepository.existsByEmail(email)) {
       throw new BaseAppException(AuthErrorCode.DUPLICATE_EMAIL);
     }
+
+    String generatedPassword = randomPasswordGenerator.generate();
     User user =
         User.builder()
             .email(email)
-            .passwordHash(passwordEncoder.encode(request.password()))
+            .passwordHash(passwordEncoder.encode(generatedPassword))
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
             .build();
@@ -123,7 +133,8 @@ public class UserServiceImpl implements UserService {
         savedProfile.getId(),
         savedUser.getEmail());
 
-    return TechnicianResponse.fromEntity(savedProfile);
+    return new CreateTechnicianResponse(
+        TechnicianResponse.fromEntity(savedProfile), generatedPassword);
   }
 
   @Override
@@ -176,8 +187,8 @@ public class UserServiceImpl implements UserService {
       userRepository.save(user);
 
       if (!newActive) {
-        tokenRevocationService.revokeAllUserSessions(user.getId());
-        log.info("Locked technician and revoked all sessions: user id={}", user.getId());
+        userTokenInvalidationService.invalidateAll(user.getId());
+        log.info("Locked technician and invalidated all sessions: user id={}", user.getId());
       }
     }
     StaffProfile updatedProfile = staffProfileRepository.save(profile);
@@ -209,6 +220,31 @@ public class UserServiceImpl implements UserService {
     log.info(
         "Manager updated technician profile: id={}, email={}, phone={}", id, newEmail, newPhone);
     return TechnicianResponse.fromEntity(savedProfile);
+  }
+
+  @Override
+  @Transactional
+  public OneTimePasswordResponse resetTechnicianPassword(UUID id) {
+    StaffProfile profile = findTechnicianByIdOrUserId(id);
+    User user = profile.getUser();
+    if (user == null) {
+      throw new BaseAppException(AuthErrorCode.TECHNICIAN_NOT_FOUND);
+    }
+
+    User lockedUser =
+        userRepository
+            .findByIdForUpdate(user.getId())
+            .orElseThrow(() -> new BaseAppException(AuthErrorCode.TECHNICIAN_NOT_FOUND));
+
+    String generatedPassword = randomPasswordGenerator.generate();
+    lockedUser.setPasswordHash(passwordEncoder.encode(generatedPassword));
+    userRepository.save(lockedUser);
+
+    passwordRecoveryService.invalidateRecoveryCredentials(lockedUser.getId());
+    userTokenInvalidationService.invalidateAll(lockedUser.getId());
+
+    log.info("Manager reset password for technician: staff id={}, user id={}", id, lockedUser.getId());
+    return new OneTimePasswordResponse(generatedPassword);
   }
 
   private StaffProfile findTechnicianByIdOrUserId(UUID id) {

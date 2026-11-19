@@ -32,4 +32,11 @@ public class StorageConfig {
       @Value("${storage.local.base-dir:uploads}") String baseDir) {
     return new LocalStorageServiceImpl(baseDir);
   }
+
+  @Bean
+  @ConditionalOnMissingBean(com.uit.dormmanagement.services.VehicleEvidenceStorage.class)
+  public com.uit.dormmanagement.services.VehicleEvidenceStorage vehicleEvidenceStorage(
+      @Value("${storage.vehicle.private-base-dir:private-storage/vehicles}") String privateBaseDir) {
+    return new com.uit.dormmanagement.services.impl.LocalVehicleEvidenceStorage(privateBaseDir);
+  }
 }

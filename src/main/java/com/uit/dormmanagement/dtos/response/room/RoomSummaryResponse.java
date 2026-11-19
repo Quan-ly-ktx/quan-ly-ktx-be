@@ -14,5 +14,7 @@ public record RoomSummaryResponse(
     GenderPolicy genderPolicy,
     int totalBeds,
     int occupiedBeds,
+    int availableBeds,
+    int maintenanceBeds,
     BigDecimal basePrice,
     List<AmenityItemResponse> amenities) {}

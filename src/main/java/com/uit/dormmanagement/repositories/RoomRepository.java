@@ -35,6 +35,31 @@ public interface RoomRepository extends JpaRepository<Room, UUID>, JpaSpecificat
   @Query(value = "UPDATE rooms SET archived_at = NULL, updated_at = :updatedAt WHERE id = :id", nativeQuery = true)
   int restoreArchivedRoom(@Param("id") UUID id, @Param("updatedAt") Instant updatedAt);
 
+  @Query(
+      value =
+          "SELECT * FROM rooms r WHERE r.archived_at IS NOT NULL "
+              + "AND (:floor IS NULL OR r.floor = :floor) "
+              + "AND (:genderPolicy IS NULL OR r.gender_policy = :genderPolicy) "
+              + "AND (:search IS NULL OR LOWER(r.room_number) LIKE LOWER(CONCAT('%', :search, '%'))) "
+              + "ORDER BY r.floor ASC, r.room_number ASC",
+      countQuery =
+          "SELECT count(*) FROM rooms r WHERE r.archived_at IS NOT NULL "
+              + "AND (:floor IS NULL OR r.floor = :floor) "
+              + "AND (:genderPolicy IS NULL OR r.gender_policy = :genderPolicy) "
+              + "AND (:search IS NULL OR LOWER(r.room_number) LIKE LOWER(CONCAT('%', :search, '%')))",
+      nativeQuery = true)
+  Page<Room> findArchivedRoomsPaged(
+      @Param("floor") Integer floor,
+      @Param("genderPolicy") String genderPolicy,
+      @Param("search") String search,
+      Pageable pageable);
+
+  @Query(value = "SELECT * FROM rooms r WHERE r.id = :id", nativeQuery = true)
+  Optional<Room> findByIdUnfiltered(@Param("id") UUID id);
+
+  @Query(value = "SELECT * FROM rooms r WHERE r.id = :id FOR UPDATE", nativeQuery = true)
+  Optional<Room> findByIdUnfilteredForUpdate(@Param("id") UUID id);
+
   List<Room> findByFloor(int floor);
 
   List<Room> findByGenderPolicy(GenderPolicy genderPolicy);

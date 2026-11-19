@@ -165,6 +165,70 @@ class TenantContractVehicleRepositoryTest {
     assertThat(nextSeq).isGreaterThanOrEqualTo(9002);
   }
 
+  @Test
+  @DisplayName("TenantRepository: lock queries and uniqueness integrity")
+  void tenantRepository_lockAndIntegrityChecks() {
+    Optional<Tenant> lockedById = tenantRepository.findByIdForUpdate(testTenant.getId());
+    assertThat(lockedById).isPresent();
+    assertThat(lockedById.get().getTenantCode()).isEqualTo("NT-9001");
+
+    Optional<Tenant> lockedByUserId =
+        tenantRepository.findByUserIdForUpdate(testTenant.getUser().getId());
+    assertThat(lockedByUserId).isPresent();
+    assertThat(lockedByUserId.get().getId()).isEqualTo(testTenant.getId());
+
+    // Duplicate phone is permitted
+    User secondUser =
+        userRepository.save(
+            User.builder()
+                .email("second-tenant@example.test")
+                .passwordHash("hash")
+                .role(UserRole.TENANT)
+                .status(UserStatus.ACTIVE)
+                .build());
+    Tenant secondTenant =
+        tenantRepository.save(
+            Tenant.builder()
+                .user(secondUser)
+                .tenantCode("NT-9002")
+                .fullName("Second Tenant")
+                .gender(GenderPolicy.FEMALE)
+                .idCardNumber("079203999002")
+                .phone("0987654321") // Same phone as testTenant
+                .permanentAddress("456 Other Street")
+                .residentStatus(ResidentStatus.ACTIVE)
+                .build());
+    entityManager.flush();
+    assertThat(secondTenant.getId()).isNotNull();
+
+    // Duplicate CCCD must fail
+    User thirdUser =
+        userRepository.save(
+            User.builder()
+                .email("third-tenant@example.test")
+                .passwordHash("hash")
+                .role(UserRole.TENANT)
+                .status(UserStatus.ACTIVE)
+                .build());
+    Tenant thirdTenant =
+        Tenant.builder()
+            .user(thirdUser)
+            .tenantCode("NT-9003")
+            .fullName("Third Tenant")
+            .gender(GenderPolicy.MALE)
+            .idCardNumber("079203999001") // Duplicate CCCD
+            .phone("0911222333")
+            .permanentAddress("789 Third Street")
+            .residentStatus(ResidentStatus.ACTIVE)
+            .build();
+    org.junit.jupiter.api.Assertions.assertThrows(
+        Exception.class,
+        () -> {
+          tenantRepository.save(thirdTenant);
+          entityManager.flush();
+        });
+  }
+
   // ===================== VEHICLE REPOSITORY TESTS =====================
 
   @Test

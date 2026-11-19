@@ -35,7 +35,13 @@ public enum RoomErrorCode implements AppErrorCode {
   ROOM_CAPACITY_CANNOT_BE_REDUCED(
       "ROOM_400_CAPACITY",
       "Sức chứa phòng không được phép giảm dưới số lượng người đang cư trú thực tế",
-      HttpStatus.BAD_REQUEST);
+      HttpStatus.BAD_REQUEST),
+  ROOM_ALREADY_ARCHIVED("ROOM_409_ARCHIVED", "Phòng đã ở trạng thái lưu trữ", HttpStatus.CONFLICT),
+  ROOM_NOT_ARCHIVED("ROOM_409_NOT_ARCHIVED", "Phòng không ở trạng thái lưu trữ", HttpStatus.CONFLICT),
+  ROOM_HAS_HISTORY("ROOM_409_HISTORY", "Phòng đã phát sinh lịch sử nghiệp vụ không thể xóa vĩnh viễn", HttpStatus.CONFLICT),
+  ROOM_OCCUPIED_OR_CONTRACT_ACTIVE("ROOM_409_OCCUPIED", "Phòng đang có khách cư trú hoặc hợp đồng còn hiệu lực", HttpStatus.CONFLICT),
+  BED_INVALID_STATUS_TRANSITION("BED_409_STATUS", "Chuyển đổi trạng thái giường không hợp lệ", HttpStatus.CONFLICT),
+  BED_HAS_ACTIVE_CONTRACT("BED_409_CONTRACT", "Giường đang có hợp đồng hiệu lực không thể chuyển trạng thái", HttpStatus.CONFLICT);
 
   private final String errorCode;
   private final String message;

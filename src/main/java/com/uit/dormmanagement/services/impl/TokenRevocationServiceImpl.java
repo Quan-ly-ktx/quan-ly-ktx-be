@@ -16,18 +16,19 @@ import org.springframework.stereotype.Service;
 public class TokenRevocationServiceImpl implements TokenRevocationService {
 
   private static final String BLACKLIST_MARKER = "REVOKED";
+  private static final String ACTIVE_MARKER = "ACTIVE";
 
   private final StringRedisTemplate redisTemplate;
 
   @Override
-  public void recordRefreshToken(UUID userId, String jti, String token, long ttlSeconds) {
+  public void recordRefreshToken(UUID userId, String jti, long ttlSeconds) {
     String refreshKey = RedisKeyConstants.refreshTokenKey(userId, jti);
-    redisTemplate.opsForValue().set(refreshKey, token, Duration.ofSeconds(ttlSeconds));
+    redisTemplate.opsForValue().set(refreshKey, ACTIVE_MARKER, Duration.ofSeconds(ttlSeconds));
 
     String sessionKey = RedisKeyConstants.userSessionsKey(userId);
     redisTemplate.opsForSet().add(sessionKey, jti);
     redisTemplate.expire(sessionKey, Duration.ofSeconds(ttlSeconds));
-    log.debug("Recorded refresh token with jti: {} for user: {}", jti, userId);
+    log.debug("Recorded refresh token marker with jti: {} for user: {}", jti, userId);
   }
 
   @Override

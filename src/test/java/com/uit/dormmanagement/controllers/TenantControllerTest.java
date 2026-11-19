@@ -4,14 +4,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.uit.dormmanagement.dtos.request.tenant.UpdateTenantRequest;
+import com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantDetailResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantSummaryResponse;
 import com.uit.dormmanagement.enums.GenderPolicy;
@@ -147,9 +149,12 @@ class TenantControllerTest {
   @Test
   @DisplayName("PUT /api/v1/admin/tenants/{id}: when valid should return 200 and updated detail")
   void updateTenant_whenValid_shouldReturn200() throws Exception {
-    UpdateTenantRequest request =
-        UpdateTenantRequest.builder()
+    ManagerUpdateTenantRequest request =
+        ManagerUpdateTenantRequest.builder()
             .fullName("Nguyễn Hoàng Nam Cập Nhật")
+            .gender(GenderPolicy.MALE)
+            .idCardNumber("079203001187")
+            .email("nam.nguyen@example.com")
             .phone("0912345678")
             .permanentAddress("456 Hai Bà Trưng, TP.HCM")
             .build();
@@ -167,7 +172,7 @@ class TenantControllerTest {
             .currentRoomNumber("P.302")
             .build();
 
-    when(tenantService.updateTenant(eq(tenantId), any())).thenReturn(updatedResponse);
+    when(tenantService.updateTenantAsManager(any(), eq(tenantId), any())).thenReturn(updatedResponse);
 
     mockMvc
         .perform(
@@ -183,8 +188,12 @@ class TenantControllerTest {
   @Test
   @DisplayName("PUT /api/v1/admin/tenants/{id}: when validation fails should return 400")
   void updateTenant_whenValidationFails_shouldReturn400() throws Exception {
-    UpdateTenantRequest invalidRequest =
-        UpdateTenantRequest.builder().fullName("").phone("12345").build();
+    ManagerUpdateTenantRequest invalidRequest =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("")
+            .idCardNumber("1234")
+            .phone("12345")
+            .build();
 
     mockMvc
         .perform(
@@ -193,5 +202,18 @@ class TenantControllerTest {
                 .content(objectMapper.writeValueAsString(invalidRequest)))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.httpStatus").value(400));
+  }
+
+  @Test
+  @DisplayName("POST /api/v1/admin/tenants/{id}/reset-password: when success should return 200 and one-time password")
+  void resetTenantPassword_whenSuccess_shouldReturn200() throws Exception {
+    OneTimePasswordResponse passwordResponse = new OneTimePasswordResponse("GeneratedP@ss1");
+    when(tenantService.resetTenantPasswordAsManager(any(), eq(tenantId))).thenReturn(passwordResponse);
+
+    mockMvc
+        .perform(post("/api/v1/admin/tenants/{id}/reset-password", tenantId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data.temporaryPassword").value("GeneratedP@ss1"));
   }
 }

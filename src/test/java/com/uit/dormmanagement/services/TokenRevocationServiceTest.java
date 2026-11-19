@@ -37,22 +37,21 @@ class TokenRevocationServiceTest {
   }
 
   @Test
-  @DisplayName("recordRefreshToken should save token with TTL and add jti to user session set")
+  @DisplayName("recordRefreshToken should save ACTIVE marker with TTL and add jti to user session set")
   void shouldRecordRefreshToken() {
     when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     when(redisTemplate.opsForSet()).thenReturn(setOperations);
 
     UUID userId = UUID.randomUUID();
     String jti = "test-jti-123";
-    String token = "dummy-refresh-token";
     long ttl = 604800L;
 
-    tokenRevocationService.recordRefreshToken(userId, jti, token, ttl);
+    tokenRevocationService.recordRefreshToken(userId, jti, ttl);
 
     verify(valueOperations)
         .set(
             eq(RedisKeyConstants.refreshTokenKey(userId, jti)),
-            eq(token),
+            eq("ACTIVE"),
             eq(Duration.ofSeconds(ttl)));
     verify(setOperations).add(eq(RedisKeyConstants.userSessionsKey(userId)), eq(jti));
     verify(redisTemplate)

@@ -29,15 +29,29 @@ public class BedServiceImpl implements BedService {
   public BedResponse updateBedStatus(UUID bedId, UpdateBedStatusRequest request) {
     Bed bed =
         bedRepository
-            .findById(bedId)
+            .findByIdForUpdate(bedId)
             .orElseThrow(() -> new BaseAppException(RoomErrorCode.BED_NOT_FOUND));
 
     BedStatus newStatus = request.status();
+    BedStatus currentStatus = bed.getStatus();
+
+    if (currentStatus == newStatus) {
+      Room room = bed.getRoom();
+      return new BedResponse(
+          bed.getId(),
+          room != null ? room.getId() : null,
+          room != null ? room.getRoomNumber() : null,
+          bed.getBedCode(),
+          bed.getSlotKey(),
+          room != null ? room.getBasePrice() : null,
+          bed.getStatus());
+    }
+
+    if (currentStatus == BedStatus.OCCUPIED || newStatus == BedStatus.OCCUPIED) {
+      throw new BaseAppException(RoomErrorCode.CANNOT_MAINTAIN_OCCUPIED_BED);
+    }
 
     if (newStatus == BedStatus.MAINTENANCE) {
-      if (bed.getStatus() == BedStatus.OCCUPIED) {
-        throw new BaseAppException(RoomErrorCode.CANNOT_MAINTAIN_OCCUPIED_BED);
-      }
       boolean hasActiveContract =
           contractRepository.existsByBedIdAndStatusIn(
               bedId, Set.of(ContractStatus.ACTIVE));
@@ -46,12 +60,9 @@ public class BedServiceImpl implements BedService {
       }
       bed.setStatus(BedStatus.MAINTENANCE);
     } else if (newStatus == BedStatus.AVAILABLE) {
-      if (bed.getStatus() == BedStatus.OCCUPIED) {
-        throw new BaseAppException(RoomErrorCode.CANNOT_MAINTAIN_OCCUPIED_BED);
-      }
       bed.setStatus(BedStatus.AVAILABLE);
     } else {
-      throw new BaseAppException(RoomErrorCode.BED_NOT_AVAILABLE);
+      throw new BaseAppException(RoomErrorCode.BED_INVALID_STATUS_TRANSITION);
     }
 
     Bed savedBed = bedRepository.save(bed);

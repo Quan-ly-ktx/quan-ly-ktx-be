@@ -17,6 +17,10 @@ public interface MaintenanceTicketRepository extends JpaRepository<MaintenanceTi
 
   List<MaintenanceTicket> findByRoomId(UUID roomId);
 
+  boolean existsByRoomId(UUID roomId);
+
+  boolean existsByBed_IdIn(java.util.Collection<UUID> bedIds);
+
   List<MaintenanceTicket> findByReporterTenantId(UUID reporterTenantId);
 
   List<MaintenanceTicket> findByAssigneeStaffId(UUID assigneeStaffId);

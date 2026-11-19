@@ -24,6 +24,14 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
 
   Optional<Tenant> findByUserId(UUID userId);
 
+  @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT t FROM Tenant t WHERE t.id = :id")
+  Optional<Tenant> findByIdForUpdate(@Param("id") UUID id);
+
+  @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT t FROM Tenant t WHERE t.user.id = :userId")
+  Optional<Tenant> findByUserIdForUpdate(@Param("userId") UUID userId);
+
   boolean existsByTenantCode(String tenantCode);
 
   boolean existsByIdCardNumber(String idCardNumber);

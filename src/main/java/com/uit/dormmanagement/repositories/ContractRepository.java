@@ -34,6 +34,10 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
 
   boolean existsByBed_Room_IdAndStatusIn(UUID roomId, Collection<ContractStatus> statuses);
 
+  boolean existsByBed_Room_Id(UUID roomId);
+
+  boolean existsByBed_IdIn(Collection<UUID> bedIds);
+
   List<Contract> findByBedIdInAndStatusIn(
       Collection<UUID> bedIds, Collection<ContractStatus> statuses);
 

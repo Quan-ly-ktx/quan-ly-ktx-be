@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -13,7 +14,6 @@ import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
-import com.uit.dormmanagement.enums.RoomType;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
@@ -66,27 +66,38 @@ class BedServiceTest {
   }
 
   @Test
-  @DisplayName(
-      "updateBedStatus should successfully set status to MAINTENANCE when bed is AVAILABLE")
+  @DisplayName("updateBedStatus should successfully set status to MAINTENANCE when bed is AVAILABLE")
   void updateBedStatus_whenAvailable_shouldSetMaintenance() {
-    when(bedRepository.findById(bedId)).thenReturn(Optional.of(testBed));
-    when(contractRepository.existsByBedIdAndStatusIn(eq(bedId), any()))
-        .thenReturn(false);
+    when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));
+    when(contractRepository.existsByBedIdAndStatusIn(eq(bedId), any())).thenReturn(false);
     when(bedRepository.save(any(Bed.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
     UpdateBedStatusRequest request = new UpdateBedStatusRequest(BedStatus.MAINTENANCE);
     BedResponse response = bedService.updateBedStatus(bedId, request);
 
     assertThat(response.status()).isEqualTo(BedStatus.MAINTENANCE);
+    assertThat(response.price()).isEqualByComparingTo(new BigDecimal("1500000.00"));
     assertThat(testBed.getStatus()).isEqualTo(BedStatus.MAINTENANCE);
     verify(bedRepository).save(testBed);
+  }
+
+  @Test
+  @DisplayName("updateBedStatus should return unchanged when requested same status")
+  void updateBedStatus_whenSameStatus_shouldReturnIdempotent() {
+    when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));
+
+    UpdateBedStatusRequest request = new UpdateBedStatusRequest(BedStatus.AVAILABLE);
+    BedResponse response = bedService.updateBedStatus(bedId, request);
+
+    assertThat(response.status()).isEqualTo(BedStatus.AVAILABLE);
+    verify(bedRepository, never()).save(any());
   }
 
   @Test
   @DisplayName("updateBedStatus should throw CANNOT_MAINTAIN_OCCUPIED_BED when bed is OCCUPIED")
   void updateBedStatus_whenOccupied_shouldThrow() {
     testBed.setStatus(BedStatus.OCCUPIED);
-    when(bedRepository.findById(bedId)).thenReturn(Optional.of(testBed));
+    when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));
 
     UpdateBedStatusRequest request = new UpdateBedStatusRequest(BedStatus.MAINTENANCE);
 
@@ -99,12 +110,25 @@ class BedServiceTest {
   }
 
   @Test
-  @DisplayName(
-      "updateBedStatus should throw CANNOT_MAINTAIN_OCCUPIED_BED when active contract exists")
+  @DisplayName("updateBedStatus should throw when attempting to transition to OCCUPIED manually")
+  void updateBedStatus_whenTransitionToOccupied_shouldThrow() {
+    when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));
+
+    UpdateBedStatusRequest request = new UpdateBedStatusRequest(BedStatus.OCCUPIED);
+
+    assertThatThrownBy(() -> bedService.updateBedStatus(bedId, request))
+        .isInstanceOf(BaseAppException.class)
+        .satisfies(
+            ex ->
+                assertThat(((BaseAppException) ex).getErrorCode())
+                    .isEqualTo(RoomErrorCode.CANNOT_MAINTAIN_OCCUPIED_BED));
+  }
+
+  @Test
+  @DisplayName("updateBedStatus should throw CANNOT_MAINTAIN_OCCUPIED_BED when active contract exists")
   void updateBedStatus_whenActiveContractExists_shouldThrow() {
-    when(bedRepository.findById(bedId)).thenReturn(Optional.of(testBed));
-    when(contractRepository.existsByBedIdAndStatusIn(eq(bedId), any()))
-        .thenReturn(true);
+    when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));
+    when(contractRepository.existsByBedIdAndStatusIn(eq(bedId), any())).thenReturn(true);
 
     UpdateBedStatusRequest request = new UpdateBedStatusRequest(BedStatus.MAINTENANCE);
 
@@ -117,11 +141,10 @@ class BedServiceTest {
   }
 
   @Test
-  @DisplayName(
-      "updateBedStatus should successfully set status to AVAILABLE when bed is MAINTENANCE")
+  @DisplayName("updateBedStatus should successfully set status to AVAILABLE when bed is MAINTENANCE")
   void updateBedStatus_whenMaintenance_shouldSetAvailable() {
     testBed.setStatus(BedStatus.MAINTENANCE);
-    when(bedRepository.findById(bedId)).thenReturn(Optional.of(testBed));
+    when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));
     when(bedRepository.save(any(Bed.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
     UpdateBedStatusRequest request = new UpdateBedStatusRequest(BedStatus.AVAILABLE);
@@ -135,7 +158,7 @@ class BedServiceTest {
   @Test
   @DisplayName("updateBedStatus should throw BED_NOT_FOUND when bed does not exist")
   void updateBedStatus_whenBedNotFound_shouldThrow() {
-    when(bedRepository.findById(bedId)).thenReturn(Optional.empty());
+    when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.empty());
 
     UpdateBedStatusRequest request = new UpdateBedStatusRequest(BedStatus.MAINTENANCE);
 

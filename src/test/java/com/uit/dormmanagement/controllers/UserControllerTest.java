@@ -15,6 +15,8 @@ import com.uit.dormmanagement.dtos.request.auth.CreateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianStatusRequest;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
+import com.uit.dormmanagement.dtos.response.auth.CreateTechnicianResponse;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
 import com.uit.dormmanagement.dtos.response.auth.TechnicianResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.entities.User;
@@ -134,10 +136,9 @@ class UserControllerTest {
   @DisplayName("POST /api/v1/users/technicians should return 201 Created on valid request")
   void shouldCreateTechnician() throws Exception {
     CreateTechnicianRequest request =
-        new CreateTechnicianRequest(
-            "Võ Văn Thịnh", "thinh.vv@dorm.vn", "0908112245", "Password@123");
+        new CreateTechnicianRequest("Võ Văn Thịnh", "thinh.vv@dorm.vn", "0908112245");
     UUID staffId = UUID.randomUUID();
-    TechnicianResponse response =
+    TechnicianResponse tech =
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
@@ -146,6 +147,7 @@ class UserControllerTest {
             "Võ Văn Thịnh",
             UserStatus.ACTIVE,
             Instant.now());
+    CreateTechnicianResponse response = new CreateTechnicianResponse(tech, "GenPassword@123");
 
     when(userService.createTechnician(any(CreateTechnicianRequest.class))).thenReturn(response);
 
@@ -157,7 +159,23 @@ class UserControllerTest {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.httpStatus").value(201))
         .andExpect(jsonPath("$.message").value("Tạo tài khoản kỹ thuật viên thành công"))
-        .andExpect(jsonPath("$.data.fullName").value("Võ Văn Thịnh"));
+        .andExpect(jsonPath("$.data.technician.fullName").value("Võ Văn Thịnh"))
+        .andExpect(jsonPath("$.data.initialPassword").value("GenPassword@123"));
+  }
+
+  @Test
+  @DisplayName("POST /api/v1/users/technicians/{id}/reset-password should return 200 with temporary password")
+  void shouldResetTechnicianPassword() throws Exception {
+    UUID staffId = UUID.randomUUID();
+    OneTimePasswordResponse response = new OneTimePasswordResponse("TempPass@123");
+
+    when(userService.resetTechnicianPassword(staffId)).thenReturn(response);
+
+    mockMvc
+        .perform(post("/api/v1/users/technicians/{id}/reset-password", staffId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data.temporaryPassword").value("TempPass@123"));
   }
 
   @Test

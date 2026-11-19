@@ -38,7 +38,8 @@ class JwtServiceTest {
   @DisplayName("generateAccessToken and parseAndValidateToken should work correctly")
   void shouldGenerateAndValidateAccessToken() {
     String jti = UUID.randomUUID().toString();
-    String token = jwtService.generateAccessToken(demoUser, jti);
+    String sessionGen = "test-session-gen-123";
+    String token = jwtService.generateAccessToken(demoUser, jti, sessionGen);
 
     assertThat(token).isNotBlank();
 
@@ -49,14 +50,16 @@ class JwtServiceTest {
     assertThat(payload.role()).isEqualTo("MANAGER");
     assertThat(payload.jti()).isEqualTo(jti);
     assertThat(payload.tokenType()).isEqualTo("ACCESS");
+    assertThat(payload.sessionGeneration()).isEqualTo(sessionGen);
     assertThat(payload.expiresAt()).isAfter(payload.issuedAt());
   }
 
   @Test
-  @DisplayName("generateRefreshToken should encode REFRESH token type")
+  @DisplayName("generateRefreshToken should encode REFRESH token type and sessionGeneration")
   void shouldGenerateAndValidateRefreshToken() {
     String jti = UUID.randomUUID().toString();
-    String token = jwtService.generateRefreshToken(demoUser, jti);
+    String sessionGen = "test-session-gen-456";
+    String token = jwtService.generateRefreshToken(demoUser, jti, sessionGen);
 
     assertThat(token).isNotBlank();
 
@@ -65,6 +68,7 @@ class JwtServiceTest {
     assertThat(payload.username()).isEqualTo("manager@dorm.vn");
     assertThat(payload.jti()).isEqualTo(jti);
     assertThat(payload.tokenType()).isEqualTo("REFRESH");
+    assertThat(payload.sessionGeneration()).isEqualTo(sessionGen);
   }
 
   @Test

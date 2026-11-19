@@ -186,4 +186,66 @@ class RoomBedRepositoryTest {
             bed.getId(), Set.of(ContractStatus.ACTIVE));
     assertThat(bedHasActiveContract).isTrue();
   }
+
+  @Test
+  @DisplayName("findByRoomIdForUpdateOrderById should return locked beds ordered by id")
+  void findByRoomIdForUpdateOrderById_shouldReturnOrdered() {
+    Room room =
+        roomRepository.save(
+            Room.builder()
+                .roomNumber("P.501")
+                .floor(5)
+                .genderPolicy(GenderPolicy.MALE)
+                .totalBeds((short) 4)
+                .basePrice(new BigDecimal("1500000.00"))
+                .build());
+
+    Bed bed2 =
+        bedRepository.save(
+            Bed.builder()
+                .room(room)
+                .bedCode("G02")
+                .slotKey("P.501-G02")
+                .status(BedStatus.AVAILABLE)
+                .build());
+
+    Bed bed1 =
+        bedRepository.save(
+            Bed.builder()
+                .room(room)
+                .bedCode("G01")
+                .slotKey("P.501-G01")
+                .status(BedStatus.AVAILABLE)
+                .build());
+
+    List<Bed> lockedBeds = bedRepository.findByRoomIdForUpdateOrderById(room.getId());
+    assertThat(lockedBeds).hasSize(2);
+    assertThat(lockedBeds.get(0).getId().toString())
+        .isLessThan(lockedBeds.get(1).getId().toString());
+  }
+
+  @Test
+  @DisplayName("findByIdForUpdate should return locked bed")
+  void findByIdForUpdate_shouldReturnBed() {
+    Room room =
+        roomRepository.save(
+            Room.builder()
+                .roomNumber("P.502")
+                .floor(5)
+                .genderPolicy(GenderPolicy.FEMALE)
+                .totalBeds((short) 4)
+                .basePrice(new BigDecimal("1500000.00"))
+                .build());
+
+    Bed bed =
+        bedRepository.save(
+            Bed.builder()
+                .room(room)
+                .bedCode("G01")
+                .slotKey("P.502-G01")
+                .status(BedStatus.AVAILABLE)
+                .build());
+
+    assertThat(bedRepository.findByIdForUpdate(bed.getId())).isPresent();
+  }
 }

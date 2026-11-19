@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 import com.uit.dormmanagement.dtos.request.auth.CreateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianStatusRequest;
+import com.uit.dormmanagement.dtos.response.auth.CreateTechnicianResponse;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
 import com.uit.dormmanagement.dtos.response.auth.TechnicianResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.entities.StaffProfile;
@@ -50,6 +52,9 @@ class UserServiceTest {
   @Mock private TenantRepository tenantRepository;
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private TokenRevocationService tokenRevocationService;
+  @Mock private UserTokenInvalidationService userTokenInvalidationService;
+  @Mock private RandomPasswordGenerator randomPasswordGenerator;
+  @Mock private PasswordRecoveryService passwordRecoveryService;
 
   @InjectMocks private UserServiceImpl userService;
 
@@ -137,14 +142,14 @@ class UserServiceTest {
   }
 
   @Test
-  @DisplayName("createTechnician should create user with TECHNICIAN role and staff profile")
+  @DisplayName("createTechnician should generate random password, create user and staff profile")
   void shouldCreateTechnicianSuccessfully() {
     CreateTechnicianRequest request =
-        new CreateTechnicianRequest(
-            "Võ Văn Thịnh", "thinh.vv@dorm.vn", "0908112245", "Password@123");
+        new CreateTechnicianRequest("Võ Văn Thịnh", "thinh.vv@dorm.vn", "0908112245");
 
     when(userRepository.existsByEmail("thinh.vv@dorm.vn")).thenReturn(false);
-    when(passwordEncoder.encode("Password@123")).thenReturn("$2a$12$encodedHash");
+    when(randomPasswordGenerator.generate()).thenReturn("GenPassword@123");
+    when(passwordEncoder.encode("GenPassword@123")).thenReturn("$2a$12$encodedHash");
 
     User savedUser =
         User.builder()
@@ -166,20 +171,57 @@ class UserServiceTest {
             .build();
     when(staffProfileRepository.save(any(StaffProfile.class))).thenReturn(savedProfile);
 
-    TechnicianResponse response = userService.createTechnician(request);
+    CreateTechnicianResponse response = userService.createTechnician(request);
 
-    assertThat(response.fullName()).isEqualTo("Võ Văn Thịnh");
-    assertThat(response.email()).isEqualTo("thinh.vv@dorm.vn");
-    assertThat(response.userStatus()).isEqualTo(UserStatus.ACTIVE);
+    assertThat(response.initialPassword()).isEqualTo("GenPassword@123");
+    assertThat(response.technician().fullName()).isEqualTo("Võ Văn Thịnh");
+    assertThat(response.technician().email()).isEqualTo("thinh.vv@dorm.vn");
+    assertThat(response.technician().userStatus()).isEqualTo(UserStatus.ACTIVE);
     verify(userRepository).save(any(User.class));
     verify(staffProfileRepository).save(any(StaffProfile.class));
+  }
+
+  @Test
+  @DisplayName("resetTechnicianPassword should generate temporary password, update hash, advance recovery version, and invalidate all sessions")
+  void shouldResetTechnicianPasswordSuccessfully() {
+    UUID staffId = UUID.randomUUID();
+    UUID techUserId = UUID.randomUUID();
+    User techUser =
+        User.builder()
+            .id(techUserId)
+            .email("thinh.vv@dorm.vn")
+            .passwordHash("$2a$12$oldHash")
+            .role(UserRole.TECHNICIAN)
+            .status(UserStatus.ACTIVE)
+            .build();
+    StaffProfile profile =
+        StaffProfile.builder()
+            .id(staffId)
+            .user(techUser)
+            .fullName("Võ Văn Thịnh")
+            .phone("0908112245")
+            .build();
+
+    when(staffProfileRepository.findByIdAndUser_Role(staffId, UserRole.TECHNICIAN))
+        .thenReturn(Optional.of(profile));
+    when(userRepository.findByIdForUpdate(techUserId)).thenReturn(Optional.of(techUser));
+    when(randomPasswordGenerator.generate()).thenReturn("TempPass@123");
+    when(passwordEncoder.encode("TempPass@123")).thenReturn("$2a$12$newTempHash");
+
+    OneTimePasswordResponse response = userService.resetTechnicianPassword(staffId);
+
+    assertThat(response.temporaryPassword()).isEqualTo("TempPass@123");
+    assertThat(techUser.getPasswordHash()).isEqualTo("$2a$12$newTempHash");
+    verify(userRepository).save(techUser);
+    verify(passwordRecoveryService).invalidateRecoveryCredentials(techUserId);
+    verify(userTokenInvalidationService).invalidateAll(techUserId);
   }
 
   @Test
   @DisplayName("createTechnician should throw DUPLICATE_EMAIL when email already exists")
   void shouldRejectDuplicateEmail() {
     CreateTechnicianRequest request =
-        new CreateTechnicianRequest("Thợ Điện", "thinh.vv@dorm.vn", "0908112245", "Password@123");
+        new CreateTechnicianRequest("Thợ Điện", "thinh.vv@dorm.vn", "0908112245");
     when(userRepository.existsByEmail("thinh.vv@dorm.vn")).thenReturn(true);
 
     assertThatThrownBy(() -> userService.createTechnician(request))
@@ -246,7 +288,7 @@ class UserServiceTest {
 
     assertThat(user.getStatus()).isEqualTo(UserStatus.LOCKED);
     verify(userRepository).save(user);
-    verify(tokenRevocationService).revokeAllUserSessions(userId);
+    verify(userTokenInvalidationService).invalidateAll(userId);
   }
 
   @Test

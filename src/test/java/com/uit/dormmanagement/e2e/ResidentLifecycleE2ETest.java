@@ -158,18 +158,20 @@ class ResidentLifecycleE2ETest {
             .color("Trắng Đen")
             .build();
 
+    byte[] validJpegBytes =
+        new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
     MockMultipartFile frontImage =
-        new MockMultipartFile("frontImage", "cavet_front.jpg", "image/jpeg", new byte[] {1, 2, 3});
+        new MockMultipartFile("frontImage", "cavet_front.jpg", "image/jpeg", validJpegBytes);
     MockMultipartFile backImage =
-        new MockMultipartFile("backImage", "cavet_back.jpg", "image/jpeg", new byte[] {4, 5, 6});
+        new MockMultipartFile("backImage", "cavet_back.jpg", "image/jpeg", validJpegBytes);
 
     VehicleResponse vehicleRes =
         vehicleService.registerVehicle(userId, registerVehicleReq, frontImage, backImage);
 
     assertThat(vehicleRes).isNotNull();
     assertThat(vehicleRes.status()).isEqualTo(VehicleStatus.PENDING_CARD);
-    assertThat(vehicleRes.registrationFrontUrl()).isNotBlank();
-    assertThat(vehicleRes.registrationBackUrl()).isNotBlank();
+    assertThat(vehicleRes.registrationFrontAvailable()).isTrue();
+    assertThat(vehicleRes.registrationBackAvailable()).isTrue();
 
     UUID vehicleId = vehicleRes.id();
 
@@ -276,11 +278,15 @@ class ResidentLifecycleE2ETest {
             .licensePlate("59-X9 888.77")
             .brand("Yamaha")
             .color("Xanh GP")
-            .cardCode("THE-E2E-001") // Reused card!
             .build();
 
-    VehicleResponse newVehicleRes = vehicleService.createVehicleAdmin(newVehicleReq);
-    assertThat(newVehicleRes.cardCode()).isEqualTo("THE-E2E-001");
-    assertThat(newVehicleRes.status()).isEqualTo(VehicleStatus.ISSUED);
+    VehicleResponse newVehicleRes =
+        vehicleService.createVehicleAdmin(newVehicleReq, frontImage, backImage);
+    VehicleResponse reusedIssuedRes =
+        vehicleService.issueCard(
+            newVehicleRes.id(),
+            new com.uit.dormmanagement.dtos.request.vehicle.IssueCardRequest("THE-E2E-001"));
+    assertThat(reusedIssuedRes.cardCode()).isEqualTo("THE-E2E-001");
+    assertThat(reusedIssuedRes.status()).isEqualTo(VehicleStatus.ISSUED);
   }
 }
