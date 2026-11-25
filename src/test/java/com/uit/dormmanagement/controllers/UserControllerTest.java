@@ -15,6 +15,8 @@ import com.uit.dormmanagement.dtos.request.auth.CreateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianStatusRequest;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
+import com.uit.dormmanagement.dtos.response.auth.CreateTechnicianResponse;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
 import com.uit.dormmanagement.dtos.response.auth.TechnicianResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.entities.User;
@@ -70,9 +72,7 @@ class UserControllerTest {
     User user =
         User.builder()
             .id(userId)
-            .username("manager")
             .email("manager@dorm.vn")
-            .phone("0901000001")
             .passwordHash("$2a$12$hash")
             .role(UserRole.MANAGER)
             .status(UserStatus.ACTIVE)
@@ -109,13 +109,11 @@ class UserControllerTest {
   void shouldReturnCurrentUserProfile() throws Exception {
     UserProfileResponse.StaffInfo staffInfo =
         new UserProfileResponse.StaffInfo(
-            UUID.randomUUID(), "Nguyễn Văn Quản Lý", "0901000001", true);
+            UUID.randomUUID(), "Nguyễn Văn Quản Lý", "0901000001");
     UserProfileResponse profileResponse =
         new UserProfileResponse(
             userId,
-            "manager",
             "manager@dorm.vn",
-            "0901000001",
             UserRole.MANAGER,
             UserStatus.ACTIVE,
             staffInfo,
@@ -129,7 +127,7 @@ class UserControllerTest {
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.message").value("Lấy thông tin tài khoản thành công"))
         .andExpect(jsonPath("$.data.id").value(userId.toString()))
-        .andExpect(jsonPath("$.data.username").value("manager"))
+        .andExpect(jsonPath("$.data.email").value("manager@dorm.vn"))
         .andExpect(jsonPath("$.data.role").value("MANAGER"))
         .andExpect(jsonPath("$.data.staffProfile.fullName").value("Nguyễn Văn Quản Lý"));
   }
@@ -138,20 +136,18 @@ class UserControllerTest {
   @DisplayName("POST /api/v1/users/technicians should return 201 Created on valid request")
   void shouldCreateTechnician() throws Exception {
     CreateTechnicianRequest request =
-        new CreateTechnicianRequest(
-            "Võ Văn Thịnh", "thinh.vv@dorm.vn", "0908112245", "Password@123");
+        new CreateTechnicianRequest("Võ Văn Thịnh", "thinh.vv@dorm.vn", "0908112245");
     UUID staffId = UUID.randomUUID();
-    TechnicianResponse response =
+    TechnicianResponse tech =
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.vv@dorm.vn",
             "0908112245",
             "Võ Văn Thịnh",
-            true,
             UserStatus.ACTIVE,
             Instant.now());
+    CreateTechnicianResponse response = new CreateTechnicianResponse(tech, "GenPassword@123");
 
     when(userService.createTechnician(any(CreateTechnicianRequest.class))).thenReturn(response);
 
@@ -163,7 +159,23 @@ class UserControllerTest {
         .andExpect(status().isCreated())
         .andExpect(jsonPath("$.httpStatus").value(201))
         .andExpect(jsonPath("$.message").value("Tạo tài khoản kỹ thuật viên thành công"))
-        .andExpect(jsonPath("$.data.fullName").value("Võ Văn Thịnh"));
+        .andExpect(jsonPath("$.data.technician.fullName").value("Võ Văn Thịnh"))
+        .andExpect(jsonPath("$.data.initialPassword").value("GenPassword@123"));
+  }
+
+  @Test
+  @DisplayName("POST /api/v1/users/technicians/{id}/reset-password should return 200 with temporary password")
+  void shouldResetTechnicianPassword() throws Exception {
+    UUID staffId = UUID.randomUUID();
+    OneTimePasswordResponse response = new OneTimePasswordResponse("TempPass@123");
+
+    when(userService.resetTechnicianPassword(staffId)).thenReturn(response);
+
+    mockMvc
+        .perform(post("/api/v1/users/technicians/{id}/reset-password", staffId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data.temporaryPassword").value("TempPass@123"));
   }
 
   @Test
@@ -174,11 +186,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.vv@dorm.vn",
             "0908112245",
             "Võ Văn Thịnh",
-            true,
             UserStatus.ACTIVE,
             Instant.now());
     Page<TechnicianResponse> page = new PageImpl<>(List.of(item), PageRequest.of(0, 10), 1);
@@ -200,11 +210,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.vv@dorm.vn",
             "0908112245",
             "Võ Văn Thịnh",
-            true,
             UserStatus.ACTIVE,
             Instant.now());
 
@@ -227,11 +235,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.vv@dorm.vn",
             "0908112245",
             "Võ Văn Thịnh",
-            false,
             UserStatus.LOCKED,
             Instant.now());
 
@@ -245,7 +251,7 @@ class UserControllerTest {
                 .content(objectMapper.writeValueAsString(request)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
-        .andExpect(jsonPath("$.data.active").value(false));
+        .andExpect(jsonPath("$.data.userStatus").value("LOCKED"));
   }
 
   @Test
@@ -258,11 +264,9 @@ class UserControllerTest {
         new TechnicianResponse(
             staffId,
             UUID.randomUUID(),
-            "thinh.vv",
             "thinh.new@dorm.vn",
             "0909999888",
             "Võ Văn Thịnh Updated",
-            true,
             UserStatus.ACTIVE,
             Instant.now());
 

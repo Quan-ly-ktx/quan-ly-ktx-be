@@ -15,6 +15,7 @@ import com.uit.dormmanagement.dtos.response.vehicle.VehicleResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Room;
+import com.uit.dormmanagement.entities.RoomCodeRegistry;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
@@ -33,6 +34,7 @@ import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
 import com.uit.dormmanagement.repositories.RoomRepository;
+import com.uit.dormmanagement.repositories.RoomCodeRegistryRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
@@ -60,6 +62,7 @@ class ResidentLifecycleE2ETest {
   @Autowired private ContractService contractService;
 
   @Autowired private RoomRepository roomRepository;
+  @Autowired private RoomCodeRegistryRepository roomCodeRegistryRepository;
   @Autowired private BedRepository bedRepository;
   @Autowired private TenantRepository tenantRepository;
   @Autowired private ContractRepository contractRepository;
@@ -74,24 +77,28 @@ class ResidentLifecycleE2ETest {
     testRoom =
         roomRepository.save(
             Room.builder()
-                .roomNumber("P.E2E-302")
+                .roomNumber("P.302")
                 .floor(3)
-                .roomType(RoomType.FOUR_BEDS)
                 .genderPolicy(GenderPolicy.MALE)
-                .totalBeds(4)
-                .occupiedBeds(0)
+                .totalBeds((short) 4)
                 .basePrice(new BigDecimal("1500000.00"))
                 .build());
 
-    testBed =
-        bedRepository.save(
-            Bed.builder()
-                .room(testRoom)
-                .bedCode("G01")
-                .slotKey("P.E2E-302-G01")
-                .price(new BigDecimal("1500000.00"))
-                .status(BedStatus.AVAILABLE)
-                .build());
+    roomCodeRegistryRepository.save(
+        RoomCodeRegistry.builder().code("P.302").room(testRoom).current(true).build());
+
+    java.util.List<Bed> beds = new java.util.ArrayList<>();
+    for (int bedNumber = 1; bedNumber <= 4; bedNumber++) {
+      String bedCode = String.format("G%02d", bedNumber);
+      beds.add(
+          Bed.builder()
+              .room(testRoom)
+              .bedCode(bedCode)
+              .slotKey("P.302-" + bedCode)
+              .status(BedStatus.AVAILABLE)
+              .build());
+    }
+    testBed = bedRepository.saveAll(beds).getFirst();
   }
 
   @Test
@@ -127,7 +134,8 @@ class ResidentLifecycleE2ETest {
     assertThat(occupiedBed.getStatus()).isEqualTo(BedStatus.OCCUPIED);
 
     Room updatedRoom = roomRepository.findById(testRoom.getId()).orElseThrow();
-    assertThat(updatedRoom.getOccupiedBeds()).isEqualTo(1);
+    assertThat(bedRepository.countByRoomIdAndStatus(testRoom.getId(), BedStatus.OCCUPIED))
+        .isEqualTo(1);
 
     User createdUser = userRepository.findById(userId).orElseThrow();
     assertThat(createdUser.getRole()).isEqualTo(UserRole.TENANT);
@@ -150,18 +158,20 @@ class ResidentLifecycleE2ETest {
             .color("Trắng Đen")
             .build();
 
+    byte[] validJpegBytes =
+        new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
     MockMultipartFile frontImage =
-        new MockMultipartFile("frontImage", "cavet_front.jpg", "image/jpeg", new byte[] {1, 2, 3});
+        new MockMultipartFile("frontImage", "cavet_front.jpg", "image/jpeg", validJpegBytes);
     MockMultipartFile backImage =
-        new MockMultipartFile("backImage", "cavet_back.jpg", "image/jpeg", new byte[] {4, 5, 6});
+        new MockMultipartFile("backImage", "cavet_back.jpg", "image/jpeg", validJpegBytes);
 
     VehicleResponse vehicleRes =
         vehicleService.registerVehicle(userId, registerVehicleReq, frontImage, backImage);
 
     assertThat(vehicleRes).isNotNull();
-    assertThat(vehicleRes.status()).isEqualTo(VehicleStatus.PENDING);
-    assertThat(vehicleRes.registrationFrontUrl()).isNotBlank();
-    assertThat(vehicleRes.registrationBackUrl()).isNotBlank();
+    assertThat(vehicleRes.status()).isEqualTo(VehicleStatus.PENDING_CARD);
+    assertThat(vehicleRes.registrationFrontAvailable()).isTrue();
+    assertThat(vehicleRes.registrationBackAvailable()).isTrue();
 
     UUID vehicleId = vehicleRes.id();
 
@@ -171,7 +181,7 @@ class ResidentLifecycleE2ETest {
     IssueCardRequest issueCardReq = IssueCardRequest.builder().cardCode("THE-E2E-001").build();
     VehicleResponse issuedRes = vehicleService.issueCard(vehicleId, issueCardReq);
 
-    assertThat(issuedRes.status()).isEqualTo(VehicleStatus.ACTIVE);
+    assertThat(issuedRes.status()).isEqualTo(VehicleStatus.ISSUED);
     assertThat(issuedRes.cardCode()).isEqualTo("THE-E2E-001");
 
     // -------------------------------------------------------------------------
@@ -218,23 +228,23 @@ class ResidentLifecycleE2ETest {
     // Step 6: Checkout 4-in-1 Transaction (FR-07, FR-13, BR-04)
     // -------------------------------------------------------------------------
     ContractDetailResponse terminatedContract = contractService.terminateContract(contractId);
-    assertThat(terminatedContract.status()).isEqualTo(ContractStatus.TERMINATED);
+    assertThat(terminatedContract.status()).isEqualTo(ContractStatus.LIQUIDATED);
 
-    // 1. Contract is TERMINATED
+    // 1. Contract is LIQUIDATED
     Contract dbContract = contractRepository.findById(contractId).orElseThrow();
-    assertThat(dbContract.getStatus()).isEqualTo(ContractStatus.TERMINATED);
+    assertThat(dbContract.getStatus()).isEqualTo(ContractStatus.LIQUIDATED);
 
     // 2. Bed is AVAILABLE & Room occupied beds is 0
     Bed dbBed = bedRepository.findById(testBed.getId()).orElseThrow();
     assertThat(dbBed.getStatus()).isEqualTo(BedStatus.AVAILABLE);
 
     Room dbRoom = roomRepository.findById(testRoom.getId()).orElseThrow();
-    assertThat(dbRoom.getOccupiedBeds()).isEqualTo(0);
+    assertThat(bedRepository.countByRoomIdAndStatus(testRoom.getId(), BedStatus.OCCUPIED))
+        .isZero();
 
     // 3. Tenant is CHECKED_OUT with deletedAt NULL
     Tenant dbTenant = tenantRepository.findById(tenantId).orElseThrow();
     assertThat(dbTenant.getResidentStatus()).isEqualTo(ResidentStatus.CHECKED_OUT);
-    assertThat(dbTenant.getDeletedAt()).isNull();
 
     // 4. Vehicle card is REVOKED
     Vehicle dbVehicle = vehicleRepository.findById(vehicleId).orElseThrow();
@@ -268,11 +278,15 @@ class ResidentLifecycleE2ETest {
             .licensePlate("59-X9 888.77")
             .brand("Yamaha")
             .color("Xanh GP")
-            .cardCode("THE-E2E-001") // Reused card!
             .build();
 
-    VehicleResponse newVehicleRes = vehicleService.createVehicleAdmin(newVehicleReq);
-    assertThat(newVehicleRes.cardCode()).isEqualTo("THE-E2E-001");
-    assertThat(newVehicleRes.status()).isEqualTo(VehicleStatus.ACTIVE);
+    VehicleResponse newVehicleRes =
+        vehicleService.createVehicleAdmin(newVehicleReq, frontImage, backImage);
+    VehicleResponse reusedIssuedRes =
+        vehicleService.issueCard(
+            newVehicleRes.id(),
+            new com.uit.dormmanagement.dtos.request.vehicle.IssueCardRequest("THE-E2E-001"));
+    assertThat(reusedIssuedRes.cardCode()).isEqualTo("THE-E2E-001");
+    assertThat(reusedIssuedRes.status()).isEqualTo(VehicleStatus.ISSUED);
   }
 }

@@ -8,15 +8,13 @@ import java.util.UUID;
 
 public record UserProfileResponse(
     UUID id,
-    String username,
     String email,
-    String phone,
     UserRole role,
     UserStatus status,
     StaffInfo staffProfile,
     TenantInfo tenantProfile) {
 
-  public record StaffInfo(UUID id, String fullName, String phone, boolean active) {}
+  public record StaffInfo(UUID id, String fullName, String phone) {}
 
   public record TenantInfo(
       UUID id,

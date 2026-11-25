@@ -48,6 +48,9 @@ public class Violation {
   @JoinColumn(name = "issued_by_staff_id", nullable = false)
   private StaffProfile issuedByStaff;
 
+  @Column(name = "occurred_on", nullable = false)
+  private LocalDate occurredOn;
+
   @Enumerated(EnumType.STRING)
   @Column(name = "violation_type", nullable = false)
   private ViolationType violationType;
@@ -57,17 +60,19 @@ public class Violation {
   @Builder.Default
   private ViolationLevel level = ViolationLevel.REMINDER;
 
-  @Column(name = "fine_amount", nullable = false, precision = 12, scale = 2)
+  @Column(name = "fine_amount", nullable = false, precision = 14, scale = 0)
   @Builder.Default
   private BigDecimal fineAmount = BigDecimal.ZERO;
 
   @Column(columnDefinition = "TEXT")
   private String note;
 
-  @Column(name = "occurred_date", nullable = false)
-  private LocalDate occurredDate;
-
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
+
+  // Compatibility helper
+  public LocalDate getOccurredDate() {
+    return occurredOn;
+  }
 }

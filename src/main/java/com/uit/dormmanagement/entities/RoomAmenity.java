@@ -27,12 +27,12 @@ public class RoomAmenity {
 
   @ManyToOne(fetch = FetchType.LAZY)
   @MapsId("roomId")
-  @JoinColumn(name = "room_id")
+  @JoinColumn(name = "room_id", nullable = false)
   private Room room;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @MapsId("amenityId")
-  @JoinColumn(name = "amenity_id")
+  @JoinColumn(name = "amenity_id", nullable = false)
   private Amenity amenity;
 
   @Column(nullable = false)

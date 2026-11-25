@@ -6,9 +6,9 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum InvoiceStatus {
-  PAID("Đã thu"),
+  DEBT("Nợ"),
   PENDING_CONFIRMATION("Chờ xác nhận"),
-  UNPAID("Nợ");
+  PAID("Đã thu");
 
   private final String displayName;
 }

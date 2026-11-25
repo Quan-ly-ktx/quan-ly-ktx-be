@@ -7,6 +7,7 @@ import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.ContractDocument;
+import com.uit.dormmanagement.entities.ContractRenewal;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.Vehicle;
@@ -20,12 +21,14 @@ import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractDocumentRepository;
+import com.uit.dormmanagement.repositories.ContractRenewalRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
-import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.ContractService;
 import com.uit.dormmanagement.services.StorageService;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -44,9 +47,9 @@ import org.springframework.web.multipart.MultipartFile;
 public class ContractServiceImpl implements ContractService {
 
   private final ContractRepository contractRepository;
+  private final ContractRenewalRepository contractRenewalRepository;
   private final ContractDocumentRepository contractDocumentRepository;
   private final BedRepository bedRepository;
-  private final RoomRepository roomRepository;
   private final TenantRepository tenantRepository;
   private final VehicleRepository vehicleRepository;
   private final StorageService storageService;
@@ -56,7 +59,7 @@ public class ContractServiceImpl implements ContractService {
       Set.of("pdf", "doc", "docx", "jpg", "jpeg", "png", "webp");
 
   private static final List<ContractStatus> ACTIVE_STATUSES =
-      List.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON);
+      List.of(ContractStatus.ACTIVE);
 
   @Override
   @Transactional(readOnly = true)
@@ -86,8 +89,7 @@ public class ContractServiceImpl implements ContractService {
             .findById(id)
             .orElseThrow(() -> new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
 
-    if (contract.getStatus() == ContractStatus.TERMINATED
-        || contract.getStatus() == ContractStatus.CANCELLED) {
+    if (contract.getStatus() == ContractStatus.LIQUIDATED) {
       throw new BaseAppException(ContractErrorCode.CONTRACT_ALREADY_TERMINATED);
     }
 
@@ -95,8 +97,27 @@ public class ContractServiceImpl implements ContractService {
       throw new BaseAppException(ContractErrorCode.INVALID_CONTRACT_DATES);
     }
 
-    contract.setEndDate(request.newEndDate());
+    LocalDate previousEndDate = contract.getEndDate();
+    LocalDate effectiveFrom = previousEndDate.plusDays(1);
+    int sequenceNo = (contract.getRenewals() != null ? contract.getRenewals().size() : 0) + 1;
+
+    ContractRenewal renewal =
+        ContractRenewal.builder()
+            .contract(contract)
+            .sequenceNo(sequenceNo)
+            .signedOn(LocalDate.now())
+            .previousEndOn(previousEndDate)
+            .effectiveFrom(effectiveFrom)
+            .newEndOn(request.newEndDate())
+            .monthlyRent(contract.getMonthlyRent())
+            .build();
+
+    if (contract.getRenewals() == null) {
+      contract.setRenewals(new ArrayList<>());
+    }
     contract.setStatus(ContractStatus.ACTIVE);
+    renewal = contractRenewalRepository.save(renewal);
+    contract.getRenewals().add(renewal);
 
     if (annexDocuments != null && !annexDocuments.isEmpty()) {
       for (MultipartFile file : annexDocuments) {
@@ -106,15 +127,15 @@ public class ContractServiceImpl implements ContractService {
           ContractDocument doc =
               ContractDocument.builder()
                   .contract(contract)
-                  .fileName(
+                  .renewal(renewal)
+                  .originalFilename(
                       file.getOriginalFilename() != null
                           ? file.getOriginalFilename()
                           : "phu-luc.pdf")
-                  .fileUrl(fileUrl)
-                  .fileType(
+                  .storageFileKey(fileUrl)
+                  .mimeType(
                       file.getContentType() != null ? file.getContentType() : "application/pdf")
-                  .fileSize(file.getSize())
-                  .documentCategory(ContractDocumentCategory.RENEWAL_ANNEX)
+                  .documentType(ContractDocumentCategory.RENEWAL_ANNEX)
                   .build();
           contractDocumentRepository.save(doc);
           contract.getDocuments().add(doc);
@@ -135,38 +156,34 @@ public class ContractServiceImpl implements ContractService {
             .findById(id)
             .orElseThrow(() -> new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
 
-    if (contract.getStatus() == ContractStatus.TERMINATED) {
+    if (contract.getStatus() == ContractStatus.LIQUIDATED) {
       throw new BaseAppException(ContractErrorCode.CONTRACT_ALREADY_TERMINATED);
     }
 
-    // 1. Contract -> TERMINATED
-    contract.setStatus(ContractStatus.TERMINATED);
+    // 1. Contract -> LIQUIDATED
+    contract.setStatus(ContractStatus.LIQUIDATED);
+    contract.setCheckedOutAt(Instant.now());
 
-    // 2. Bed -> AVAILABLE, Room occupiedBeds decrement
+    // 2. Bed -> AVAILABLE; room occupancy is derived from Bed status.
     Bed bed = contract.getBed();
     if (bed != null) {
       bed.setStatus(BedStatus.AVAILABLE);
       bedRepository.save(bed);
-
-      Room room = bed.getRoom();
-      if (room != null) {
-        room.setOccupiedBeds(Math.max(0, room.getOccupiedBeds() - 1));
-        roomRepository.save(room);
-      }
     }
 
-    // 3. Tenant -> CHECKED_OUT (Soft Delete preserves deletedAt = null)
+    // 3. Tenant -> CHECKED_OUT
     Tenant tenant = contract.getTenant();
     if (tenant != null) {
       tenant.setResidentStatus(ResidentStatus.CHECKED_OUT);
       tenantRepository.save(tenant);
 
       // 4. Vehicle -> REVOKED
-      List<Vehicle> vehicles = vehicleRepository.findByTenantIdAndDeletedAtIsNull(tenant.getId());
+      List<Vehicle> vehicles = vehicleRepository.findByTenantId(tenant.getId());
       for (Vehicle vehicle : vehicles) {
-        if (vehicle.getStatus() == VehicleStatus.ACTIVE
-            || vehicle.getStatus() == VehicleStatus.PENDING) {
+        if (vehicle.getStatus() == VehicleStatus.ISSUED
+            || vehicle.getStatus() == VehicleStatus.PENDING_CARD) {
           vehicle.setStatus(VehicleStatus.REVOKED);
+          vehicle.setRevokedAt(Instant.now());
           vehicleRepository.save(vehicle);
           log.info(
               "Revoked vehicle {} on checkout for tenant {}",
@@ -178,7 +195,7 @@ public class ContractServiceImpl implements ContractService {
 
     Contract saved = contractRepository.save(contract);
     log.info(
-        "Checkout completed: Terminated contract {} and released bed", saved.getContractCode());
+        "Checkout completed: Liquidated contract {} and released bed", saved.getContractCode());
     return toDetailResponse(saved);
   }
 
@@ -203,15 +220,14 @@ public class ContractServiceImpl implements ContractService {
         ContractDocument doc =
             ContractDocument.builder()
                 .contract(contract)
-                .fileName(
+                .originalFilename(
                     file.getOriginalFilename() != null ? file.getOriginalFilename() : "document")
-                .fileUrl(fileUrl)
-                .fileType(
+                .storageFileKey(fileUrl)
+                .mimeType(
                     file.getContentType() != null
                         ? file.getContentType()
                         : "application/octet-stream")
-                .fileSize(file.getSize())
-                .documentCategory(
+                .documentType(
                     category != null ? category : ContractDocumentCategory.ORIGINAL_CONTRACT)
                 .build();
         ContractDocument saved = contractDocumentRepository.save(doc);
@@ -223,8 +239,8 @@ public class ContractServiceImpl implements ContractService {
                 .contractId(contractId)
                 .fileName(saved.getFileName())
                 .fileUrl(saved.getFileUrl())
-                .fileType(saved.getFileType())
-                .fileSize(saved.getFileSize())
+                .fileType(saved.getMimeType())
+                .fileSize(file.getSize())
                 .documentCategory(saved.getDocumentCategory())
                 .uploadedAt(saved.getUploadedAt())
                 .build());
@@ -265,7 +281,7 @@ public class ContractServiceImpl implements ContractService {
             .orElseThrow(() -> new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND));
 
     return contractRepository
-        .findFirstByTenantIdAndStatusInAndDeletedAtIsNull(tenant.getId(), ACTIVE_STATUSES)
+        .findFirstByTenantIdAndStatusIn(tenant.getId(), ACTIVE_STATUSES)
         .map(this::toDetailResponse)
         .orElse(null);
   }
@@ -322,8 +338,7 @@ public class ContractServiceImpl implements ContractService {
                             .contractId(contract.getId())
                             .fileName(doc.getFileName())
                             .fileUrl(doc.getFileUrl())
-                            .fileType(doc.getFileType())
-                            .fileSize(doc.getFileSize())
+                            .fileType(doc.getMimeType())
                             .documentCategory(doc.getDocumentCategory())
                             .uploadedAt(doc.getUploadedAt())
                             .build())
@@ -336,19 +351,17 @@ public class ContractServiceImpl implements ContractService {
         .tenantId(tenant != null ? tenant.getId() : null)
         .tenantName(tenant != null ? tenant.getFullName() : null)
         .tenantPhone(tenant != null ? tenant.getPhone() : null)
-        .bedId(bed != null ? bed.getId() : null)
-        .bedCode(bed != null ? bed.getBedCode() : null)
-        .roomId(room != null ? room.getId() : null)
         .roomNumber(room != null ? room.getRoomNumber() : null)
+        .bedCode(bed != null ? bed.getBedCode() : null)
         .startDate(contract.getStartDate())
         .endDate(contract.getEndDate())
         .monthlyRent(contract.getMonthlyRent())
         .depositAmount(contract.getDepositAmount())
         .status(contract.getStatus())
-        .contractDocumentUrl(contract.getContractDocumentUrl())
+        .contractDocumentUrl(null)
+        .documents(docResponses)
         .signedAt(contract.getSignedAt())
         .createdAt(contract.getCreatedAt())
-        .documents(docResponses)
         .build();
   }
 }

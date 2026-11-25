@@ -1,6 +1,7 @@
 package com.uit.dormmanagement.security;
 
 import com.uit.dormmanagement.services.TokenRevocationService;
+import com.uit.dormmanagement.services.UserTokenInvalidationService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,6 +27,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
   private final JwtService jwtService;
   private final TokenRevocationService tokenRevocationService;
+  private final UserTokenInvalidationService userTokenInvalidationService;
   private final CustomUserDetailsService userDetailsService;
 
   @Override
@@ -52,8 +54,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
       TokenPayload payload = jwtService.parseAndValidateToken(token);
       if (payload != null && "ACCESS".equals(payload.tokenType())) {
         String jti = payload.jti();
-        if (!StringUtils.hasText(jti) || tokenRevocationService.isAccessTokenBlacklisted(jti)) {
-          log.debug("Access token is blacklisted or missing jti: jti={}", jti);
+        String sessionGen = payload.sessionGeneration();
+        if (!StringUtils.hasText(jti)
+            || tokenRevocationService.isAccessTokenBlacklisted(jti)
+            || !StringUtils.hasText(sessionGen)
+            || !userTokenInvalidationService.isCurrentGeneration(payload.userId(), sessionGen)) {
+          log.debug(
+              "Access token is invalid, blacklisted, or generation mismatch: jti={}, gen={}",
+              jti,
+              sessionGen);
           SecurityContextHolder.clearContext();
         } else if (SecurityContextHolder.getContext().getAuthentication() == null) {
           UserDetails userDetails = userDetailsService.loadUserById(payload.userId());

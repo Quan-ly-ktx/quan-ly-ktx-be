@@ -38,7 +38,7 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
         currentAttempts,
         MAX_ATTEMPTS);
 
-    if (currentAttempts != null && currentAttempts >= MAX_ATTEMPTS) {
+    if (currentAttempts != null && currentAttempts > MAX_ATTEMPTS) {
       String lockedKey = RedisKeyConstants.loginLockedKey(identifier);
       redisTemplate.opsForValue().set(lockedKey, LOCKED_VALUE, LOCK_DURATION);
       log.warn(

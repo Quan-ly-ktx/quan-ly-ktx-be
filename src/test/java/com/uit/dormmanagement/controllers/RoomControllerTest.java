@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uit.dormmanagement.dtos.request.room.CreateRoomRequest;
 import com.uit.dormmanagement.dtos.request.room.UpdateRoomRequest;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
+import com.uit.dormmanagement.dtos.response.room.ArchivedRoomSummaryResponse;
 import com.uit.dormmanagement.dtos.response.room.RoomDetailResponse;
 import com.uit.dormmanagement.dtos.response.room.RoomSummaryResponse;
 import com.uit.dormmanagement.enums.GenderPolicy;
@@ -24,6 +25,7 @@ import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.services.RoomService;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -72,6 +74,8 @@ class RoomControllerTest {
             3,
             RoomType.FOUR_BEDS,
             GenderPolicy.MALE,
+            4,
+            0,
             4,
             0,
             new BigDecimal("1500000.00"),
@@ -144,7 +148,7 @@ class RoomControllerTest {
   @DisplayName("PUT /api/v1/admin/rooms/{id} should return HTTP 200 when updated")
   void updateRoom_success() throws Exception {
     UpdateRoomRequest request =
-        new UpdateRoomRequest(GenderPolicy.FEMALE, new BigDecimal("1700000.00"), List.of());
+        new UpdateRoomRequest(null, GenderPolicy.FEMALE, new BigDecimal("1700000.00"), List.of());
 
     when(roomService.updateRoom(eq(roomId), any(UpdateRoomRequest.class))).thenReturn(sampleDetail);
 
@@ -170,6 +174,40 @@ class RoomControllerTest {
   }
 
   @Test
+  @DisplayName("POST /api/v1/admin/rooms/{id}/restore should return HTTP 200 with room details")
+  void restoreRoom_success() throws Exception {
+    when(roomService.restoreRoom(roomId)).thenReturn(sampleDetail);
+
+    mockMvc
+        .perform(post("/api/v1/admin/rooms/{id}/restore", roomId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data.roomNumber").value("P.302"));
+  }
+
+  @Test
+  @DisplayName("DELETE /api/v1/admin/rooms/{id}/permanent should return HTTP 200 with SuccessResponse")
+  void deleteIncorrectRoom_permanent_success() throws Exception {
+    doNothing().when(roomService).deleteIncorrectRoom(roomId);
+
+    mockMvc
+        .perform(delete("/api/v1/admin/rooms/{id}/permanent", roomId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200));
+  }
+
+  @Test
+  @DisplayName("DELETE /api/v1/admin/rooms/{id}/incorrect should return HTTP 200 with SuccessResponse")
+  void deleteIncorrectRoom_incorrect_success() throws Exception {
+    doNothing().when(roomService).deleteIncorrectRoom(roomId);
+
+    mockMvc
+        .perform(delete("/api/v1/admin/rooms/{id}/incorrect", roomId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200));
+  }
+
+  @Test
   @DisplayName("GET /api/v1/admin/rooms should return HTTP 200 with PageResponse")
   void getRooms_paged_success() throws Exception {
     RoomSummaryResponse summary =
@@ -181,6 +219,8 @@ class RoomControllerTest {
             GenderPolicy.MALE,
             4,
             0,
+            4,
+            0,
             new BigDecimal("1500000.00"),
             List.of());
 
@@ -189,6 +229,34 @@ class RoomControllerTest {
 
     mockMvc
         .perform(get("/api/v1/admin/rooms"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data.items[0].roomNumber").value("P.302"));
+  }
+
+  @Test
+  @DisplayName("GET /api/v1/admin/rooms/archived should return HTTP 200 with PageResponse")
+  void getArchivedRooms_paged_success() throws Exception {
+    ArchivedRoomSummaryResponse summary =
+        new ArchivedRoomSummaryResponse(
+            roomId,
+            "P.302",
+            3,
+            RoomType.FOUR_BEDS,
+            GenderPolicy.MALE,
+            4,
+            0,
+            4,
+            0,
+            new BigDecimal("1500000.00"),
+            List.of(),
+            Instant.now());
+
+    when(roomService.getArchivedRooms(eq(null), eq(null), eq(null), any()))
+        .thenReturn(new PageImpl<>(List.of(summary), PageRequest.of(0, 10), 1));
+
+    mockMvc
+        .perform(get("/api/v1/admin/rooms/archived"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.data.items[0].roomNumber").value("P.302"));

@@ -27,9 +27,7 @@ class JwtServiceTest {
     demoUser =
         User.builder()
             .id(UUID.randomUUID())
-            .username("manager01")
             .email("manager@dorm.vn")
-            .phone("0901000001")
             .passwordHash("$2a$12$hash")
             .role(UserRole.MANAGER)
             .status(UserStatus.ACTIVE)
@@ -40,33 +38,37 @@ class JwtServiceTest {
   @DisplayName("generateAccessToken and parseAndValidateToken should work correctly")
   void shouldGenerateAndValidateAccessToken() {
     String jti = UUID.randomUUID().toString();
-    String token = jwtService.generateAccessToken(demoUser, jti);
+    String sessionGen = "test-session-gen-123";
+    String token = jwtService.generateAccessToken(demoUser, jti, sessionGen);
 
     assertThat(token).isNotBlank();
 
     TokenPayload payload = jwtService.parseAndValidateToken(token);
     assertThat(payload.userId()).isEqualTo(demoUser.getId());
-    assertThat(payload.username()).isEqualTo("manager01");
+    assertThat(payload.username()).isEqualTo("manager@dorm.vn");
     assertThat(payload.email()).isEqualTo("manager@dorm.vn");
     assertThat(payload.role()).isEqualTo("MANAGER");
     assertThat(payload.jti()).isEqualTo(jti);
     assertThat(payload.tokenType()).isEqualTo("ACCESS");
+    assertThat(payload.sessionGeneration()).isEqualTo(sessionGen);
     assertThat(payload.expiresAt()).isAfter(payload.issuedAt());
   }
 
   @Test
-  @DisplayName("generateRefreshToken should encode REFRESH token type")
+  @DisplayName("generateRefreshToken should encode REFRESH token type and sessionGeneration")
   void shouldGenerateAndValidateRefreshToken() {
     String jti = UUID.randomUUID().toString();
-    String token = jwtService.generateRefreshToken(demoUser, jti);
+    String sessionGen = "test-session-gen-456";
+    String token = jwtService.generateRefreshToken(demoUser, jti, sessionGen);
 
     assertThat(token).isNotBlank();
 
     TokenPayload payload = jwtService.parseAndValidateToken(token);
     assertThat(payload.userId()).isEqualTo(demoUser.getId());
-    assertThat(payload.username()).isEqualTo("manager01");
+    assertThat(payload.username()).isEqualTo("manager@dorm.vn");
     assertThat(payload.jti()).isEqualTo(jti);
     assertThat(payload.tokenType()).isEqualTo("REFRESH");
+    assertThat(payload.sessionGeneration()).isEqualTo(sessionGen);
   }
 
   @Test

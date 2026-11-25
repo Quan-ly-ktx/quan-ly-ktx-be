@@ -6,10 +6,13 @@ import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.Tenant;
+import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.RoomType;
+import com.uit.dormmanagement.enums.UserRole;
+import com.uit.dormmanagement.enums.UserStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -30,6 +33,7 @@ class RoomBedRepositoryTest {
   @Autowired private BedRepository bedRepository;
   @Autowired private ContractRepository contractRepository;
   @Autowired private TenantRepository tenantRepository;
+  @Autowired private UserRepository userRepository;
 
   @Test
   @DisplayName(
@@ -40,9 +44,8 @@ class RoomBedRepositoryTest {
             Room.builder()
                 .roomNumber("P.301")
                 .floor(3)
-                .roomType(RoomType.FOUR_BEDS)
                 .genderPolicy(GenderPolicy.MALE)
-                .totalBeds(4)
+                .totalBeds((short) 4)
                 .basePrice(new BigDecimal("1500000.00"))
                 .build());
 
@@ -51,9 +54,8 @@ class RoomBedRepositoryTest {
             Room.builder()
                 .roomNumber("P.302")
                 .floor(3)
-                .roomType(RoomType.SIX_BEDS)
                 .genderPolicy(GenderPolicy.FEMALE)
-                .totalBeds(6)
+                .totalBeds((short) 6)
                 .basePrice(new BigDecimal("1400000.00"))
                 .build());
 
@@ -62,9 +64,8 @@ class RoomBedRepositoryTest {
             Room.builder()
                 .roomNumber("P.401")
                 .floor(4)
-                .roomType(RoomType.FOUR_BEDS)
                 .genderPolicy(GenderPolicy.MALE)
-                .totalBeds(4)
+                .totalBeds((short) 4)
                 .basePrice(new BigDecimal("1600000.00"))
                 .build());
 
@@ -88,9 +89,8 @@ class RoomBedRepositoryTest {
             Room.builder()
                 .roomNumber("P.201")
                 .floor(2)
-                .roomType(RoomType.FOUR_BEDS)
                 .genderPolicy(GenderPolicy.MALE)
-                .totalBeds(4)
+                .totalBeds((short) 4)
                 .basePrice(new BigDecimal("1500000.00"))
                 .build());
 
@@ -100,7 +100,6 @@ class RoomBedRepositoryTest {
                 .room(room)
                 .bedCode("G02")
                 .slotKey("P.201-G02")
-                .price(new BigDecimal("1500000.00"))
                 .status(BedStatus.AVAILABLE)
                 .build());
 
@@ -110,7 +109,6 @@ class RoomBedRepositoryTest {
                 .room(room)
                 .bedCode("G01")
                 .slotKey("P.201-G01")
-                .price(new BigDecimal("1500000.00"))
                 .status(BedStatus.AVAILABLE)
                 .build());
 
@@ -129,9 +127,8 @@ class RoomBedRepositoryTest {
             Room.builder()
                 .roomNumber("P.102")
                 .floor(1)
-                .roomType(RoomType.FOUR_BEDS)
                 .genderPolicy(GenderPolicy.MALE)
-                .totalBeds(4)
+                .totalBeds((short) 4)
                 .basePrice(new BigDecimal("1500000.00"))
                 .build());
 
@@ -141,19 +138,27 @@ class RoomBedRepositoryTest {
                 .room(room)
                 .bedCode("G01")
                 .slotKey("P.102-G01")
-                .price(new BigDecimal("1500000.00"))
                 .status(BedStatus.OCCUPIED)
+                .build());
+
+    User tenantUser =
+        userRepository.save(
+            User.builder()
+                .email("room-contract-tenant@example.test")
+                .passwordHash("hash")
+                .role(UserRole.TENANT)
+                .status(UserStatus.ACTIVE)
                 .build());
 
     Tenant tenant =
         tenantRepository.save(
             Tenant.builder()
+                .user(tenantUser)
                 .tenantCode("TN-001")
                 .fullName("Nguyễn Văn An")
                 .gender(GenderPolicy.MALE)
                 .idCardNumber("123456789012")
                 .phone("0901234567")
-                .email("an.nguyen@example.com")
                 .permanentAddress("Hà Nội")
                 .build());
 
@@ -162,21 +167,85 @@ class RoomBedRepositoryTest {
             .contractCode("HD-001")
             .tenant(tenant)
             .bed(bed)
-            .startDate(LocalDate.now())
-            .endDate(LocalDate.now().plusMonths(6))
-            .monthlyRent(new BigDecimal("1500000.00"))
+            .roomCodeSnapshot(room.getRoomNumber())
+            .bedCodeSnapshot(bed.getBedCode())
+            .startOn(LocalDate.of(2026, 9, 1))
+            .originalEndOn(LocalDate.of(2027, 2, 28))
+            .originalMonthlyRent(new BigDecimal("1500000.00"))
             .depositAmount(new BigDecimal("1500000.00"))
             .status(ContractStatus.ACTIVE)
             .build());
 
     boolean hasActiveContract =
-        contractRepository.existsByBed_Room_IdAndStatusInAndDeletedAtIsNull(
-            room.getId(), Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON));
+        contractRepository.existsByBed_Room_IdAndStatusIn(
+            room.getId(), Set.of(ContractStatus.ACTIVE));
     assertThat(hasActiveContract).isTrue();
 
     boolean bedHasActiveContract =
-        contractRepository.existsByBedIdAndStatusInAndDeletedAtIsNull(
-            bed.getId(), Set.of(ContractStatus.ACTIVE, ContractStatus.EXPIRING_SOON));
+        contractRepository.existsByBedIdAndStatusIn(
+            bed.getId(), Set.of(ContractStatus.ACTIVE));
     assertThat(bedHasActiveContract).isTrue();
+  }
+
+  @Test
+  @DisplayName("findByRoomIdForUpdateOrderById should return locked beds ordered by id")
+  void findByRoomIdForUpdateOrderById_shouldReturnOrdered() {
+    Room room =
+        roomRepository.save(
+            Room.builder()
+                .roomNumber("P.501")
+                .floor(5)
+                .genderPolicy(GenderPolicy.MALE)
+                .totalBeds((short) 4)
+                .basePrice(new BigDecimal("1500000.00"))
+                .build());
+
+    Bed bed2 =
+        bedRepository.save(
+            Bed.builder()
+                .room(room)
+                .bedCode("G02")
+                .slotKey("P.501-G02")
+                .status(BedStatus.AVAILABLE)
+                .build());
+
+    Bed bed1 =
+        bedRepository.save(
+            Bed.builder()
+                .room(room)
+                .bedCode("G01")
+                .slotKey("P.501-G01")
+                .status(BedStatus.AVAILABLE)
+                .build());
+
+    List<Bed> lockedBeds = bedRepository.findByRoomIdForUpdateOrderById(room.getId());
+    assertThat(lockedBeds).hasSize(2);
+    assertThat(lockedBeds.get(0).getId().toString())
+        .isLessThan(lockedBeds.get(1).getId().toString());
+  }
+
+  @Test
+  @DisplayName("findByIdForUpdate should return locked bed")
+  void findByIdForUpdate_shouldReturnBed() {
+    Room room =
+        roomRepository.save(
+            Room.builder()
+                .roomNumber("P.502")
+                .floor(5)
+                .genderPolicy(GenderPolicy.FEMALE)
+                .totalBeds((short) 4)
+                .basePrice(new BigDecimal("1500000.00"))
+                .build());
+
+    Bed bed =
+        bedRepository.save(
+            Bed.builder()
+                .room(room)
+                .bedCode("G01")
+                .slotKey("P.502-G01")
+                .status(BedStatus.AVAILABLE)
+                .build());
+
+    assertThat(bedRepository.findByIdForUpdate(bed.getId())).isPresent();
   }
 }

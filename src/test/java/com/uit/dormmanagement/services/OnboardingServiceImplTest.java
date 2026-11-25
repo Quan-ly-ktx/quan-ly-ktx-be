@@ -27,7 +27,6 @@ import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
-import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.impl.OnboardingServiceImpl;
@@ -51,7 +50,6 @@ class OnboardingServiceImplTest {
   @Mock private TenantRepository tenantRepository;
   @Mock private UserRepository userRepository;
   @Mock private BedRepository bedRepository;
-  @Mock private RoomRepository roomRepository;
   @Mock private ContractRepository contractRepository;
   @Mock private PasswordEncoder passwordEncoder;
 
@@ -72,10 +70,8 @@ class OnboardingServiceImplTest {
             .id(UUID.randomUUID())
             .roomNumber("P.302")
             .floor(3)
-            .roomType(RoomType.FOUR_BEDS)
             .genderPolicy(GenderPolicy.MALE)
-            .totalBeds(4)
-            .occupiedBeds(1)
+            .totalBeds((short) 4)
             .basePrice(new BigDecimal("1500000.00"))
             .build();
 
@@ -84,10 +80,8 @@ class OnboardingServiceImplTest {
             .id(UUID.randomUUID())
             .roomNumber("P.303")
             .floor(3)
-            .roomType(RoomType.FOUR_BEDS)
             .genderPolicy(GenderPolicy.FEMALE)
-            .totalBeds(4)
-            .occupiedBeds(0)
+            .totalBeds((short) 4)
             .basePrice(new BigDecimal("1500000.00"))
             .build();
 
@@ -98,7 +92,6 @@ class OnboardingServiceImplTest {
             .room(maleRoom)
             .bedCode("B01")
             .slotKey("P.302-B01")
-            .price(new BigDecimal("1500000.00"))
             .status(BedStatus.AVAILABLE)
             .build();
 
@@ -108,7 +101,6 @@ class OnboardingServiceImplTest {
             .room(maleRoom)
             .bedCode("B02")
             .slotKey("P.302-B02")
-            .price(new BigDecimal("1500000.00"))
             .status(BedStatus.OCCUPIED)
             .build();
 
@@ -118,7 +110,6 @@ class OnboardingServiceImplTest {
             .room(femaleRoom)
             .bedCode("B01")
             .slotKey("P.303-B01")
-            .price(new BigDecimal("1500000.00"))
             .status(BedStatus.AVAILABLE)
             .build();
 
@@ -148,9 +139,6 @@ class OnboardingServiceImplTest {
     when(tenantRepository.findByIdCardNumber("079200001234")).thenReturn(Optional.empty());
     when(tenantRepository.existsByIdCardNumber("079200001234")).thenReturn(false);
     when(userRepository.existsByEmail("nguyenvana@gmail.com")).thenReturn(false);
-    when(tenantRepository.existsByEmail("nguyenvana@gmail.com")).thenReturn(false);
-    when(userRepository.existsByPhone("0901234567")).thenReturn(false);
-    when(tenantRepository.existsByPhone("0901234567")).thenReturn(false);
     when(passwordEncoder.encode("Password123@")).thenReturn("hashed_password_123");
     when(tenantRepository.findNextTenantCodeSequence()).thenReturn(1L);
     when(contractRepository.findNextContractCodeSequence(2026)).thenReturn(1L);
@@ -177,7 +165,6 @@ class OnboardingServiceImplTest {
               return c;
             });
     when(bedRepository.save(any(Bed.class))).thenAnswer(invocation -> invocation.getArgument(0));
-    when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
     OnboardingResponse response = onboardingService.onboardTenant(validRequest);
 
@@ -203,12 +190,11 @@ class OnboardingServiceImplTest {
     assertThat(response.account().roomBed()).isEqualTo("P.302 - B01");
 
     assertThat(availableMaleBed.getStatus()).isEqualTo(BedStatus.OCCUPIED);
-    assertThat(maleRoom.getOccupiedBeds()).isEqualTo(2);
 
     ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
     verify(userRepository).save(userCaptor.capture());
     User savedUser = userCaptor.getValue();
-    assertThat(savedUser.getUsername()).isEqualTo("nguyenvana@gmail.com");
+    assertThat(savedUser.getEmail()).isEqualTo("nguyenvana@gmail.com");
     assertThat(savedUser.getRole()).isEqualTo(UserRole.TENANT);
     assertThat(savedUser.getStatus()).isEqualTo(UserStatus.ACTIVE);
     assertThat(savedUser.getPasswordHash()).isEqualTo("hashed_password_123");
@@ -324,9 +310,7 @@ class OnboardingServiceImplTest {
     User existingUser =
         User.builder()
             .id(UUID.randomUUID())
-            .username("nguyenvana@gmail.com")
             .email("nguyenvana@gmail.com")
-            .phone("0901234567")
             .passwordHash("existing_hash")
             .role(UserRole.TENANT)
             .status(UserStatus.ACTIVE)
@@ -341,7 +325,6 @@ class OnboardingServiceImplTest {
             .gender(GenderPolicy.MALE)
             .idCardNumber("079200001234")
             .phone("0901234567")
-            .email("nguyenvana@gmail.com")
             .permanentAddress("Old Address")
             .residentStatus(ResidentStatus.CHECKED_OUT)
             .build();
@@ -361,7 +344,6 @@ class OnboardingServiceImplTest {
               return c;
             });
     when(bedRepository.save(any(Bed.class))).thenAnswer(invocation -> invocation.getArgument(0));
-    when(roomRepository.save(any(Room.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
     OnboardingResponse response = onboardingService.onboardTenant(validRequest);
 
@@ -373,7 +355,6 @@ class OnboardingServiceImplTest {
     assertThat(response.account().initialPassword()).isEqualTo("Password123@");
 
     assertThat(availableMaleBed.getStatus()).isEqualTo(BedStatus.OCCUPIED);
-    assertThat(maleRoom.getOccupiedBeds()).isEqualTo(2);
 
     // Verify tenant sequence was NOT called for re-onboarded tenant
     verify(tenantRepository, never()).findNextTenantCodeSequence();
@@ -395,19 +376,28 @@ class OnboardingServiceImplTest {
   }
 
   @Test
-  @DisplayName("onboardTenant when duplicate phone for fresh tenant should throw PHONE_DUPLICATED")
-  void onboardTenant_whenDuplicatePhone_shouldThrowException() {
+  @DisplayName("onboardTenant allows a phone number already used by another contact")
+  void onboardTenant_whenPhoneAlreadyUsed_shouldAllowOnboarding() {
     when(bedRepository.findById(bedId)).thenReturn(Optional.of(availableMaleBed));
     when(tenantRepository.findByIdCardNumber("079200001234")).thenReturn(Optional.empty());
     when(tenantRepository.existsByIdCardNumber("079200001234")).thenReturn(false);
     when(userRepository.existsByEmail("nguyenvana@gmail.com")).thenReturn(false);
-    when(tenantRepository.existsByEmail("nguyenvana@gmail.com")).thenReturn(false);
-    when(userRepository.existsByPhone("0901234567")).thenReturn(true);
+    when(passwordEncoder.encode("Password123@")).thenReturn("hashed_password_123");
+    when(tenantRepository.findNextTenantCodeSequence()).thenReturn(1L);
+    when(contractRepository.findNextContractCodeSequence(2026)).thenReturn(1L);
+    when(userRepository.save(any(User.class)))
+        .thenAnswer(
+            invocation -> {
+              User user = invocation.getArgument(0);
+              user.setId(UUID.randomUUID());
+              return user;
+            });
+    when(tenantRepository.save(any(Tenant.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(contractRepository.save(any(Contract.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
 
-    assertThatThrownBy(() -> onboardingService.onboardTenant(validRequest))
-        .isInstanceOf(BaseAppException.class)
-        .hasFieldOrPropertyWithValue("errorCode", TenantErrorCode.PHONE_DUPLICATED);
-
-    verify(userRepository, never()).save(any());
+    assertThat(onboardingService.onboardTenant(validRequest)).isNotNull();
+    verify(userRepository).save(any(User.class));
   }
 }

@@ -6,9 +6,8 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum PaymentMethod {
-  VIETQR("Trực tuyến VietQR"),
   CASH("Tiền mặt"),
-  BANK_TRANSFER("Chuyển khoản thủ công");
+  VIETQR_TRANSFER("Chuyển khoản VietQR");
 
   private final String displayName;
 }

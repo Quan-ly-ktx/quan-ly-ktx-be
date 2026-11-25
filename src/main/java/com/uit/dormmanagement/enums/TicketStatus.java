@@ -6,10 +6,10 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum TicketStatus {
-  OPEN("Mới giao"),
+  UNASSIGNED("Chưa phân công"),
+  ASSIGNED("Mới giao"),
   IN_PROGRESS("Đang xử lý"),
-  RESOLVED("Hoàn thành"),
-  CANCELLED("Đã hủy");
+  COMPLETED("Hoàn thành");
 
   private final String displayName;
 }

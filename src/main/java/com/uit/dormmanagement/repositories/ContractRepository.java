@@ -30,22 +30,24 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
 
   Optional<Contract> findByTenantIdAndStatus(UUID tenantId, ContractStatus status);
 
-  boolean existsByBedIdAndStatusInAndDeletedAtIsNull(
-      UUID bedId, Collection<ContractStatus> statuses);
+  boolean existsByBedIdAndStatusIn(UUID bedId, Collection<ContractStatus> statuses);
 
-  boolean existsByBed_Room_IdAndStatusInAndDeletedAtIsNull(
-      UUID roomId, Collection<ContractStatus> statuses);
+  boolean existsByBed_Room_IdAndStatusIn(UUID roomId, Collection<ContractStatus> statuses);
 
-  List<Contract> findByBedIdInAndStatusInAndDeletedAtIsNull(
+  boolean existsByBed_Room_Id(UUID roomId);
+
+  boolean existsByBed_IdIn(Collection<UUID> bedIds);
+
+  List<Contract> findByBedIdInAndStatusIn(
       Collection<UUID> bedIds, Collection<ContractStatus> statuses);
 
-  Optional<Contract> findFirstByBedIdAndStatusInAndDeletedAtIsNull(
+  Optional<Contract> findFirstByBedIdAndStatusIn(
       UUID bedId, Collection<ContractStatus> statuses);
 
-  Optional<Contract> findFirstByTenantIdAndStatusInAndDeletedAtIsNull(
+  Optional<Contract> findFirstByTenantIdAndStatusIn(
       UUID tenantId, Collection<ContractStatus> statuses);
 
-  List<Contract> findAllByStatusAndEndDateLessThanEqual(
+  List<Contract> findAllByStatusAndOriginalEndOnLessThanEqual(
       ContractStatus status, LocalDate thresholdDate);
 
   long countByContractCodeStartingWith(String prefix);
@@ -64,8 +66,7 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
       value =
           """
           SELECT c FROM Contract c
-          WHERE c.deletedAt IS NULL
-            AND (:status IS NULL OR c.status = :status)
+          WHERE (:status IS NULL OR c.status = :status)
             AND (:search IS NULL OR :search = ''
                  OR LOWER(c.contractCode) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(c.tenant.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
@@ -77,8 +78,7 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
       countQuery =
           """
           SELECT COUNT(c) FROM Contract c
-          WHERE c.deletedAt IS NULL
-            AND (:status IS NULL OR c.status = :status)
+          WHERE (:status IS NULL OR c.status = :status)
             AND (:search IS NULL OR :search = ''
                  OR LOWER(c.contractCode) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(c.tenant.fullName) LIKE LOWER(CONCAT('%', :search, '%'))

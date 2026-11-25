@@ -10,6 +10,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
@@ -18,6 +20,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "users")
@@ -28,18 +31,20 @@ import org.hibernate.annotations.CreationTimestamp;
 @Builder
 public class User {
 
+  @PrePersist
+  @PreUpdate
+  private void normalizeEmail() {
+    if (email != null) {
+      email = email.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+  }
+
   @Id
   @GeneratedValue(strategy = GenerationType.UUID)
   private UUID id;
 
-  @Column(nullable = false, unique = true)
-  private String username;
-
-  @Column(nullable = false, unique = true)
+  @Column(nullable = false, length = 320)
   private String email;
-
-  @Column(nullable = false, unique = true)
-  private String phone;
 
   @Column(name = "password_hash", nullable = false)
   private String passwordHash;
@@ -56,4 +61,8 @@ public class User {
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
+
+  @UpdateTimestamp
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 }

@@ -2,6 +2,7 @@ package com.uit.dormmanagement.dtos.response.tenant;
 
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 import lombok.Builder;
@@ -18,4 +19,5 @@ public record TenantSummaryResponse(
     ResidentStatus residentStatus,
     String roomNumber,
     String bedCode,
-    LocalDate contractEndDate) {}
+    LocalDate contractEndDate,
+    BigDecimal monthlyRent) {}

@@ -3,6 +3,8 @@ package com.uit.dormmanagement.services.impl;
 import com.uit.dormmanagement.dtos.request.auth.CreateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianStatusRequest;
+import com.uit.dormmanagement.dtos.response.auth.CreateTechnicianResponse;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
 import com.uit.dormmanagement.dtos.response.auth.TechnicianResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.entities.StaffProfile;
@@ -15,8 +17,11 @@ import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
+import com.uit.dormmanagement.services.PasswordRecoveryService;
+import com.uit.dormmanagement.services.RandomPasswordGenerator;
 import com.uit.dormmanagement.services.TokenRevocationService;
 import com.uit.dormmanagement.services.UserService;
+import com.uit.dormmanagement.services.UserTokenInvalidationService;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
@@ -42,6 +47,9 @@ public class UserServiceImpl implements UserService {
   private final TenantRepository tenantRepository;
   private final PasswordEncoder passwordEncoder;
   private final TokenRevocationService tokenRevocationService;
+  private final UserTokenInvalidationService userTokenInvalidationService;
+  private final RandomPasswordGenerator randomPasswordGenerator;
+  private final PasswordRecoveryService passwordRecoveryService;
 
   @Override
   @Transactional(readOnly = true)
@@ -59,8 +67,7 @@ public class UserServiceImpl implements UserService {
         StaffProfile staff = staffProfileRepository.findByUserId(userId).orElse(null);
         if (staff != null) {
           staffInfo =
-              new UserProfileResponse.StaffInfo(
-                  staff.getId(), staff.getFullName(), staff.getPhone(), staff.isActive());
+              new UserProfileResponse.StaffInfo(staff.getId(), staff.getFullName(), staff.getPhone());
         }
       }
       case TENANT -> {
@@ -74,7 +81,7 @@ public class UserServiceImpl implements UserService {
                   tenant.getGender().name(),
                   tenant.getIdCardNumber(),
                   tenant.getPhone(),
-                  tenant.getEmail(),
+                  tenant.getUser().getEmail(),
                   tenant.getPermanentAddress(),
                   tenant.getDateOfBirth(),
                   tenant.getEmergencyContactName(),
@@ -86,9 +93,7 @@ public class UserServiceImpl implements UserService {
 
     return new UserProfileResponse(
         user.getId(),
-        user.getUsername(),
         user.getEmail(),
-        user.getPhone(),
         user.getRole(),
         user.getStatus(),
         staffInfo,
@@ -97,33 +102,19 @@ public class UserServiceImpl implements UserService {
 
   @Override
   @Transactional
-  public TechnicianResponse createTechnician(CreateTechnicianRequest request) {
+  public CreateTechnicianResponse createTechnician(CreateTechnicianRequest request) {
     String email = request.email().trim().toLowerCase();
     String phone = request.phone().trim();
 
     if (userRepository.existsByEmail(email)) {
       throw new BaseAppException(AuthErrorCode.DUPLICATE_EMAIL);
     }
-    if (userRepository.existsByPhone(phone)) {
-      throw new BaseAppException(AuthErrorCode.DUPLICATE_PHONE);
-    }
 
-    String baseUsername = email.split("@")[0].toLowerCase().replaceAll("[^a-zA-Z0-9._-]", "");
-    if (baseUsername.isBlank()) {
-      baseUsername = "technician";
-    }
-    String username = baseUsername;
-    int count = 1;
-    while (userRepository.existsByUsername(username)) {
-      username = baseUsername + count++;
-    }
-
+    String generatedPassword = randomPasswordGenerator.generate();
     User user =
         User.builder()
-            .username(username)
             .email(email)
-            .phone(phone)
-            .passwordHash(passwordEncoder.encode(request.password()))
+            .passwordHash(passwordEncoder.encode(generatedPassword))
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
             .build();
@@ -134,17 +125,16 @@ public class UserServiceImpl implements UserService {
             .user(savedUser)
             .fullName(request.fullName().trim())
             .phone(phone)
-            .active(true)
             .build();
     StaffProfile savedProfile = staffProfileRepository.save(profile);
 
     log.info(
-        "Manager created new technician account: id={}, username={}, email={}",
+        "Manager created new technician account: id={}, email={}",
         savedProfile.getId(),
-        savedUser.getUsername(),
         savedUser.getEmail());
 
-    return TechnicianResponse.fromEntity(savedProfile);
+    return new CreateTechnicianResponse(
+        TechnicianResponse.fromEntity(savedProfile), generatedPassword);
   }
 
   @Override
@@ -158,14 +148,16 @@ public class UserServiceImpl implements UserService {
           predicates.add(cb.equal(userJoin.get("role"), UserRole.TECHNICIAN));
 
           if (active != null) {
-            predicates.add(cb.equal(root.get("active"), active));
+            predicates.add(
+                cb.equal(
+                    userJoin.get("status"), active ? UserStatus.ACTIVE : UserStatus.LOCKED));
           }
 
           if (search != null && !search.isBlank()) {
             String pattern = "%" + search.trim().toLowerCase() + "%";
             Predicate nameMatch = cb.like(cb.lower(root.get("fullName")), pattern);
             Predicate emailMatch = cb.like(cb.lower(userJoin.get("email")), pattern);
-            Predicate phoneMatch = cb.like(userJoin.get("phone"), "%" + search.trim() + "%");
+            Predicate phoneMatch = cb.like(root.get("phone"), "%" + search.trim() + "%");
             predicates.add(cb.or(nameMatch, emailMatch, phoneMatch));
           }
 
@@ -189,15 +181,14 @@ public class UserServiceImpl implements UserService {
     StaffProfile profile = findTechnicianByIdOrUserId(id);
     boolean newActive = Boolean.TRUE.equals(request.active());
 
-    profile.setActive(newActive);
     User user = profile.getUser();
     if (user != null) {
       user.setStatus(newActive ? UserStatus.ACTIVE : UserStatus.LOCKED);
       userRepository.save(user);
 
       if (!newActive) {
-        tokenRevocationService.revokeAllUserSessions(user.getId());
-        log.info("Locked technician and revoked all sessions: user id={}", user.getId());
+        userTokenInvalidationService.invalidateAll(user.getId());
+        log.info("Locked technician and invalidated all sessions: user id={}", user.getId());
       }
     }
     StaffProfile updatedProfile = staffProfileRepository.save(profile);
@@ -219,12 +210,7 @@ public class UserServiceImpl implements UserService {
       throw new BaseAppException(AuthErrorCode.DUPLICATE_EMAIL);
     }
 
-    if (!newPhone.equals(user.getPhone()) && userRepository.existsByPhone(newPhone)) {
-      throw new BaseAppException(AuthErrorCode.DUPLICATE_PHONE);
-    }
-
     user.setEmail(newEmail);
-    user.setPhone(newPhone);
     userRepository.save(user);
 
     profile.setFullName(newFullName);
@@ -234,6 +220,31 @@ public class UserServiceImpl implements UserService {
     log.info(
         "Manager updated technician profile: id={}, email={}, phone={}", id, newEmail, newPhone);
     return TechnicianResponse.fromEntity(savedProfile);
+  }
+
+  @Override
+  @Transactional
+  public OneTimePasswordResponse resetTechnicianPassword(UUID id) {
+    StaffProfile profile = findTechnicianByIdOrUserId(id);
+    User user = profile.getUser();
+    if (user == null) {
+      throw new BaseAppException(AuthErrorCode.TECHNICIAN_NOT_FOUND);
+    }
+
+    User lockedUser =
+        userRepository
+            .findByIdForUpdate(user.getId())
+            .orElseThrow(() -> new BaseAppException(AuthErrorCode.TECHNICIAN_NOT_FOUND));
+
+    String generatedPassword = randomPasswordGenerator.generate();
+    lockedUser.setPasswordHash(passwordEncoder.encode(generatedPassword));
+    userRepository.save(lockedUser);
+
+    passwordRecoveryService.invalidateRecoveryCredentials(lockedUser.getId());
+    userTokenInvalidationService.invalidateAll(lockedUser.getId());
+
+    log.info("Manager reset password for technician: staff id={}, user id={}", id, lockedUser.getId());
+    return new OneTimePasswordResponse(generatedPassword);
   }
 
   private StaffProfile findTechnicianByIdOrUserId(UUID id) {

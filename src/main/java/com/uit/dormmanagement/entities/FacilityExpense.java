@@ -22,11 +22,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.annotations.UpdateTimestamp;
 
 @Entity
 @Table(name = "facility_expenses")
-@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -52,14 +51,14 @@ public class FacilityExpense {
   @Column(nullable = false)
   private String title;
 
-  @Column(nullable = false, precision = 12, scale = 2)
+  @Column(nullable = false, precision = 14, scale = 0)
   private BigDecimal amount;
 
   @Column(name = "invoice_code")
   private String invoiceCode;
 
-  @Column(name = "invoice_photo_url")
-  private String invoicePhotoUrl;
+  @Column(name = "invoice_file_key")
+  private String invoiceFileKey;
 
   @Column(columnDefinition = "TEXT")
   private String notes;
@@ -68,6 +67,12 @@ public class FacilityExpense {
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
-  @Column(name = "deleted_at")
-  private Instant deletedAt;
+  @UpdateTimestamp
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
+
+  // Compatibility helper
+  public String getInvoicePhotoUrl() {
+    return invoiceFileKey;
+  }
 }

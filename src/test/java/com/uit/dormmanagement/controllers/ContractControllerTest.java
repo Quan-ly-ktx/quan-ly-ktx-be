@@ -84,9 +84,7 @@ class ContractControllerTest {
     User user =
         User.builder()
             .id(userId)
-            .username("nam.nguyen@example.com")
             .email("nam.nguyen@example.com")
-            .phone("0987654321")
             .passwordHash("hashed")
             .role(UserRole.TENANT)
             .status(UserStatus.ACTIVE)
@@ -186,14 +184,14 @@ class ContractControllerTest {
   @DisplayName("POST /api/v1/admin/contracts/{id}/terminate: Checkout should return 200")
   void terminateContract_shouldReturn200() throws Exception {
     ContractDetailResponse terminated =
-        ContractDetailResponse.builder().id(contractId).status(ContractStatus.TERMINATED).build();
+        ContractDetailResponse.builder().id(contractId).status(ContractStatus.LIQUIDATED).build();
     when(contractService.terminateContract(contractId)).thenReturn(terminated);
 
     adminMockMvc
         .perform(post("/api/v1/admin/contracts/{id}/terminate", contractId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
-        .andExpect(jsonPath("$.data.status").value("TERMINATED"));
+        .andExpect(jsonPath("$.data.status").value("LIQUIDATED"));
   }
 
   @Test

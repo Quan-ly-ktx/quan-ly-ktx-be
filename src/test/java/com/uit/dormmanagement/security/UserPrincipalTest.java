@@ -18,9 +18,7 @@ class UserPrincipalTest {
     User user =
         User.builder()
             .id(userId)
-            .username("manager01")
             .email("manager@dorm.vn")
-            .phone("0901000001")
             .passwordHash("$2a$12$somehash")
             .role(UserRole.MANAGER)
             .status(UserStatus.ACTIVE)
@@ -29,9 +27,9 @@ class UserPrincipalTest {
     UserPrincipal principal = UserPrincipal.create(user);
 
     assertThat(principal.getId()).isEqualTo(userId);
-    assertThat(principal.getUsername()).isEqualTo("manager01");
+    assertThat(principal.getUsername()).isEqualTo("manager@dorm.vn");
     assertThat(principal.getEmail()).isEqualTo("manager@dorm.vn");
-    assertThat(principal.getPhone()).isEqualTo("0901000001");
+    assertThat(principal.getPhone()).isNull();
     assertThat(principal.getPassword()).isEqualTo("$2a$12$somehash");
     assertThat(principal.getRole()).isEqualTo(UserRole.MANAGER);
     assertThat(principal.getStatus()).isEqualTo(UserStatus.ACTIVE);
@@ -46,9 +44,7 @@ class UserPrincipalTest {
     User user =
         User.builder()
             .id(UUID.randomUUID())
-            .username("locked_user")
             .email("locked@dorm.vn")
-            .phone("0909999999")
             .passwordHash("$2a$12$somehash")
             .role(UserRole.TENANT)
             .status(UserStatus.LOCKED)
@@ -61,22 +57,20 @@ class UserPrincipalTest {
   }
 
   @Test
-  @DisplayName("isEnabled should return false when status is INACTIVE")
-  void shouldReportDisabledWhenUserStatusIsInactive() {
+  @DisplayName("isEnabled should return true when status is ACTIVE")
+  void shouldReportEnabledWhenUserStatusIsActive() {
     User user =
         User.builder()
             .id(UUID.randomUUID())
-            .username("inactive_user")
-            .email("inactive@dorm.vn")
-            .phone("0908888888")
+            .email("active@dorm.vn")
             .passwordHash("$2a$12$somehash")
             .role(UserRole.TECHNICIAN)
-            .status(UserStatus.INACTIVE)
+            .status(UserStatus.ACTIVE)
             .build();
 
     UserPrincipal principal = UserPrincipal.create(user);
 
-    assertThat(principal.isEnabled()).isFalse();
+    assertThat(principal.isEnabled()).isTrue();
     assertThat(principal.isAccountNonLocked()).isTrue();
   }
 }

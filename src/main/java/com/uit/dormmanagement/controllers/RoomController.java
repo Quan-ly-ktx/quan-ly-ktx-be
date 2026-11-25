@@ -2,9 +2,11 @@ package com.uit.dormmanagement.controllers;
 
 import com.uit.dormmanagement.dtos.request.room.CreateRoomRequest;
 import com.uit.dormmanagement.dtos.request.room.UpdateRoomRequest;
+import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.base.PageResponse;
 import com.uit.dormmanagement.dtos.response.base.SingleResponse;
 import com.uit.dormmanagement.dtos.response.base.SuccessResponse;
+import com.uit.dormmanagement.dtos.response.room.ArchivedRoomSummaryResponse;
 import com.uit.dormmanagement.dtos.response.room.RoomDetailResponse;
 import com.uit.dormmanagement.dtos.response.room.RoomSummaryResponse;
 import com.uit.dormmanagement.enums.GenderPolicy;
@@ -29,43 +31,43 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(
-    name = "Rooms",
-    description = "Room and bed management endpoints for managers (FR-01 to FR-05)")
+@Tag(name = "Room Management", description = "Endpoints for managing rooms, beds, and amenities")
 @RestController
 @RequestMapping("/api/v1/admin/rooms")
 @RequiredArgsConstructor
-public class RoomController extends AbstractBaseController {
+public class RoomController {
 
   private final RoomService roomService;
+  private final ResponseFactory responseFactory;
 
   @Operation(
       summary = "Get room matrix",
-      description = "Retrieve room & bed matrix visual overview by floor and filters (FR-01)")
+      description = "List all rooms and their beds as a matrix visual representation (FR-01)")
   @PreAuthorize("hasRole('MANAGER')")
   @GetMapping("/matrix")
   public ResponseEntity<SingleResponse<List<RoomDetailResponse>>> getRoomMatrix(
       @RequestParam(required = false) Integer floor,
       @RequestParam(required = false) GenderPolicy genderPolicy,
       @RequestParam(required = false) String search) {
-    List<RoomDetailResponse> response = roomService.getRoomMatrix(floor, genderPolicy, search);
-    return responseFactory.success(response, "Lấy ma trận sơ đồ phòng & giường thành công");
+    List<RoomDetailResponse> matrix = roomService.getRoomMatrix(floor, genderPolicy, search);
+    return responseFactory.success(matrix, "Lấy sơ đồ phòng thành công");
   }
 
   @Operation(
       summary = "Create room",
-      description = "Create a new room and auto-generate child beds (FR-02)")
+      description =
+          "Create a new room, auto-generating bed slots based on room capacity (4/6/8) (FR-02)")
   @PreAuthorize("hasRole('MANAGER')")
   @PostMapping
   public ResponseEntity<SingleResponse<RoomDetailResponse>> createRoom(
       @Valid @RequestBody CreateRoomRequest request) {
     RoomDetailResponse response = roomService.createRoom(request);
-    return responseFactory.success(HttpStatus.CREATED, response, "Thêm mới phòng thành công");
+    return responseFactory.success(HttpStatus.CREATED, response, "Tạo phòng thành công");
   }
 
   @Operation(
       summary = "Update room",
-      description = "Update room basePrice, amenities, and gender policy (FR-03)")
+      description = "Update room number, price, amenities, or gender policy (FR-03)")
   @PreAuthorize("hasRole('MANAGER')")
   @PutMapping("/{id}")
   public ResponseEntity<SingleResponse<RoomDetailResponse>> updateRoom(
@@ -75,13 +77,33 @@ public class RoomController extends AbstractBaseController {
   }
 
   @Operation(
-      summary = "Delete room",
-      description = "Soft delete room if vacant and no active contracts (FR-04)")
+      summary = "Archive room",
+      description = "Archive room if vacant and no active contracts (FR-04)")
   @PreAuthorize("hasRole('MANAGER')")
   @DeleteMapping("/{id}")
   public ResponseEntity<SuccessResponse> deleteRoom(@PathVariable UUID id) {
     roomService.deleteRoom(id);
-    return responseFactory.success("Xóa phòng thành công");
+    return responseFactory.success("Lưu trữ phòng thành công");
+  }
+
+  @Operation(
+      summary = "Restore archived room",
+      description = "Restore an archived room to active state")
+  @PreAuthorize("hasRole('MANAGER')")
+  @PostMapping("/{id}/restore")
+  public ResponseEntity<SingleResponse<RoomDetailResponse>> restoreRoom(@PathVariable UUID id) {
+    RoomDetailResponse response = roomService.restoreRoom(id);
+    return responseFactory.success(response, "Khôi phục phòng thành công");
+  }
+
+  @Operation(
+      summary = "Permanently delete unused room",
+      description = "Physically delete room that was never used in business and has no history (FR-04, BR-02)")
+  @PreAuthorize("hasRole('MANAGER')")
+  @DeleteMapping({"/{id}/permanent", "/{id}/incorrect"})
+  public ResponseEntity<SuccessResponse> deleteIncorrectRoom(@PathVariable UUID id) {
+    roomService.deleteIncorrectRoom(id);
+    return responseFactory.success("Xóa phòng vĩnh viễn thành công");
   }
 
   @Operation(
@@ -97,6 +119,21 @@ public class RoomController extends AbstractBaseController {
     return responseFactory.successPage(
         roomService.getRooms(floor, genderPolicy, search, pageable),
         "Lấy danh sách phòng thành công");
+  }
+
+  @Operation(
+      summary = "List archived rooms paged",
+      description = "List archived rooms with pagination and filters")
+  @PreAuthorize("hasRole('MANAGER')")
+  @GetMapping("/archived")
+  public ResponseEntity<SingleResponse<PageResponse<ArchivedRoomSummaryResponse>>> getArchivedRooms(
+      @RequestParam(required = false) Integer floor,
+      @RequestParam(required = false) GenderPolicy genderPolicy,
+      @RequestParam(required = false) String search,
+      Pageable pageable) {
+    return responseFactory.successPage(
+        roomService.getArchivedRooms(floor, genderPolicy, search, pageable),
+        "Lấy danh sách phòng lưu trữ thành công");
   }
 
   @Operation(

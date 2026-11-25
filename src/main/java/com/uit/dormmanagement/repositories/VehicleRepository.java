@@ -2,6 +2,7 @@ package com.uit.dormmanagement.repositories;
 
 import com.uit.dormmanagement.entities.Vehicle;
 import com.uit.dormmanagement.enums.VehicleStatus;
+import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -9,12 +10,17 @@ import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
 public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT v FROM Vehicle v WHERE v.id = :id")
+  Optional<Vehicle> findByIdForUpdate(@Param("id") UUID id);
+
   Optional<Vehicle> findByLicensePlate(String licensePlate);
 
   Optional<Vehicle> findByCardCode(String cardCode);
@@ -25,27 +31,26 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
 
   List<Vehicle> findByTenantId(UUID tenantId);
 
+  List<Vehicle> findByTenantIdOrderByCreatedAtDesc(UUID tenantId);
+
   List<Vehicle> findByStatus(VehicleStatus status);
 
-  List<Vehicle> findByTenantIdAndDeletedAtIsNull(UUID tenantId);
-
-  long countByTenantIdAndStatusInAndDeletedAtIsNull(
+  long countByTenantIdAndStatusIn(
       UUID tenantId, Collection<VehicleStatus> statuses);
 
-  Optional<Vehicle> findFirstByTenantIdAndStatusInAndDeletedAtIsNull(
+  Optional<Vehicle> findFirstByTenantIdAndStatusIn(
       UUID tenantId, Collection<VehicleStatus> statuses);
 
-  boolean existsByLicensePlateAndStatusInAndDeletedAtIsNull(
+  boolean existsByLicensePlateAndStatusIn(
       String licensePlate, Collection<VehicleStatus> statuses);
 
-  boolean existsByCardCodeAndStatusAndDeletedAtIsNull(String cardCode, VehicleStatus status);
+  boolean existsByCardCodeAndStatus(String cardCode, VehicleStatus status);
 
   @Query(
       value =
           """
           SELECT v FROM Vehicle v
-          WHERE v.deletedAt IS NULL
-            AND (:status IS NULL OR v.status = :status)
+          WHERE (:status IS NULL OR v.status = :status)
             AND (:search IS NULL OR :search = ''
                  OR LOWER(v.licensePlate) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(v.brand) LIKE LOWER(CONCAT('%', :search, '%'))
@@ -57,8 +62,7 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
       countQuery =
           """
           SELECT COUNT(v) FROM Vehicle v
-          WHERE v.deletedAt IS NULL
-            AND (:status IS NULL OR v.status = :status)
+          WHERE (:status IS NULL OR v.status = :status)
             AND (:search IS NULL OR :search = ''
                  OR LOWER(v.licensePlate) LIKE LOWER(CONCAT('%', :search, '%'))
                  OR LOWER(v.brand) LIKE LOWER(CONCAT('%', :search, '%'))

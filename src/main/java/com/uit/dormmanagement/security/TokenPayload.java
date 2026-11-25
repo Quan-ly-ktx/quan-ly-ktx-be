@@ -11,4 +11,18 @@ public record TokenPayload(
     String jti,
     String tokenType,
     Instant issuedAt,
-    Instant expiresAt) {}
+    Instant expiresAt,
+    String sessionGeneration) {
+
+  public TokenPayload(
+      UUID userId,
+      String username,
+      String email,
+      String role,
+      String jti,
+      String tokenType,
+      Instant issuedAt,
+      Instant expiresAt) {
+    this(userId, username, email, role, jti, tokenType, issuedAt, expiresAt, null);
+  }
+}

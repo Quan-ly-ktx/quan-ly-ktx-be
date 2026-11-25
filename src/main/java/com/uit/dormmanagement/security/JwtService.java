@@ -51,17 +51,38 @@ public class JwtService {
     this(secret, 86400000L, 604800000L);
   }
 
-  public String generateAccessToken(User user, String jti) {
+  public String generateAccessToken(User user, String jti, String sessionGeneration) {
     Instant now = Instant.now();
     Instant expiry = now.plusMillis(accessTokenExpirationMs);
 
     return Jwts.builder()
         .subject(user.getId().toString())
         .id(jti)
-        .claim("username", user.getUsername())
+        .claim("username", user.getEmail())
         .claim("email", user.getEmail())
         .claim("role", user.getRole().name())
         .claim("type", "ACCESS")
+        .claim("sessionGeneration", sessionGeneration)
+        .issuedAt(Date.from(now))
+        .expiration(Date.from(expiry))
+        .signWith(signingKey)
+        .compact();
+  }
+
+  public String generateAccessToken(User user, String jti) {
+    return generateAccessToken(user, jti, null);
+  }
+
+  public String generateRefreshToken(User user, String jti, String sessionGeneration) {
+    Instant now = Instant.now();
+    Instant expiry = now.plusMillis(refreshTokenExpirationMs);
+
+    return Jwts.builder()
+        .subject(user.getId().toString())
+        .id(jti)
+        .claim("username", user.getEmail())
+        .claim("type", "REFRESH")
+        .claim("sessionGeneration", sessionGeneration)
         .issuedAt(Date.from(now))
         .expiration(Date.from(expiry))
         .signWith(signingKey)
@@ -69,18 +90,7 @@ public class JwtService {
   }
 
   public String generateRefreshToken(User user, String jti) {
-    Instant now = Instant.now();
-    Instant expiry = now.plusMillis(refreshTokenExpirationMs);
-
-    return Jwts.builder()
-        .subject(user.getId().toString())
-        .id(jti)
-        .claim("username", user.getUsername())
-        .claim("type", "REFRESH")
-        .issuedAt(Date.from(now))
-        .expiration(Date.from(expiry))
-        .signWith(signingKey)
-        .compact();
+    return generateRefreshToken(user, jti, null);
   }
 
   public TokenPayload parseAndValidateToken(String token) {
@@ -99,8 +109,10 @@ public class JwtService {
             : claims.get("tokenType", String.class);
     Instant issuedAt = claims.getIssuedAt() != null ? claims.getIssuedAt().toInstant() : null;
     Instant expiresAt = claims.getExpiration() != null ? claims.getExpiration().toInstant() : null;
+    String sessionGeneration = claims.get("sessionGeneration", String.class);
 
-    return new TokenPayload(userId, username, email, role, jti, tokenType, issuedAt, expiresAt);
+    return new TokenPayload(
+        userId, username, email, role, jti, tokenType, issuedAt, expiresAt, sessionGeneration);
   }
 
   public long getRemainingExpirationMs(String token) {

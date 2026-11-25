@@ -1,7 +1,6 @@
 package com.uit.dormmanagement.entities;
 
 import com.uit.dormmanagement.enums.GenderPolicy;
-import com.uit.dormmanagement.enums.RoomType;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -22,11 +21,13 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "rooms")
-@SQLRestriction("deleted_at IS NULL")
+@SQLRestriction("archived_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -38,34 +39,34 @@ public class Room {
   @GeneratedValue(strategy = GenerationType.UUID)
   private UUID id;
 
-  @Column(name = "room_number", nullable = false, unique = true)
+  @Column(name = "room_number", nullable = false)
   private String roomNumber;
 
   @Column(nullable = false)
   private int floor;
 
   @Enumerated(EnumType.STRING)
-  @Column(name = "room_type", nullable = false)
-  private RoomType roomType;
-
-  @Enumerated(EnumType.STRING)
   @Column(name = "gender_policy", nullable = false)
   private GenderPolicy genderPolicy;
 
-  @Column(name = "total_beds", nullable = false)
-  private int totalBeds;
+  @Column(name = "total_beds", nullable = false, columnDefinition = "smallint")
+  private short totalBeds;
 
-  @Column(name = "occupied_beds", nullable = false)
-  @Builder.Default
-  private int occupiedBeds = 0;
-
-  @Column(name = "base_price", nullable = false, precision = 12, scale = 2)
+  @Column(name = "base_price", nullable = false, precision = 14, scale = 0)
   private BigDecimal basePrice;
 
-  @Column(name = "deleted_at")
-  private Instant deletedAt;
+  @Column(name = "archived_at")
+  private Instant archivedAt;
 
-  @OneToMany(mappedBy = "room", cascade = CascadeType.ALL, orphanRemoval = true)
+  @CreationTimestamp
+  @Column(name = "created_at", nullable = false, updatable = false)
+  private Instant createdAt;
+
+  @UpdateTimestamp
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
+
+  @OneToMany(mappedBy = "room")
   @Builder.Default
   private List<Bed> beds = new ArrayList<>();
 }

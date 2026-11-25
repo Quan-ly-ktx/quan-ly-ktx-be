@@ -22,6 +22,30 @@ public final class RedisKeyConstants {
     return PREFIX + "sessions:" + userId;
   }
 
+  public static String sessionGenerationKey(UUID userId) {
+    return PREFIX + "generation:" + userId;
+  }
+
+  public static String recoveryCooldownKey(String identifierHash) {
+    return PREFIX + "recovery:cooldown:" + identifierHash;
+  }
+
+  public static String recoveryHourlyKey(String identifierHash) {
+    return PREFIX + "recovery:hourly:" + identifierHash;
+  }
+
+  public static String recoveryChallengeKey(UUID recoveryRequestId) {
+    return PREFIX + "recovery:challenge:" + recoveryRequestId;
+  }
+
+  public static String recoveryResetTokenKey(String resetToken) {
+    return PREFIX + "recovery:reset:" + resetToken;
+  }
+
+  public static String userRecoveryVersionKey(UUID userId) {
+    return PREFIX + "recovery:version:" + userId;
+  }
+
   public static String loginAttemptsKey(String identifier) {
     return PREFIX + "login:attempts:" + identifier.toLowerCase().trim();
   }

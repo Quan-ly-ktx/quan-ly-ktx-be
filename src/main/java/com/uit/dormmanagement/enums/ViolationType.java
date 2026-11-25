@@ -9,7 +9,7 @@ public enum ViolationType {
   LATE_RETURN("Về muộn"),
   NOISE("Gây ồn"),
   HYGIENE("Vệ sinh"),
-  OUTSIDE_GUEST("Khách ngoài"),
+  OUTSIDER("Khách ngoài"),
   SMOKING_FIRE("Hút thuốc / cháy nổ"),
   OTHER("Khác");
 

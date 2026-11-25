@@ -7,7 +7,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum UserStatus {
   ACTIVE("Hoạt động"),
-  INACTIVE("Tạm dừng"),
   LOCKED("Đã khóa");
 
   private final String displayName;

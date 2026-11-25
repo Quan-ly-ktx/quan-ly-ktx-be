@@ -3,6 +3,8 @@ package com.uit.dormmanagement.services;
 import com.uit.dormmanagement.dtos.request.auth.CreateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianStatusRequest;
+import com.uit.dormmanagement.dtos.response.auth.CreateTechnicianResponse;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
 import com.uit.dormmanagement.dtos.response.auth.TechnicianResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import java.util.UUID;
@@ -13,7 +15,7 @@ public interface UserService {
 
   UserProfileResponse getCurrentUserProfile(UUID userId);
 
-  TechnicianResponse createTechnician(CreateTechnicianRequest request);
+  CreateTechnicianResponse createTechnician(CreateTechnicianRequest request);
 
   Page<TechnicianResponse> getTechnicians(Pageable pageable, Boolean active, String search);
 
@@ -22,4 +24,6 @@ public interface UserService {
   TechnicianResponse updateTechnicianStatus(UUID id, UpdateTechnicianStatusRequest request);
 
   TechnicianResponse updateTechnician(UUID id, UpdateTechnicianRequest request);
+
+  OneTimePasswordResponse resetTechnicianPassword(UUID id);
 }

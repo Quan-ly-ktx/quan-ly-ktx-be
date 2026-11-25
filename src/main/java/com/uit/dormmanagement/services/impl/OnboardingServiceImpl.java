@@ -21,7 +21,6 @@ import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
-import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.OnboardingService;
@@ -45,7 +44,6 @@ public class OnboardingServiceImpl implements OnboardingService {
   private final TenantRepository tenantRepository;
   private final UserRepository userRepository;
   private final BedRepository bedRepository;
-  private final RoomRepository roomRepository;
   private final ContractRepository contractRepository;
   private final PasswordEncoder passwordEncoder;
 
@@ -85,17 +83,15 @@ public class OnboardingServiceImpl implements OnboardingService {
     bed.setStatus(BedStatus.OCCUPIED);
     bedRepository.save(bed);
 
-    room.setOccupiedBeds(room.getOccupiedBeds() + 1);
-    roomRepository.save(room);
 
     ContractDetailResponse contractResponse = toContractDetailResponse(contract, tenant, bed, room);
     TenantDetailResponse tenantResponse =
         toTenantDetailResponse(tenant, user, bed, room, contractResponse);
     GeneratedAccountInfo accountInfo =
         GeneratedAccountInfo.builder()
-            .username(user.getUsername())
+            .username(user.getEmail())
             .email(user.getEmail())
-            .phone(user.getPhone())
+            .phone(tenant.getPhone())
             .initialPassword(DEFAULT_PASSWORD)
             .roomBed(room.getRoomNumber() + " - " + bed.getBedCode())
             .build();
@@ -134,26 +130,16 @@ public class OnboardingServiceImpl implements OnboardingService {
       if (!email.equalsIgnoreCase(user.getEmail()) && userRepository.existsByEmail(email)) {
         throw new BaseAppException(TenantErrorCode.EMAIL_DUPLICATED);
       }
-      if (!phone.equals(user.getPhone()) && userRepository.existsByPhone(phone)) {
-        throw new BaseAppException(TenantErrorCode.PHONE_DUPLICATED);
-      }
       user.setEmail(email);
-      user.setUsername(email);
-      user.setPhone(phone);
       user.setStatus(UserStatus.ACTIVE);
       user = userRepository.save(user);
     } else {
       if (userRepository.existsByEmail(email)) {
         throw new BaseAppException(TenantErrorCode.EMAIL_DUPLICATED);
       }
-      if (userRepository.existsByPhone(phone)) {
-        throw new BaseAppException(TenantErrorCode.PHONE_DUPLICATED);
-      }
       user =
           User.builder()
-              .username(email)
               .email(email)
-              .phone(phone)
               .passwordHash(passwordEncoder.encode(DEFAULT_PASSWORD))
               .role(UserRole.TENANT)
               .status(UserStatus.ACTIVE)
@@ -165,7 +151,6 @@ public class OnboardingServiceImpl implements OnboardingService {
     existingTenant.setFullName(request.fullName().trim());
     existingTenant.setGender(request.gender());
     existingTenant.setPhone(phone);
-    existingTenant.setEmail(email);
     existingTenant.setPermanentAddress(request.permanentAddress().trim());
     existingTenant.setDateOfBirth(request.dateOfBirth());
     existingTenant.setEmergencyContactName(
@@ -188,18 +173,13 @@ public class OnboardingServiceImpl implements OnboardingService {
     if (tenantRepository.existsByIdCardNumber(idCardNumber)) {
       throw new BaseAppException(TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
     }
-    if (userRepository.existsByEmail(email) || tenantRepository.existsByEmail(email)) {
+    if (userRepository.existsByEmail(email)) {
       throw new BaseAppException(TenantErrorCode.EMAIL_DUPLICATED);
-    }
-    if (userRepository.existsByPhone(phone) || tenantRepository.existsByPhone(phone)) {
-      throw new BaseAppException(TenantErrorCode.PHONE_DUPLICATED);
     }
 
     User user =
         User.builder()
-            .username(email)
             .email(email)
-            .phone(phone)
             .passwordHash(passwordEncoder.encode(DEFAULT_PASSWORD))
             .role(UserRole.TENANT)
             .status(UserStatus.ACTIVE)
@@ -216,7 +196,6 @@ public class OnboardingServiceImpl implements OnboardingService {
             .gender(request.gender())
             .idCardNumber(idCardNumber)
             .phone(phone)
-            .email(email)
             .permanentAddress(request.permanentAddress().trim())
             .dateOfBirth(request.dateOfBirth())
             .emergencyContactName(
@@ -244,19 +223,20 @@ public class OnboardingServiceImpl implements OnboardingService {
     String contractCode =
         String.format(
             "HD-%d-%04d", startYear, contractRepository.findNextContractCodeSequence(startYear));
-    BigDecimal monthlyRent = bed.getPrice() != null ? bed.getPrice() : room.getBasePrice();
+    BigDecimal monthlyRent = room.getBasePrice();
 
     Contract contract =
         Contract.builder()
             .contractCode(contractCode)
             .tenant(tenant)
             .bed(bed)
-            .startDate(request.startDate())
-            .endDate(request.endDate())
-            .monthlyRent(monthlyRent)
+            .roomCodeSnapshot(room.getRoomNumber())
+            .bedCodeSnapshot(bed.getBedCode())
+            .startOn(request.startDate())
+            .originalEndOn(request.endDate())
+            .originalMonthlyRent(monthlyRent)
             .depositAmount(request.depositAmount())
             .status(ContractStatus.ACTIVE)
-            .signedAt(Instant.now())
             .build();
 
     Contract saved = contractRepository.save(contract);
@@ -302,7 +282,7 @@ public class OnboardingServiceImpl implements OnboardingService {
         .gender(tenant.getGender())
         .idCardNumber(tenant.getIdCardNumber())
         .phone(tenant.getPhone())
-        .email(tenant.getEmail())
+        .email(tenant.getUser().getEmail())
         .permanentAddress(tenant.getPermanentAddress())
         .dateOfBirth(tenant.getDateOfBirth())
         .emergencyContactName(tenant.getEmergencyContactName())

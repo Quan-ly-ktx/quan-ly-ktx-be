@@ -5,23 +5,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.ContractDocument;
+import com.uit.dormmanagement.entities.ContractRenewal;
 import com.uit.dormmanagement.entities.Room;
+import com.uit.dormmanagement.entities.RoomCodeRegistry;
 import com.uit.dormmanagement.entities.Tenant;
+import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
 import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
-import com.uit.dormmanagement.enums.RoomType;
+import com.uit.dormmanagement.enums.UserRole;
+import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.enums.VehicleType;
-import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -33,13 +37,16 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 class ContractVehicleRepositoryTest {
 
-  @Autowired private RoomRepository roomRepository;
-  @Autowired private BedRepository bedRepository;
-  @Autowired private TenantRepository tenantRepository;
+  @Autowired private EntityManager entityManager;
   @Autowired private ContractRepository contractRepository;
   @Autowired private ContractDocumentRepository contractDocumentRepository;
+  @Autowired private ContractRenewalRepository contractRenewalRepository;
   @Autowired private VehicleRepository vehicleRepository;
-  @Autowired private EntityManager entityManager;
+  @Autowired private RoomRepository roomRepository;
+  @Autowired private BedRepository bedRepository;
+  @Autowired private UserRepository userRepository;
+  @Autowired private TenantRepository tenantRepository;
+  @Autowired private RoomCodeRegistryRepository roomCodeRegistryRepository;
 
   private Tenant testTenant;
   private Contract testContract;
@@ -49,34 +56,49 @@ class ContractVehicleRepositoryTest {
     Room room =
         roomRepository.save(
             Room.builder()
-                .roomNumber("P.201")
-                .floor(2)
-                .roomType(RoomType.FOUR_BEDS)
+                .roomNumber("P.401")
+                .floor(4)
+                .totalBeds((short) 4)
                 .genderPolicy(GenderPolicy.MALE)
-                .totalBeds(4)
                 .basePrice(new BigDecimal("1500000.00"))
                 .build());
+
+    roomCodeRegistryRepository.save(
+        RoomCodeRegistry.builder()
+            .code("P.401")
+            .room(room)
+            .current(true)
+            .usedInBusiness(false)
+            .build());
 
     Bed bed =
         bedRepository.save(
             Bed.builder()
                 .room(room)
-                .bedCode("G01")
-                .slotKey("P.201-G01")
-                .price(new BigDecimal("1500000.00"))
+                .bedCode("G1")
+                .slotKey("P.401-G1")
                 .status(BedStatus.OCCUPIED)
+                .build());
+
+    User user =
+        userRepository.save(
+            User.builder()
+                .email("nam.nguyen@example.com")
+                .passwordHash("$2a$10$hashedpassword")
+                .role(UserRole.TENANT)
+                .status(UserStatus.ACTIVE)
                 .build());
 
     testTenant =
         tenantRepository.save(
             Tenant.builder()
-                .tenantCode("NT-0187")
+                .user(user)
+                .tenantCode("SV-2026-0001")
+                .idCardNumber("079204001234")
                 .fullName("Nguyễn Hoàng Nam")
                 .gender(GenderPolicy.MALE)
-                .idCardNumber("079203001187")
-                .phone("0987214506")
-                .email("nam@gmail.com")
-                .permanentAddress("TP.HCM")
+                .phone("0901234567")
+                .permanentAddress("123 Lê Lợi, Q1, TP.HCM")
                 .residentStatus(ResidentStatus.ACTIVE)
                 .build());
 
@@ -86,9 +108,11 @@ class ContractVehicleRepositoryTest {
                 .contractCode("HD-2026-0187")
                 .tenant(testTenant)
                 .bed(bed)
-                .startDate(LocalDate.of(2026, 9, 1))
-                .endDate(LocalDate.of(2027, 9, 1))
-                .monthlyRent(new BigDecimal("1500000.00"))
+                .roomCodeSnapshot(room.getRoomNumber())
+                .bedCodeSnapshot(bed.getBedCode())
+                .startOn(LocalDate.of(2026, 9, 1))
+                .originalEndOn(LocalDate.of(2027, 8, 31))
+                .originalMonthlyRent(new BigDecimal("1500000.00"))
                 .depositAmount(new BigDecimal("1500000.00"))
                 .status(ContractStatus.ACTIVE)
                 .build());
@@ -101,33 +125,43 @@ class ContractVehicleRepositoryTest {
         contractDocumentRepository.save(
             ContractDocument.builder()
                 .contract(testContract)
-                .fileName("hop-dong-goc-trang1.jpg")
-                .fileUrl("https://storage.example.com/contracts/doc1.jpg")
-                .fileType("image/jpeg")
-                .fileSize(1024000L)
-                .documentCategory(ContractDocumentCategory.ORIGINAL_CONTRACT)
+                .originalFilename("hop-dong-goc-trang1.jpg")
+                .storageFileKey("contracts/doc1.jpg")
+                .mimeType("image/jpeg")
+                .documentType(ContractDocumentCategory.ORIGINAL_CONTRACT)
                 .build());
 
     ContractDocument doc2 =
         contractDocumentRepository.save(
             ContractDocument.builder()
                 .contract(testContract)
-                .fileName("hop-dong-goc-trang2.jpg")
-                .fileUrl("https://storage.example.com/contracts/doc2.jpg")
-                .fileType("image/jpeg")
-                .fileSize(1048576L)
-                .documentCategory(ContractDocumentCategory.ORIGINAL_CONTRACT)
+                .originalFilename("hop-dong-goc-trang2.jpg")
+                .storageFileKey("contracts/doc2.jpg")
+                .mimeType("image/jpeg")
+                .documentType(ContractDocumentCategory.ORIGINAL_CONTRACT)
+                .build());
+
+    ContractRenewal renewal =
+        contractRenewalRepository.save(
+            ContractRenewal.builder()
+                .contract(testContract)
+                .sequenceNo(1)
+                .signedOn(LocalDate.of(2027, 8, 15))
+                .previousEndOn(LocalDate.of(2027, 8, 31))
+                .effectiveFrom(LocalDate.of(2027, 9, 1))
+                .newEndOn(LocalDate.of(2027, 11, 30))
+                .monthlyRent(new BigDecimal("1500000.00"))
                 .build());
 
     ContractDocument annex =
         contractDocumentRepository.save(
             ContractDocument.builder()
                 .contract(testContract)
-                .fileName("phu-luc-gia-han-3-thang.pdf")
-                .fileUrl("https://storage.example.com/contracts/annex.pdf")
-                .fileType("application/pdf")
-                .fileSize(2048000L)
-                .documentCategory(ContractDocumentCategory.RENEWAL_ANNEX)
+                .renewal(renewal)
+                .originalFilename("phu-luc-gia-han-3-thang.pdf")
+                .storageFileKey("contracts/annex.pdf")
+                .mimeType("application/pdf")
+                .documentType(ContractDocumentCategory.RENEWAL_ANNEX)
                 .build());
 
     List<ContractDocument> allDocs =
@@ -135,7 +169,7 @@ class ContractVehicleRepositoryTest {
     assertThat(allDocs).hasSize(3);
 
     List<ContractDocument> originalDocs =
-        contractDocumentRepository.findByContractIdAndDocumentCategory(
+        contractDocumentRepository.findByContractIdAndDocumentType(
             testContract.getId(), ContractDocumentCategory.ORIGINAL_CONTRACT);
     assertThat(originalDocs)
         .hasSize(2)
@@ -143,15 +177,15 @@ class ContractVehicleRepositoryTest {
         .containsExactlyInAnyOrder("hop-dong-goc-trang1.jpg", "hop-dong-goc-trang2.jpg");
 
     List<ContractDocument> annexDocs =
-        contractDocumentRepository.findByContractIdAndDocumentCategory(
+        contractDocumentRepository.findByContractIdAndDocumentType(
             testContract.getId(), ContractDocumentCategory.RENEWAL_ANNEX);
     assertThat(annexDocs).hasSize(1);
-    assertThat(annexDocs.get(0).getFileName()).isEqualTo("phu-luc-gia-han-3-thang.pdf");
+    assertThat(annexDocs.getFirst().getFileName()).isEqualTo("phu-luc-gia-han-3-thang.pdf");
   }
 
   @Test
-  @DisplayName("Vehicle should store separate brand and color, and respect soft delete")
-  void shouldStoreVehicleAndRespectSoftDelete() {
+  @DisplayName("Vehicle should store separate brand and color, and manage status transitions")
+  void shouldStoreVehicleAndManageStatusTransitions() {
     Vehicle vehicle =
         vehicleRepository.save(
             Vehicle.builder()
@@ -161,9 +195,10 @@ class ContractVehicleRepositoryTest {
                 .color("Đen nhám")
                 .vehicleType(VehicleType.SCOOTER)
                 .cardCode("THE-0187")
-                .status(VehicleStatus.ACTIVE)
-                .registrationFrontUrl("https://storage.example.com/front.jpg")
-                .registrationBackUrl("https://storage.example.com/back.jpg")
+                .status(VehicleStatus.ISSUED)
+                .registrationFrontFileKey("vehicles/front.jpg")
+                .registrationBackFileKey("vehicles/back.jpg")
+                .issuedAt(Instant.now())
                 .build());
 
     entityManager.flush();
@@ -174,17 +209,20 @@ class ContractVehicleRepositoryTest {
     assertThat(found.get().getBrand()).isEqualTo("Honda Air Blade");
     assertThat(found.get().getColor()).isEqualTo("Đen nhám");
     assertThat(found.get().getCardCode()).isEqualTo("THE-0187");
+    assertThat(found.get().getStatus()).isEqualTo(VehicleStatus.ISSUED);
 
-    // Test soft delete
-    Vehicle vehicleToSoftDelete = found.get();
-    vehicleToSoftDelete.setDeletedAt(Instant.now());
-    vehicleRepository.save(vehicleToSoftDelete);
+    // Test transition to REVOKED
+    Vehicle vehicleToRevoke = found.get();
+    vehicleToRevoke.setStatus(VehicleStatus.REVOKED);
+    vehicleToRevoke.setRevokedAt(Instant.now());
+    vehicleRepository.save(vehicleToRevoke);
 
     entityManager.flush();
     entityManager.clear();
 
-    // With @SQLRestriction("deleted_at IS NULL"), findByLicensePlate should not find the vehicle
-    Optional<Vehicle> afterDelete = vehicleRepository.findByLicensePlate("59-X3 789.12");
-    assertThat(afterDelete).isEmpty();
+    Optional<Vehicle> afterRevoke = vehicleRepository.findByLicensePlate("59-X3 789.12");
+    assertThat(afterRevoke).isPresent();
+    assertThat(afterRevoke.get().getStatus()).isEqualTo(VehicleStatus.REVOKED);
+    assertThat(afterRevoke.get().getRevokedAt()).isNotNull();
   }
 }

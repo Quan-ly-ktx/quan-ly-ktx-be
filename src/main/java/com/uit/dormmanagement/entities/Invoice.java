@@ -1,6 +1,5 @@
 package com.uit.dormmanagement.entities;
 
-import com.uit.dormmanagement.enums.InvoiceKind;
 import com.uit.dormmanagement.enums.InvoiceStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,7 +11,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -23,11 +24,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.SQLRestriction;
 
 @Entity
-@Table(name = "invoices")
-@SQLRestriction("deleted_at IS NULL")
+@Table(
+    name = "invoices",
+    uniqueConstraints = {
+      @UniqueConstraint(name = "uq_invoices_contract_period", columnNames = {"contract_id", "billing_period"})
+    })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -47,31 +50,34 @@ public class Invoice {
   private Contract contract;
 
   @Column(name = "billing_period", nullable = false)
-  private String billingPeriod;
+  private LocalDate billingPeriod;
 
-  @Enumerated(EnumType.STRING)
-  @Column(nullable = false)
-  @Builder.Default
-  private InvoiceKind kind = InvoiceKind.ALL_INCLUSIVE_RENT;
-
-  @Column(nullable = false, precision = 12, scale = 2)
+  @Column(nullable = false, precision = 14, scale = 0)
   private BigDecimal amount;
 
-  @Column(name = "due_date", nullable = false)
-  private LocalDate dueDate;
+  @Column(name = "due_on", nullable = false)
+  private LocalDate dueOn;
 
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
   @Builder.Default
-  private InvoiceStatus status = InvoiceStatus.UNPAID;
+  private InvoiceStatus status = InvoiceStatus.DEBT;
+
+  @Column(name = "proof_file_key")
+  private String proofFileKey;
+
+  @Column(name = "proof_submitted_at")
+  private Instant proofSubmittedAt;
 
   @CreationTimestamp
-  @Column(name = "issued_at", nullable = false)
+  @Column(name = "issued_at", nullable = false, updatable = false)
   private Instant issuedAt;
 
-  @Column(name = "paid_at")
-  private Instant paidAt;
+  @OneToOne(mappedBy = "invoice")
+  private PaymentTransaction paymentTransaction;
 
-  @Column(name = "deleted_at")
-  private Instant deletedAt;
+  // Compatibility helpers
+  public LocalDate getDueDate() {
+    return dueOn;
+  }
 }

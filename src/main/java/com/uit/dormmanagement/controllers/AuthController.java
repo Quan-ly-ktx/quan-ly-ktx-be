@@ -1,12 +1,13 @@
 package com.uit.dormmanagement.controllers;
 
 import com.uit.dormmanagement.dtos.request.auth.ChangePasswordRequest;
-import com.uit.dormmanagement.dtos.request.auth.ForgotPasswordRequest;
 import com.uit.dormmanagement.dtos.request.auth.LoginRequest;
+import com.uit.dormmanagement.dtos.request.auth.PasswordRecoveryRequest;
 import com.uit.dormmanagement.dtos.request.auth.RefreshTokenRequest;
 import com.uit.dormmanagement.dtos.request.auth.ResetPasswordRequest;
-import com.uit.dormmanagement.dtos.request.auth.VerifyOtpRequest;
+import com.uit.dormmanagement.dtos.request.auth.VerifyRecoveryOtpRequest;
 import com.uit.dormmanagement.dtos.response.auth.AuthResponse;
+import com.uit.dormmanagement.dtos.response.auth.PasswordRecoveryRequestedResponse;
 import com.uit.dormmanagement.dtos.response.auth.VerifyResetPasswordOtpResponse;
 import com.uit.dormmanagement.dtos.response.base.SingleResponse;
 import com.uit.dormmanagement.dtos.response.base.SuccessResponse;
@@ -37,7 +38,7 @@ public class AuthController extends AbstractBaseController {
 
   @Operation(
       summary = "User login",
-      description = "Authenticate using username, email, or phone with password")
+      description = "Authenticate staff using email and tenants using CCCD, with password")
   @PostMapping("/login")
   public ResponseEntity<SingleResponse<AuthResponse>> login(
       @Valid @RequestBody LoginRequest request) {
@@ -60,8 +61,8 @@ public class AuthController extends AbstractBaseController {
       description = "Blacklist the current access token and revoke the refresh token")
   @PostMapping("/logout")
   public ResponseEntity<SuccessResponse> logout(
-      @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
-      @Valid @RequestBody(required = false) RefreshTokenRequest request) {
+      @RequestHeader(HttpHeaders.AUTHORIZATION) String authHeader,
+      @Valid @RequestBody RefreshTokenRequest request) {
     authService.logout(authHeader, request);
     return success("Đăng xuất thành công");
   }
@@ -91,10 +92,10 @@ public class AuthController extends AbstractBaseController {
       summary = "Request password reset OTP",
       description = "Send a 6-digit OTP code to the registered email")
   @PostMapping("/forgot-password")
-  public ResponseEntity<SuccessResponse> forgotPassword(
-      @Valid @RequestBody ForgotPasswordRequest request) {
-    authService.forgotPassword(request);
-    return success("Nếu email tồn tại trong hệ thống, mã OTP đã được gửi đến hộp thư");
+  public ResponseEntity<SingleResponse<PasswordRecoveryRequestedResponse>> forgotPassword(
+      @Valid @RequestBody PasswordRecoveryRequest request) {
+    PasswordRecoveryRequestedResponse response = authService.forgotPassword(request);
+    return success(response, "Nếu thông tin tồn tại trong hệ thống, mã OTP đã được gửi đến hộp thư");
   }
 
   @Operation(
@@ -102,7 +103,7 @@ public class AuthController extends AbstractBaseController {
       description = "Verify 6-digit OTP and obtain a single-use reset token")
   @PostMapping("/verify-forgot-password-otp")
   public ResponseEntity<SingleResponse<VerifyResetPasswordOtpResponse>> verifyForgotPasswordOtp(
-      @Valid @RequestBody VerifyOtpRequest request) {
+      @Valid @RequestBody VerifyRecoveryOtpRequest request) {
     VerifyResetPasswordOtpResponse response = authService.verifyForgotPasswordOtp(request);
     return success(response, "Xác thực mã OTP thành công");
   }

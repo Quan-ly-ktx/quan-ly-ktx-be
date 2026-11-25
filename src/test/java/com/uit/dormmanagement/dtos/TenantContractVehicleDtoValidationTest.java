@@ -4,11 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.request.onboarding.OnboardingRequest;
-import com.uit.dormmanagement.dtos.request.tenant.UpdateTenantRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.CreateVehicleAdminRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.IssueCardRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.TenantRegisterVehicleRequest;
-import com.uit.dormmanagement.dtos.request.vehicle.UpdateVehicleRequest;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
@@ -161,59 +159,12 @@ class TenantContractVehicleDtoValidationTest {
   }
 
   @Test
-  @DisplayName("UpdateTenantRequest should fail when fullName is blank or phone is invalid")
-  void updateTenantRequest_whenInvalid_shouldFailValidation() {
-    UpdateTenantRequest req =
-        UpdateTenantRequest.builder()
-            .fullName("")
-            .phone("invalid")
-            .emergencyContactPhone("invalid")
-            .build();
-    Set<ConstraintViolation<UpdateTenantRequest>> violations = validator.validate(req);
-
-    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("fullName"));
-    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("phone"));
-    assertThat(violations)
-        .anyMatch(v -> v.getPropertyPath().toString().equals("emergencyContactPhone"));
-  }
-
-  @Test
-  @DisplayName("UpdateTenantRequest should pass when valid")
-  void updateTenantRequest_whenValid_shouldPassValidation() {
-    UpdateTenantRequest req =
-        UpdateTenantRequest.builder()
-            .fullName("Nguyen Van A")
-            .phone("0912345678")
-            .permanentAddress("456 Nguyen Trai, Quan 5")
-            .dateOfBirth(LocalDate.of(2001, 1, 1))
-            .emergencyContactName("Nguyen Van Parent")
-            .emergencyContactPhone("0987654321")
-            .build();
-    Set<ConstraintViolation<UpdateTenantRequest>> violations = validator.validate(req);
-
-    assertThat(violations).isEmpty();
-  }
-
-  @Test
   @DisplayName("CreateVehicleAdminRequest should fail when required fields missing")
   void createVehicleAdminRequest_whenMissingFields_shouldFailValidation() {
     CreateVehicleAdminRequest req = CreateVehicleAdminRequest.builder().build();
     Set<ConstraintViolation<CreateVehicleAdminRequest>> violations = validator.validate(req);
 
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("tenantId"));
-    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("licensePlate"));
-    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("vehicleType"));
-    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("brand"));
-    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("color"));
-  }
-
-  @Test
-  @DisplayName("UpdateVehicleRequest should fail when required fields missing")
-  void updateVehicleRequest_whenMissingFields_shouldFailValidation() {
-    UpdateVehicleRequest req = UpdateVehicleRequest.builder().build();
-    Set<ConstraintViolation<UpdateVehicleRequest>> violations = validator.validate(req);
-
-    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("licensePlate"));
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("vehicleType"));
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("brand"));
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("color"));
@@ -234,7 +185,6 @@ class TenantContractVehicleDtoValidationTest {
     TenantRegisterVehicleRequest req = TenantRegisterVehicleRequest.builder().build();
     Set<ConstraintViolation<TenantRegisterVehicleRequest>> violations = validator.validate(req);
 
-    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("licensePlate"));
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("vehicleType"));
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("brand"));
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("color"));
@@ -247,5 +197,67 @@ class TenantContractVehicleDtoValidationTest {
     Set<ConstraintViolation<RenewContractRequest>> violations = validator.validate(req);
 
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("newEndDate"));
+  }
+
+  @Test
+  @DisplayName("ManagerUpdateTenantRequest should pass when all fields are valid")
+  void managerUpdateTenantRequest_whenValid_shouldPassValidation() {
+    com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest req =
+        com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Văn A")
+            .idCardNumber("123456789012")
+            .gender(GenderPolicy.MALE)
+            .email("test@example.com")
+            .phone("0912345678")
+            .permanentAddress("123 Hà Nội")
+            .dateOfBirth(LocalDate.of(2000, 1, 1))
+            .emergencyContactName("Bố A")
+            .emergencyContactPhone("0987654321")
+            .build();
+    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest>> violations =
+        validator.validate(req);
+    assertThat(violations).isEmpty();
+  }
+
+  @Test
+  @DisplayName("ManagerUpdateTenantRequest should fail when fullName is blank or idCardNumber has wrong format")
+  void managerUpdateTenantRequest_whenInvalid_shouldFailValidation() {
+    com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest req =
+        com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest.builder()
+            .fullName("")
+            .idCardNumber("1234")
+            .phone("0912345678")
+            .permanentAddress("123 Hà Nội")
+            .build();
+    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest>> violations =
+        validator.validate(req);
+    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("fullName"));
+    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("idCardNumber"));
+  }
+
+  @Test
+  @DisplayName("TenantContactUpdateRequest should pass when phone is valid")
+  void tenantContactUpdateRequest_whenValid_shouldPassValidation() {
+    com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest req =
+        com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest.builder()
+            .phone("0912345678")
+            .permanentAddress("456 Đà Nẵng")
+            .build();
+    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest>> violations =
+        validator.validate(req);
+    assertThat(violations).isEmpty();
+    assertThat(req.hasAtLeastOneField()).isTrue();
+  }
+
+  @Test
+  @DisplayName("TenantContactUpdateRequest should fail when phone format is invalid")
+  void tenantContactUpdateRequest_whenInvalidPhone_shouldFailValidation() {
+    com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest req =
+        com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest.builder()
+            .phone("123")
+            .build();
+    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest>> violations =
+        validator.validate(req);
+    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("phone"));
   }
 }

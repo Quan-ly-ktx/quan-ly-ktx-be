@@ -2,33 +2,40 @@ package com.uit.dormmanagement.controllers;
 
 import com.uit.dormmanagement.dtos.request.vehicle.CreateVehicleAdminRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.IssueCardRequest;
-import com.uit.dormmanagement.dtos.request.vehicle.UpdateVehicleRequest;
+import com.uit.dormmanagement.dtos.request.vehicle.RejectVehicleRequest;
 import com.uit.dormmanagement.dtos.response.base.PageResponse;
 import com.uit.dormmanagement.dtos.response.base.SingleResponse;
 import com.uit.dormmanagement.dtos.response.base.SuccessResponse;
+import com.uit.dormmanagement.dtos.response.vehicle.VehicleEvidenceContent;
 import com.uit.dormmanagement.dtos.response.vehicle.VehicleResponse;
 import com.uit.dormmanagement.enums.VehicleStatus;
+import com.uit.dormmanagement.security.UserPrincipal;
+import com.uit.dormmanagement.services.VehicleEvidenceAccessService;
 import com.uit.dormmanagement.services.VehicleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @Tag(
     name = "Vehicles (Admin)",
@@ -39,6 +46,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminVehicleController extends AbstractBaseController {
 
   private final VehicleService vehicleService;
+  private final VehicleEvidenceAccessService vehicleEvidenceAccessService;
 
   @Operation(
       summary = "Get vehicles list",
@@ -63,24 +71,15 @@ public class AdminVehicleController extends AbstractBaseController {
 
   @Operation(
       summary = "Create vehicle",
-      description = "Admin manually registers a vehicle for a tenant")
+      description = "Admin registers a vehicle for a tenant as PENDING_CARD")
   @PreAuthorize("hasRole('MANAGER')")
-  @PostMapping
+  @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public ResponseEntity<SingleResponse<VehicleResponse>> createVehicle(
-      @Valid @RequestBody CreateVehicleAdminRequest request) {
-    VehicleResponse response = vehicleService.createVehicleAdmin(request);
+      @ModelAttribute @Valid CreateVehicleAdminRequest request,
+      @RequestParam(value = "frontImage", required = false) MultipartFile frontImage,
+      @RequestParam(value = "backImage", required = false) MultipartFile backImage) {
+    VehicleResponse response = vehicleService.createVehicleAdmin(request, frontImage, backImage);
     return responseFactory.success(HttpStatus.CREATED, response, "Thêm phương tiện thành công");
-  }
-
-  @Operation(
-      summary = "Update vehicle",
-      description = "Update vehicle plate, type, brand, and color")
-  @PreAuthorize("hasRole('MANAGER')")
-  @PutMapping("/{id}")
-  public ResponseEntity<SingleResponse<VehicleResponse>> updateVehicle(
-      @PathVariable UUID id, @Valid @RequestBody UpdateVehicleRequest request) {
-    VehicleResponse response = vehicleService.updateVehicle(id, request);
-    return responseFactory.success(response, "Cập nhật phương tiện thành công");
   }
 
   @Operation(
@@ -89,9 +88,26 @@ public class AdminVehicleController extends AbstractBaseController {
   @PreAuthorize("hasRole('MANAGER')")
   @PatchMapping("/{id}/issue-card")
   public ResponseEntity<SingleResponse<VehicleResponse>> issueCard(
-      @PathVariable UUID id, @Valid @RequestBody IssueCardRequest request) {
-    VehicleResponse response = vehicleService.issueCard(id, request);
+      @AuthenticationPrincipal UserPrincipal principal,
+      @PathVariable UUID id,
+      @Valid @RequestBody IssueCardRequest request) {
+    UUID managerUserId = principal != null ? principal.getId() : null;
+    VehicleResponse response = vehicleService.issueCard(managerUserId, id, request);
     return responseFactory.success(response, "Cấp thẻ gửi xe thành công");
+  }
+
+  @Operation(
+      summary = "Reject vehicle registration",
+      description = "Manager rejects a pending vehicle registration with reason")
+  @PreAuthorize("hasRole('MANAGER')")
+  @PatchMapping("/{id}/reject")
+  public ResponseEntity<SingleResponse<VehicleResponse>> rejectVehicle(
+      @AuthenticationPrincipal UserPrincipal principal,
+      @PathVariable UUID id,
+      @Valid @RequestBody RejectVehicleRequest request) {
+    UUID managerUserId = principal != null ? principal.getId() : null;
+    VehicleResponse response = vehicleService.rejectVehicle(managerUserId, id, request.reason());
+    return responseFactory.success(response, "Từ chối đăng ký phương tiện thành công");
   }
 
   @Operation(
@@ -99,16 +115,39 @@ public class AdminVehicleController extends AbstractBaseController {
       description = "Revoke parking card and set status to REVOKED")
   @PreAuthorize("hasRole('MANAGER')")
   @PatchMapping("/{id}/revoke-card")
-  public ResponseEntity<SingleResponse<VehicleResponse>> revokeCard(@PathVariable UUID id) {
-    VehicleResponse response = vehicleService.revokeCard(id);
+  public ResponseEntity<SingleResponse<VehicleResponse>> revokeCard(
+      @AuthenticationPrincipal UserPrincipal principal,
+      @PathVariable UUID id) {
+    UUID managerUserId = principal != null ? principal.getId() : null;
+    VehicleResponse response = vehicleService.revokeCard(managerUserId, id);
     return responseFactory.success(response, "Thu hồi thẻ xe thành công");
   }
 
-  @Operation(summary = "Delete vehicle", description = "Soft delete a vehicle record")
+  @Operation(
+      summary = "Cancel vehicle registration",
+      description = "Cancel an unissued pending vehicle registration")
   @PreAuthorize("hasRole('MANAGER')")
   @DeleteMapping("/{id}")
   public ResponseEntity<SuccessResponse> deleteVehicle(@PathVariable UUID id) {
     vehicleService.deleteVehicle(id);
-    return responseFactory.success("Xóa phương tiện thành công");
+    return responseFactory.success("Hủy đăng ký phương tiện thành công");
+  }
+
+  @Operation(
+      summary = "Get vehicle registration evidence",
+      description = "Stream vehicle registration photo (front/back) for manager")
+  @PreAuthorize("hasRole('MANAGER')")
+  @GetMapping("/{vehicleId}/evidence/{side}")
+  public ResponseEntity<Resource> getVehicleEvidence(
+      @AuthenticationPrincipal UserPrincipal principal,
+      @PathVariable UUID vehicleId,
+      @PathVariable String side) {
+    UUID managerUserId = principal != null ? principal.getId() : null;
+    VehicleEvidenceContent content =
+        vehicleEvidenceAccessService.loadVehicleEvidence(managerUserId, true, vehicleId, side);
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(content.contentType()))
+        .contentLength(content.contentLength())
+        .body(content.resource());
   }
 }

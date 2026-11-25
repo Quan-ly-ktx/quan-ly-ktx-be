@@ -23,17 +23,14 @@ public class ContractStatusScheduler {
   public void updateExpiringContracts() {
     LocalDate thresholdDate = LocalDate.now().plusDays(30);
     List<Contract> expiringContracts =
-        contractRepository.findAllByStatusAndEndDateLessThanEqual(
+        contractRepository.findAllByStatusAndOriginalEndOnLessThanEqual(
             ContractStatus.ACTIVE, thresholdDate);
 
     if (!expiringContracts.isEmpty()) {
-      for (Contract contract : expiringContracts) {
-        contract.setStatus(ContractStatus.EXPIRING_SOON);
-      }
-      contractRepository.saveAll(expiringContracts);
       log.info(
-          "ContractStatusScheduler: updated {} contract(s) to EXPIRING_SOON",
-          expiringContracts.size());
+          "ContractStatusScheduler: found {} active contract(s) expiring by {}",
+          expiringContracts.size(),
+          thresholdDate);
     }
   }
 }

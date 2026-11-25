@@ -21,7 +21,15 @@ public enum TenantErrorCode implements AppErrorCode {
       "Định dạng số CCCD không hợp lệ (yêu cầu 12 chữ số)",
       HttpStatus.BAD_REQUEST),
   TENANT_NOT_ACTIVE(
-      "TENANT_400_NOT_ACTIVE", "Khách thuê không ở trạng thái hoạt động", HttpStatus.BAD_REQUEST);
+      "TENANT_400_NOT_ACTIVE", "Khách thuê không ở trạng thái hoạt động", HttpStatus.BAD_REQUEST),
+  GENDER_MISMATCH_CURRENT_ROOM(
+      "TENANT_409_GENDER",
+      "Giới tính không khớp với chính sách giới tính của phòng đang thuê",
+      HttpStatus.CONFLICT),
+  NO_CONTACT_FIELDS_PROVIDED(
+      "TENANT_400_NO_FIELDS",
+      "Phải cung cấp ít nhất một trường liên lạc cần cập nhật",
+      HttpStatus.BAD_REQUEST);
 
   private final String errorCode;
   private final String message;

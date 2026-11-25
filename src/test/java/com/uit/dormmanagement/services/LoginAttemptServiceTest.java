@@ -1,7 +1,10 @@
 package com.uit.dormmanagement.services;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,18 +45,51 @@ class LoginAttemptServiceTest {
   }
 
   @Test
-  @DisplayName("recordFailedAttempt reaching 5 attempts should lock the account for 15 minutes")
-  void shouldLockAccountWhenReachingMaxAttempts() {
+  @DisplayName("first 5 failures should not lock the account")
+  void firstFiveFailuresDoNotLock() {
     when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     String identifier = "manager";
     String attemptsKey = RedisKeyConstants.loginAttemptsKey(identifier);
     String lockedKey = RedisKeyConstants.loginLockedKey(identifier);
 
-    when(valueOperations.increment(attemptsKey)).thenReturn(5L);
+    for (long attempt = 1; attempt <= 5; attempt++) {
+      when(valueOperations.increment(attemptsKey)).thenReturn(attempt);
+      loginAttemptService.recordFailedAttempt(identifier);
+    }
+
+    verify(valueOperations, never()).set(eq(lockedKey), anyString(), any(Duration.class));
+  }
+
+  @Test
+  @DisplayName("sixth consecutive failure should lock the account for 15 minutes")
+  void sixthFailureCreatesFifteenMinuteLock() {
+    when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+    String identifier = "manager";
+    String attemptsKey = RedisKeyConstants.loginAttemptsKey(identifier);
+    String lockedKey = RedisKeyConstants.loginLockedKey(identifier);
+
+    when(valueOperations.increment(attemptsKey)).thenReturn(6L);
 
     loginAttemptService.recordFailedAttempt(identifier);
 
     verify(valueOperations).set(eq(lockedKey), eq("LOCKED"), eq(Duration.ofMinutes(15)));
+  }
+
+  @Test
+  @DisplayName("canonical email and CCCD produce consistent keys")
+  void canonicalIdentifierKeysTest() {
+    String mixedEmail = "  Manager@Dorm.VN  ";
+    String cccd = " 079203001187 ";
+
+    assertThat(RedisKeyConstants.loginAttemptsKey(mixedEmail))
+        .isEqualTo("dorm:auth:login:attempts:manager@dorm.vn");
+    assertThat(RedisKeyConstants.loginLockedKey(mixedEmail))
+        .isEqualTo("dorm:auth:login:locked:manager@dorm.vn");
+
+    assertThat(RedisKeyConstants.loginAttemptsKey(cccd))
+        .isEqualTo("dorm:auth:login:attempts:079203001187");
+    assertThat(RedisKeyConstants.loginLockedKey(cccd))
+        .isEqualTo("dorm:auth:login:locked:079203001187");
   }
 
   @Test

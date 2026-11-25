@@ -76,7 +76,7 @@ class RoomDtoValidationTest {
   @DisplayName("UpdateRoomRequest should fail when basePrice is negative")
   void updateRoomRequest_negativePrice_shouldFail() {
     UpdateRoomRequest request =
-        new UpdateRoomRequest(GenderPolicy.FEMALE, new BigDecimal("-100.00"), List.of());
+        new UpdateRoomRequest(null, GenderPolicy.FEMALE, new BigDecimal("-100.00"), List.of());
     Set<ConstraintViolation<UpdateRoomRequest>> violations = validator.validate(request);
 
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("basePrice"));

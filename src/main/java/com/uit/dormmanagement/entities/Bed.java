@@ -12,16 +12,20 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
+import jakarta.persistence.UniqueConstraint;
+import java.time.Instant;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
-@Table(name = "beds")
+@Table(
+    name = "beds",
+    uniqueConstraints = {@UniqueConstraint(name = "uq_beds_room_bed_code", columnNames = {"room_id", "bed_code"})})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -40,14 +44,15 @@ public class Bed {
   @Column(name = "bed_code", nullable = false)
   private String bedCode;
 
-  @Column(name = "slot_key", nullable = false, unique = true)
+  @Column(name = "slot_key", nullable = false)
   private String slotKey;
-
-  @Column(nullable = false, precision = 12, scale = 2)
-  private BigDecimal price;
 
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
   @Builder.Default
   private BedStatus status = BedStatus.AVAILABLE;
+
+  @CreationTimestamp
+  @Column(name = "created_at", nullable = false, updatable = false)
+  private Instant createdAt;
 }

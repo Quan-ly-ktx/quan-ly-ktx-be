@@ -10,7 +10,6 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
@@ -23,15 +22,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.annotations.UpdateTimestamp;
+import jakarta.validation.constraints.Pattern;
 
 @Entity
-@Table(
-    name = "tenants",
-    indexes = {
-      @Index(name = "idx_tenants_resident_status", columnList = "resident_status, deleted_at")
-    })
-@SQLRestriction("deleted_at IS NULL")
+@Table(name = "tenants")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -43,8 +38,8 @@ public class Tenant {
   @GeneratedValue(strategy = GenerationType.UUID)
   private UUID id;
 
-  @OneToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "user_id")
+  @OneToOne(fetch = FetchType.LAZY, optional = false)
+  @JoinColumn(name = "user_id", nullable = false, unique = true)
   private User user;
 
   @Column(name = "tenant_code", nullable = false, unique = true)
@@ -57,14 +52,12 @@ public class Tenant {
   @Column(nullable = false)
   private GenderPolicy gender;
 
-  @Column(name = "id_card_number", nullable = false, unique = true)
+  @Pattern(regexp = "^[0-9]{12}$")
+  @Column(name = "id_card_number", nullable = false, unique = true, length = 12)
   private String idCardNumber;
 
   @Column(nullable = false)
   private String phone;
-
-  @Column(nullable = false)
-  private String email;
 
   @Column(name = "permanent_address", nullable = false)
   private String permanentAddress;
@@ -87,6 +80,7 @@ public class Tenant {
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
-  @Column(name = "deleted_at")
-  private Instant deletedAt;
+  @UpdateTimestamp
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 }

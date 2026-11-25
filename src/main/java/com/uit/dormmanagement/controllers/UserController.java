@@ -3,6 +3,8 @@ package com.uit.dormmanagement.controllers;
 import com.uit.dormmanagement.dtos.request.auth.CreateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianStatusRequest;
+import com.uit.dormmanagement.dtos.response.auth.CreateTechnicianResponse;
+import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
 import com.uit.dormmanagement.dtos.response.auth.TechnicianResponse;
 import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.dtos.response.base.PageResponse;
@@ -53,9 +55,9 @@ public class UserController extends AbstractBaseController {
           "Create a new technician user and staff profile. Requires MANAGER role (FR-23).")
   @PreAuthorize("hasRole('MANAGER')")
   @PostMapping("/technicians")
-  public ResponseEntity<SingleResponse<TechnicianResponse>> createTechnician(
+  public ResponseEntity<SingleResponse<CreateTechnicianResponse>> createTechnician(
       @Valid @RequestBody CreateTechnicianRequest request) {
-    TechnicianResponse response = userService.createTechnician(request);
+    CreateTechnicianResponse response = userService.createTechnician(request);
     return created(response, "Tạo tài khoản kỹ thuật viên thành công");
   }
 
@@ -105,5 +107,17 @@ public class UserController extends AbstractBaseController {
       @PathVariable UUID id, @Valid @RequestBody UpdateTechnicianRequest request) {
     TechnicianResponse response = userService.updateTechnician(id, request);
     return success(response, "Cập nhật thông tin kỹ thuật viên thành công");
+  }
+
+  @Operation(
+      summary = "Reset technician password",
+      description =
+          "Manager-assisted password reset for a technician. Generates a one-time temporary password. Requires MANAGER role (FR-23, FR-24).")
+  @PreAuthorize("hasRole('MANAGER')")
+  @PostMapping("/technicians/{id}/reset-password")
+  public ResponseEntity<SingleResponse<OneTimePasswordResponse>> resetTechnicianPassword(
+      @PathVariable UUID id) {
+    OneTimePasswordResponse response = userService.resetTechnicianPassword(id);
+    return success(response, "Đặt lại mật khẩu kỹ thuật viên thành công");
   }
 }

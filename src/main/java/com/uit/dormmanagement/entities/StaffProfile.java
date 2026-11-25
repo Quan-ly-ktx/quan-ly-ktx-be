@@ -41,11 +41,11 @@ public class StaffProfile {
   @Column(nullable = false)
   private String phone;
 
-  @Column(nullable = false)
-  @Builder.Default
-  private boolean active = true;
-
   @CreationTimestamp
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
+
+  @org.hibernate.annotations.UpdateTimestamp
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 }

@@ -58,3 +58,4 @@ build/
 
 # Uploads directory
 uploads/
+private-storage/
