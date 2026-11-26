@@ -54,6 +54,7 @@ import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.impl.ContractServiceImpl;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
@@ -83,11 +84,36 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class ContractServiceImplTest {
 
   private static final Instant DEFAULT_RENEWAL_INSTANT = Instant.parse("2027-08-15T02:00:00Z");
+  private static final byte[] VALID_PDF_BYTES =
+      "%PDF-1.4 test-doc".getBytes(StandardCharsets.UTF_8);
+  private static final byte[] VALID_JPEG_BYTES =
+      new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0x00, 0x10};
+  private static final byte[] VALID_PNG_BYTES =
+      new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00};
+  private static final byte[] VALID_WEBP_BYTES =
+      new byte[] {
+        'R', 'I', 'F', 'F', 0x24, 0x00, 0x00, 0x00, 'W', 'E', 'B', 'P', 'V', 'P', '8', ' '
+      };
+  private static final byte[] VALID_DOC_BYTES =
+      new byte[] {
+        (byte) 0xD0,
+        (byte) 0xCF,
+        0x11,
+        (byte) 0xE0,
+        (byte) 0xA1,
+        (byte) 0xB1,
+        0x1A,
+        (byte) 0xE1,
+        0x00
+      };
+  private static final byte[] VALID_DOCX_BYTES =
+      new byte[] {0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00};
 
   @Mock private ContractRepository contractRepository;
   @Mock private ContractRenewalRepository contractRenewalRepository;
@@ -222,8 +248,7 @@ class ContractServiceImplTest {
     RenewContractRequest request =
         RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 2, 29)).build();
     MockMultipartFile annexDoc =
-        new MockMultipartFile(
-            "annexDocuments", "phu-luc.pdf", "application/pdf", new byte[] {1, 2, 3});
+        new MockMultipartFile("annexDocuments", "phu-luc.pdf", "application/pdf", VALID_PDF_BYTES);
 
     when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
     when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
@@ -283,6 +308,7 @@ class ContractServiceImplTest {
     assertThat(savedDoc.getDocumentCategory()).isEqualTo(ContractDocumentCategory.RENEWAL_ANNEX);
     assertThat(savedDoc.getStorageFileKey()).startsWith("contracts/" + contractId + "/");
     assertThat(savedDoc.getStorageFileKey()).doesNotContain("/uploads/");
+    assertThat(res.documents().getFirst().renewalId()).isEqualTo(persisted.getId());
     assertThat(res.documents().getFirst().fileUrl())
         .isEqualTo(
             "/api/v1/admin/contracts/"
@@ -323,9 +349,9 @@ class ContractServiceImplTest {
     RenewContractRequest request =
         RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
     MockMultipartFile file1 =
-        new MockMultipartFile("annexDocuments", "p1.pdf", "application/pdf", new byte[] {1, 2});
+        new MockMultipartFile("annexDocuments", "p1.pdf", "application/pdf", VALID_PDF_BYTES);
     MockMultipartFile file2 =
-        new MockMultipartFile("annexDocuments", "p2.png", "image/png", new byte[] {3, 4});
+        new MockMultipartFile("annexDocuments", "p2.png", "image/png", VALID_PNG_BYTES);
 
     when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
     when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
@@ -361,7 +387,11 @@ class ContractServiceImplTest {
 
     ArgumentCaptor<String> putKeyCaptor = ArgumentCaptor.forClass(String.class);
     verify(privateObjectStorage)
-        .putObject(putKeyCaptor.capture(), eq("application/pdf"), any(InputStream.class), eq(2L));
+        .putObject(
+            putKeyCaptor.capture(),
+            eq("application/pdf"),
+            any(InputStream.class),
+            eq((long) VALID_PDF_BYTES.length));
     verify(privateObjectStorage).deleteObject(putKeyCaptor.getValue());
   }
 
@@ -965,12 +995,12 @@ class ContractServiceImplTest {
       "uploadDocuments: stores private object keys and returns authorized admin streaming URLs")
   void uploadDocuments_whenValid_shouldSaveDocsAndReturnStreamingUrls() {
     MockMultipartFile file1 =
-        new MockMultipartFile("files", "page1.jpg", "image/jpeg", new byte[] {1, 2});
+        new MockMultipartFile("files", "page1.jpg", "image/jpeg", VALID_JPEG_BYTES);
     MockMultipartFile file2 =
-        new MockMultipartFile("files", "page2.png", "image/png", new byte[] {3, 4});
+        new MockMultipartFile("files", "page2.png", "image/png", VALID_PNG_BYTES);
 
     when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
-    when(contractDocumentRepository.save(any(ContractDocument.class)))
+    when(contractDocumentRepository.saveAndFlush(any(ContractDocument.class)))
         .thenAnswer(
             inv -> {
               ContractDocument d = inv.getArgument(0);
@@ -986,11 +1016,20 @@ class ContractServiceImplTest {
 
     ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
     verify(privateObjectStorage)
-        .putObject(keyCaptor.capture(), eq("image/jpeg"), any(InputStream.class), eq(2L));
+        .putObject(
+            keyCaptor.capture(),
+            eq("image/jpeg"),
+            any(InputStream.class),
+            eq((long) VALID_JPEG_BYTES.length));
     verify(privateObjectStorage)
-        .putObject(keyCaptor.capture(), eq("image/png"), any(InputStream.class), eq(2L));
+        .putObject(
+            keyCaptor.capture(),
+            eq("image/png"),
+            any(InputStream.class),
+            eq((long) VALID_PNG_BYTES.length));
 
     assertThat(docs).hasSize(2);
+    assertThat(docs.getFirst().renewalId()).isNull();
     assertThat(docs.getFirst().fileUrl())
         .isEqualTo(
             "/api/v1/admin/contracts/"
@@ -1015,12 +1054,12 @@ class ContractServiceImplTest {
   @DisplayName("uploadDocuments: cleans up previously uploaded object when a subsequent file fails")
   void uploadDocuments_whenPartialUploadFails_shouldCleanupUploadedObject() {
     MockMultipartFile file1 =
-        new MockMultipartFile("files", "page1.jpg", "image/jpeg", new byte[] {1, 2});
+        new MockMultipartFile("files", "page1.jpg", "image/jpeg", VALID_JPEG_BYTES);
     MockMultipartFile file2 =
-        new MockMultipartFile("files", "page2.png", "image/png", new byte[] {3, 4});
+        new MockMultipartFile("files", "page2.png", "image/png", VALID_PNG_BYTES);
 
     when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
-    when(contractDocumentRepository.save(any(ContractDocument.class)))
+    when(contractDocumentRepository.saveAndFlush(any(ContractDocument.class)))
         .thenAnswer(
             inv -> {
               ContractDocument d = inv.getArgument(0);
@@ -1047,8 +1086,342 @@ class ContractServiceImplTest {
 
     ArgumentCaptor<String> putKeyCaptor = ArgumentCaptor.forClass(String.class);
     verify(privateObjectStorage)
-        .putObject(putKeyCaptor.capture(), eq("image/jpeg"), any(InputStream.class), eq(2L));
+        .putObject(
+            putKeyCaptor.capture(),
+            eq("image/jpeg"),
+            any(InputStream.class),
+            eq((long) VALID_JPEG_BYTES.length));
     verify(privateObjectStorage).deleteObject(putKeyCaptor.getValue());
+  }
+
+  @Test
+  @DisplayName(
+      "uploadDocuments: accepts all 7 supported extensions and browser MIME aliases while persisting canonical MIME")
+  void uploadDocuments_acceptsAllSevenExtensionsAndAliases_storesCanonicalMime() {
+    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+    when(contractDocumentRepository.saveAndFlush(any(ContractDocument.class)))
+        .thenAnswer(
+            inv -> {
+              ContractDocument d = inv.getArgument(0);
+              if (d.getId() == null) {
+                d.setId(UUID.randomUUID());
+              }
+              return d;
+            });
+
+    List<MultipartFile> validFiles =
+        List.of(
+            new MockMultipartFile(
+                "files", "hopdong.PDF", "application/x-pdf; charset=utf-8", VALID_PDF_BYTES),
+            new MockMultipartFile("files", "scan1.jpg", "image/pjpeg", VALID_JPEG_BYTES),
+            new MockMultipartFile(
+                "files", "scan2.jpeg", "application/octet-stream", VALID_JPEG_BYTES),
+            new MockMultipartFile("files", "scan3.png", "image/png", VALID_PNG_BYTES),
+            new MockMultipartFile("files", "scan4.webp", null, VALID_WEBP_BYTES),
+            new MockMultipartFile("files", "legacy.doc", "application/x-msword", VALID_DOC_BYTES),
+            new MockMultipartFile(
+                "files", "modern.docx", "application/x-zip-compressed", VALID_DOCX_BYTES),
+            new MockMultipartFile("files", "modern2.docx", "application/zip", VALID_DOCX_BYTES));
+
+    List<ContractDocumentResponse> responses =
+        contractService.uploadDocuments(
+            contractId, ContractDocumentCategory.ORIGINAL_CONTRACT, null, validFiles);
+
+    assertThat(responses)
+        .extracting(ContractDocumentResponse::fileType)
+        .containsExactly(
+            "application/pdf",
+            "image/jpeg",
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  }
+
+  @Test
+  @DisplayName(
+      "uploadDocuments: rejects spoofed magic bytes, truncated headers, mismatched Content-Type, invalid filenames, and 0-byte files")
+  void uploadDocuments_rejectsSpoofedMagicBytesMismatchedContentTypeAndInvalidFiles() {
+    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+
+    byte[] htmlBytes = "<html>spoofed</html>".getBytes(StandardCharsets.UTF_8);
+    byte[] riffAviBytes =
+        new byte[] {'R', 'I', 'F', 'F', 0x24, 0x00, 0x00, 0x00, 'A', 'V', 'I', ' '};
+
+    List<MockMultipartFile> invalidFiles =
+        List.of(
+            new MockMultipartFile("files", "spoof.pdf", "application/pdf", htmlBytes),
+            new MockMultipartFile("files", "cross.pdf", "application/pdf", VALID_PNG_BYTES),
+            new MockMultipartFile(
+                "files", "short.pdf", "application/pdf", "%PDF".getBytes(StandardCharsets.UTF_8)),
+            new MockMultipartFile("files", "spoof.jpg", "image/jpeg", htmlBytes),
+            new MockMultipartFile(
+                "files", "short.jpeg", "image/jpeg", new byte[] {(byte) 0xFF, (byte) 0xD8}),
+            new MockMultipartFile("files", "spoof.png", "image/png", htmlBytes),
+            new MockMultipartFile(
+                "files",
+                "short.png",
+                "image/png",
+                new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A}),
+            new MockMultipartFile("files", "spoof.webp", "image/webp", riffAviBytes),
+            new MockMultipartFile(
+                "files",
+                "short.webp",
+                "image/webp",
+                new byte[] {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B'}),
+            new MockMultipartFile("files", "spoof.doc", "application/msword", VALID_DOCX_BYTES),
+            new MockMultipartFile(
+                "files",
+                "short.doc",
+                "application/msword",
+                new byte[] {
+                  (byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0, (byte) 0xA1, (byte) 0xB1, 0x1A
+                }),
+            new MockMultipartFile(
+                "files",
+                "spoof.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                VALID_DOC_BYTES),
+            new MockMultipartFile(
+                "files",
+                "short.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                new byte[] {0x50, 0x4B, 0x03}),
+            new MockMultipartFile("files", "mismatch.pdf", "image/png", VALID_PDF_BYTES),
+            new MockMultipartFile("files", "mismatch2.pdf", "text/plain", VALID_PDF_BYTES),
+            new MockMultipartFile("files", "mismatch3.jpg", "text/html", VALID_JPEG_BYTES),
+            new MockMultipartFile(
+                "files", "notes.txt", "text/plain", "hello".getBytes(StandardCharsets.UTF_8)),
+            new MockMultipartFile("files", "noext", "application/pdf", VALID_PDF_BYTES),
+            new MockMultipartFile("files", ".pdf", "application/pdf", VALID_PDF_BYTES),
+            new MockMultipartFile("files", "   ", "application/pdf", VALID_PDF_BYTES),
+            new MockMultipartFile("files", "empty.pdf", "application/pdf", new byte[0]));
+
+    for (MockMultipartFile badFile : invalidFiles) {
+      assertThatThrownBy(
+              () ->
+                  contractService.uploadDocuments(
+                      contractId, ContractDocumentCategory.ORIGINAL_CONTRACT, List.of(badFile)))
+          .as(
+              "Expected UNSUPPORTED_DOCUMENT_FORMAT for %s (%s)",
+              badFile.getOriginalFilename(), badFile.getContentType())
+          .isInstanceOf(BaseAppException.class)
+          .matches(
+              ex ->
+                  ((BaseAppException) ex).getErrorCode()
+                      == ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
+    }
+
+    verifyNoInteractions(privateObjectStorage, contractDocumentRepository);
+  }
+
+  @Test
+  @DisplayName(
+      "uploadDocuments: rolls back and cleans up earlier object when second file fails magic-byte check")
+  void uploadDocuments_whenSecondFileFailsMagicBytes_shouldCleanupFirstUpload() {
+    MockMultipartFile validFile =
+        new MockMultipartFile("files", "page1.jpg", "image/jpeg", VALID_JPEG_BYTES);
+    MockMultipartFile spoofedSecond =
+        new MockMultipartFile(
+            "files", "page2.png", "image/png", "not-a-png-header".getBytes(StandardCharsets.UTF_8));
+
+    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+    when(contractDocumentRepository.saveAndFlush(any(ContractDocument.class)))
+        .thenAnswer(
+            inv -> {
+              ContractDocument d = inv.getArgument(0);
+              d.setId(UUID.randomUUID());
+              return d;
+            });
+
+    assertThatThrownBy(
+            () ->
+                contractService.uploadDocuments(
+                    contractId,
+                    ContractDocumentCategory.ORIGINAL_CONTRACT,
+                    List.of(validFile, spoofedSecond)))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
+
+    ArgumentCaptor<String> putKeyCaptor = ArgumentCaptor.forClass(String.class);
+    verify(privateObjectStorage)
+        .putObject(
+            putKeyCaptor.capture(),
+            eq("image/jpeg"),
+            any(InputStream.class),
+            eq((long) VALID_JPEG_BYTES.length));
+    verify(privateObjectStorage).deleteObject(putKeyCaptor.getValue());
+  }
+
+  @Test
+  @DisplayName(
+      "renewContract: rejects >10MB or spoofed annex files and cleans up earlier uploaded annex on later failure")
+  void renewContract_whenAnnexInvalidOrOversized_shouldRejectAndCleanupPriorUploads() {
+    RenewContractRequest request =
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.empty());
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(false);
+    when(contractRenewalRepository.saveAndFlush(any(ContractRenewal.class)))
+        .thenAnswer(
+            inv -> {
+              ContractRenewal r = inv.getArgument(0);
+              r.setId(UUID.randomUUID());
+              return r;
+            });
+
+    MockMultipartFile oversized =
+        new MockMultipartFile(
+            "annexDocuments", "huge.pdf", "application/pdf", new byte[11 * 1024 * 1024]);
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, List.of(oversized)))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.DOCUMENT_FILE_SIZE_EXCEEDED);
+    verifyNoInteractions(privateObjectStorage);
+
+    MockMultipartFile validPdf =
+        new MockMultipartFile("annexDocuments", "a1.pdf", "application/pdf", VALID_PDF_BYTES);
+    MockMultipartFile spoofedPng =
+        new MockMultipartFile(
+            "annexDocuments",
+            "a2.png",
+            "image/png",
+            "spoofed-png-bytes".getBytes(StandardCharsets.UTF_8));
+    when(contractDocumentRepository.saveAndFlush(any(ContractDocument.class)))
+        .thenAnswer(
+            inv -> {
+              ContractDocument d = inv.getArgument(0);
+              d.setId(UUID.randomUUID());
+              return d;
+            });
+
+    assertThatThrownBy(
+            () -> contractService.renewContract(contractId, request, List.of(validPdf, spoofedPng)))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
+
+    ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
+    verify(privateObjectStorage)
+        .putObject(
+            keyCaptor.capture(),
+            eq("application/pdf"),
+            any(InputStream.class),
+            eq((long) VALID_PDF_BYTES.length));
+    verify(privateObjectStorage).deleteObject(keyCaptor.getValue());
+  }
+
+  @Test
+  @DisplayName(
+      "uploadDocuments: validates RENEWAL_ANNEX renewalId linkage and rejects mismatched or invalid links before upload")
+  void uploadDocuments_renewalIdValidation_enforcesCategoryAndContractOwnership() {
+    UUID validRenewalId = UUID.randomUUID();
+    ContractRenewal sameContractRenewal =
+        ContractRenewal.builder().id(validRenewalId).contract(contract).sequenceNo(1).build();
+    MockMultipartFile validPdf =
+        new MockMultipartFile("files", "annex.pdf", "application/pdf", VALID_PDF_BYTES);
+
+    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findById(validRenewalId))
+        .thenReturn(Optional.of(sameContractRenewal));
+    when(contractDocumentRepository.saveAndFlush(any(ContractDocument.class)))
+        .thenAnswer(
+            inv -> {
+              ContractDocument d = inv.getArgument(0);
+              d.setId(UUID.randomUUID());
+              return d;
+            });
+
+    List<ContractDocumentResponse> uploaded =
+        contractService.uploadDocuments(
+            contractId, ContractDocumentCategory.RENEWAL_ANNEX, validRenewalId, List.of(validPdf));
+    assertThat(uploaded).hasSize(1);
+    assertThat(uploaded.getFirst().renewalId()).isEqualTo(validRenewalId);
+    assertThat(contract.getDocuments().getFirst().getRenewal()).isSameAs(sameContractRenewal);
+
+    // Missing renewalId on RENEWAL_ANNEX -> 400 CONTRACT_400_DOCUMENT_RENEWAL
+    assertThatThrownBy(
+            () ->
+                contractService.uploadDocuments(
+                    contractId, ContractDocumentCategory.RENEWAL_ANNEX, null, List.of(validPdf)))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK);
+
+    // Non-existent renewalId -> 400
+    UUID unknownRenewalId = UUID.randomUUID();
+    when(contractRenewalRepository.findById(unknownRenewalId)).thenReturn(Optional.empty());
+    assertThatThrownBy(
+            () ->
+                contractService.uploadDocuments(
+                    contractId,
+                    ContractDocumentCategory.RENEWAL_ANNEX,
+                    unknownRenewalId,
+                    List.of(validPdf)))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK);
+
+    // Cross-contract renewalId -> 400
+    UUID otherRenewalId = UUID.randomUUID();
+    Contract otherContract = Contract.builder().id(UUID.randomUUID()).build();
+    when(contractRenewalRepository.findById(otherRenewalId))
+        .thenReturn(
+            Optional.of(
+                ContractRenewal.builder().id(otherRenewalId).contract(otherContract).build()));
+    assertThatThrownBy(
+            () ->
+                contractService.uploadDocuments(
+                    contractId,
+                    ContractDocumentCategory.RENEWAL_ANNEX,
+                    otherRenewalId,
+                    List.of(validPdf)))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK);
+
+    // Non-null renewalId on non-RENEWAL_ANNEX categories -> 400
+    for (ContractDocumentCategory nonAnnexCategory :
+        new ContractDocumentCategory[] {
+          null,
+          ContractDocumentCategory.ORIGINAL_CONTRACT,
+          ContractDocumentCategory.CHECKOUT_HANDOVER,
+          ContractDocumentCategory.OTHER
+        }) {
+      assertThatThrownBy(
+              () ->
+                  contractService.uploadDocuments(
+                      contractId, nonAnnexCategory, validRenewalId, List.of(validPdf)))
+          .isInstanceOf(BaseAppException.class)
+          .matches(
+              ex ->
+                  ((BaseAppException) ex).getErrorCode()
+                      == ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK);
+    }
+
+    // Only the single valid upload hit storage
+    verify(privateObjectStorage)
+        .putObject(
+            any(),
+            eq("application/pdf"),
+            any(InputStream.class),
+            eq((long) VALID_PDF_BYTES.length));
   }
 
   @Test
@@ -1208,6 +1581,139 @@ class ContractServiceImplTest {
 
     assertThatThrownBy(
             () -> contractService.loadDocumentContentForTenant(otherUserId, contractId, docId))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName(
+      "getMyContractHistory: allows ACTIVE and CHECKED_OUT tenants to list active/liquidated contracts with tenant-scoped URLs and renewalId")
+  void getMyContractHistory_allowsActiveAndCheckedOut_returnsTenantUrls() {
+    tenant.setResidentStatus(ResidentStatus.CHECKED_OUT);
+    UUID renewalId = UUID.randomUUID();
+    ContractRenewal renewal =
+        ContractRenewal.builder()
+            .id(renewalId)
+            .contract(contract)
+            .sequenceNo(1)
+            .signedOn(LocalDate.of(2027, 8, 10))
+            .previousEndOn(LocalDate.of(2027, 8, 31))
+            .effectiveFrom(LocalDate.of(2027, 9, 1))
+            .newEndOn(LocalDate.of(2028, 2, 29))
+            .monthlyRent(new BigDecimal("1800000"))
+            .build();
+    contract.getRenewals().add(renewal);
+
+    UUID docId = UUID.randomUUID();
+    String rawKey = "contracts/" + contractId + "/annex-secret.pdf";
+    ContractDocument annexDoc =
+        ContractDocument.builder()
+            .id(docId)
+            .contract(contract)
+            .renewal(renewal)
+            .originalFilename("annex.pdf")
+            .storageFileKey(rawKey)
+            .mimeType("application/pdf")
+            .documentType(ContractDocumentCategory.RENEWAL_ANNEX)
+            .build();
+    contract.getDocuments().add(annexDoc);
+
+    UUID olderContractId = UUID.randomUUID();
+    Contract olderLiquidated =
+        Contract.builder()
+            .id(olderContractId)
+            .contractCode("HD-2025-0010")
+            .tenant(tenant)
+            .bed(bed)
+            .roomCodeSnapshot("P.302")
+            .bedCodeSnapshot("G02")
+            .startOn(LocalDate.of(2025, 9, 1))
+            .originalEndOn(LocalDate.of(2026, 8, 31))
+            .originalMonthlyRent(new BigDecimal("1500000"))
+            .depositAmount(new BigDecimal("1500000"))
+            .status(ContractStatus.LIQUIDATED)
+            .checkedOutAt(Instant.parse("2026-08-31T10:00:00Z"))
+            .documents(List.of())
+            .renewals(List.of())
+            .build();
+
+    when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
+    when(contractRepository.findByTenantIdOrderByStartOnDescCreatedAtDesc(tenant.getId()))
+        .thenReturn(List.of(contract, olderLiquidated));
+
+    List<ContractDetailResponse> history = contractService.getMyContractHistory(tenantUserId);
+
+    assertThat(history).hasSize(2);
+    assertThat(history.get(0).id()).isEqualTo(contractId);
+    assertThat(history.get(0).documents()).hasSize(1);
+    assertThat(history.get(0).documents().getFirst().renewalId()).isEqualTo(renewalId);
+    assertThat(history.get(0).documents().getFirst().fileUrl())
+        .isEqualTo("/api/v1/tenant/contracts/" + contractId + "/documents/" + docId + "/content")
+        .doesNotContain(rawKey)
+        .doesNotContain("/api/v1/admin/");
+    assertThat(history.get(1).id()).isEqualTo(olderContractId);
+    assertThat(history.get(1).status()).isEqualTo(ContractStatus.LIQUIDATED);
+
+    UUID missingUserId = UUID.randomUUID();
+    when(tenantRepository.findByUserId(missingUserId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> contractService.getMyContractHistory(missingUserId))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.TENANT_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName(
+      "getMyContractById: returns owner detail for ACTIVE/LIQUIDATED contracts and 404 for non-owner or missing tenant/contract")
+  void getMyContractById_enforcesOwnershipAndReturns404() {
+    tenant.setResidentStatus(ResidentStatus.CHECKED_OUT);
+    contract.setStatus(ContractStatus.LIQUIDATED);
+    UUID docId = UUID.randomUUID();
+    String rawKey = "contracts/" + contractId + "/handover.pdf";
+    contract
+        .getDocuments()
+        .add(
+            ContractDocument.builder()
+                .id(docId)
+                .contract(contract)
+                .originalFilename("handover.pdf")
+                .storageFileKey(rawKey)
+                .mimeType("application/pdf")
+                .documentType(ContractDocumentCategory.CHECKOUT_HANDOVER)
+                .build());
+
+    when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
+    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+
+    ContractDetailResponse detail = contractService.getMyContractById(tenantUserId, contractId);
+    assertThat(detail.id()).isEqualTo(contractId);
+    assertThat(detail.status()).isEqualTo(ContractStatus.LIQUIDATED);
+    assertThat(detail.documents().getFirst().fileUrl())
+        .isEqualTo("/api/v1/tenant/contracts/" + contractId + "/documents/" + docId + "/content")
+        .doesNotContain(rawKey)
+        .doesNotContain("/api/v1/admin/");
+
+    // Non-owner tenant -> 404 CONTRACT_404
+    UUID otherUserId = UUID.randomUUID();
+    Tenant otherTenant = Tenant.builder().id(UUID.randomUUID()).build();
+    when(tenantRepository.findByUserId(otherUserId)).thenReturn(Optional.of(otherTenant));
+    assertThatThrownBy(() -> contractService.getMyContractById(otherUserId, contractId))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_NOT_FOUND);
+
+    // Missing contract -> 404 CONTRACT_404
+    UUID missingContractId = UUID.randomUUID();
+    when(contractRepository.findById(missingContractId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> contractService.getMyContractById(tenantUserId, missingContractId))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_NOT_FOUND);
+
+    // Missing tenant profile -> 404 CONTRACT_404
+    UUID missingUserId = UUID.randomUUID();
+    when(tenantRepository.findByUserId(missingUserId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> contractService.getMyContractById(missingUserId, contractId))
         .isInstanceOf(BaseAppException.class)
         .matches(
             ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_NOT_FOUND);

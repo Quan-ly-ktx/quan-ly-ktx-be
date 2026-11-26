@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.ContractDocument;
+import com.uit.dormmanagement.entities.ContractRenewal;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
@@ -24,6 +25,7 @@ import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractDocumentRepository;
+import com.uit.dormmanagement.repositories.ContractRenewalRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
 import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
@@ -33,8 +35,10 @@ import com.uit.dormmanagement.services.ContractService;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
 import com.uit.dormmanagement.support.InMemoryPrivateObjectStorage;
 import com.uit.dormmanagement.support.RedisTestContainerSupport;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -69,11 +73,13 @@ class ContractDocumentSecurityIntegrationTest {
   @Autowired private RoomRepository roomRepository;
   @Autowired private BedRepository bedRepository;
   @Autowired private ContractRepository contractRepository;
+  @Autowired private ContractRenewalRepository contractRenewalRepository;
   @Autowired private ContractDocumentRepository contractDocumentRepository;
   @Autowired private ContractService contractService;
   @Autowired private InMemoryPrivateObjectStorage privateObjectStorage;
   @Autowired private UserTokenInvalidationService userTokenInvalidationService;
   @Autowired private TransactionTemplate transactionTemplate;
+  @Autowired private EntityManager entityManager;
 
   private User managerUser;
   private User activeTenantUser;
@@ -528,7 +534,8 @@ class ContractDocumentSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName("HEAD contract document content endpoints enforce auth, RBAC, ownership, and binding")
+  @DisplayName(
+      "HEAD contract document content endpoints enforce auth, RBAC, ownership, and binding")
   void headDocumentContent_enforcesAuthRbacOwnershipAndContractBinding() throws Exception {
     setUpFixtures();
     String activeToken = tokenFor(activeTenantUser);
@@ -788,5 +795,212 @@ class ContractDocumentSecurityIntegrationTest {
       tenantRepository.deleteById(committedTenant.getId());
       userRepository.deleteById(committedUser.getId());
     }
+  }
+
+  @Test
+  @DisplayName(
+      "GET /api/v1/tenant/contracts and /{id}: allow ACTIVE and CHECKED_OUT tenants to view history and owned contracts without leaking raw keys")
+  void tenantContractHistoryAndDetail_activeAndCheckedOutAllowedWithoutLeakingRawKeys()
+      throws Exception {
+    setUpFixtures();
+    String activeToken = tokenFor(activeTenantUser);
+    String checkedOutToken = tokenFor(checkedOutTenantUser);
+
+    Contract olderLiquidated =
+        contractRepository.save(
+            Contract.builder()
+                .contractCode("HD-CDOC-00")
+                .tenant(activeTenant)
+                .bed(activeBed)
+                .roomCodeSnapshot("P.801")
+                .bedCodeSnapshot("G01")
+                .startOn(LocalDate.of(2025, 9, 1))
+                .originalEndOn(LocalDate.of(2026, 8, 31))
+                .originalMonthlyRent(new BigDecimal("1400000"))
+                .depositAmount(new BigDecimal("1400000"))
+                .status(ContractStatus.LIQUIDATED)
+                .checkedOutAt(Instant.parse("2026-08-31T10:00:00Z"))
+                .build());
+
+    ContractRenewal renewal =
+        contractRenewalRepository.save(
+            ContractRenewal.builder()
+                .contract(activeContract)
+                .sequenceNo(1)
+                .signedOn(LocalDate.of(2027, 8, 15))
+                .previousEndOn(LocalDate.of(2027, 8, 31))
+                .effectiveFrom(LocalDate.of(2027, 9, 1))
+                .newEndOn(LocalDate.of(2028, 2, 29))
+                .monthlyRent(new BigDecimal("1800000"))
+                .build());
+
+    String annexKey =
+        "contracts/" + activeContract.getId() + "/" + UUID.randomUUID() + "_annex.pdf";
+    privateObjectStorage.putObject(
+        annexKey, "application/pdf", "%PDF-1.4 annex".getBytes(StandardCharsets.UTF_8));
+    ContractDocument annexDoc =
+        contractDocumentRepository.save(
+            ContractDocument.builder()
+                .contract(activeContract)
+                .renewal(renewal)
+                .documentType(ContractDocumentCategory.RENEWAL_ANNEX)
+                .originalFilename("annex.pdf")
+                .mimeType("application/pdf")
+                .storageFileKey(annexKey)
+                .build());
+
+    entityManager.flush();
+    entityManager.clear();
+
+    String activeHistoryJson =
+        mockMvc
+            .perform(
+                get("/api/v1/tenant/contracts").header("Authorization", "Bearer " + activeToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.httpStatus").value(200))
+            .andExpect(jsonPath("$.data.length()").value(2))
+            .andExpect(jsonPath("$.data[0].id").value(activeContract.getId().toString()))
+            .andExpect(jsonPath("$.data[0].status").value("ACTIVE"))
+            .andExpect(jsonPath("$.data[0].renewals.length()").value(1))
+            .andExpect(jsonPath("$.data[0].renewals[0].id").value(renewal.getId().toString()))
+            .andExpect(jsonPath("$.data[0].documents.length()").value(2))
+            .andExpect(jsonPath("$.data[1].id").value(olderLiquidated.getId().toString()))
+            .andExpect(jsonPath("$.data[1].status").value("LIQUIDATED"))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(activeHistoryJson)
+        .contains(
+            "/api/v1/tenant/contracts/"
+                + activeContract.getId()
+                + "/documents/"
+                + activeDoc.getId()
+                + "/content")
+        .contains(
+            "/api/v1/tenant/contracts/"
+                + activeContract.getId()
+                + "/documents/"
+                + annexDoc.getId()
+                + "/content")
+        .contains(renewal.getId().toString())
+        .doesNotContain(activeDocKey)
+        .doesNotContain(annexKey)
+        .doesNotContain("/api/v1/admin/")
+        .doesNotContain("/uploads/");
+
+    // Active tenant can also retrieve both own ACTIVE and own LIQUIDATED contract by {id} and /me
+    mockMvc
+        .perform(
+            get("/api/v1/tenant/contracts/me").header("Authorization", "Bearer " + activeToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(activeContract.getId().toString()));
+    mockMvc
+        .perform(
+            get("/api/v1/tenant/contracts/{id}", activeContract.getId())
+                .header("Authorization", "Bearer " + activeToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(activeContract.getId().toString()))
+        .andExpect(jsonPath("$.data.renewals.length()").value(1))
+        .andExpect(jsonPath("$.data.documents.length()").value(2));
+    mockMvc
+        .perform(
+            get("/api/v1/tenant/contracts/{id}", olderLiquidated.getId())
+                .header("Authorization", "Bearer " + activeToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(olderLiquidated.getId().toString()))
+        .andExpect(jsonPath("$.data.status").value("LIQUIDATED"));
+
+    // CHECKED_OUT tenant can view full history and fetch their liquidated contract by {id}
+    String expectedCheckedOutDocUrl =
+        "/api/v1/tenant/contracts/"
+            + liquidatedContract.getId()
+            + "/documents/"
+            + checkedOutDoc.getId()
+            + "/content";
+    String checkedOutHistoryJson =
+        mockMvc
+            .perform(
+                get("/api/v1/tenant/contracts")
+                    .header("Authorization", "Bearer " + checkedOutToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(1))
+            .andExpect(jsonPath("$.data[0].id").value(liquidatedContract.getId().toString()))
+            .andExpect(jsonPath("$.data[0].status").value("LIQUIDATED"))
+            .andExpect(jsonPath("$.data[0].documents[0].fileUrl").value(expectedCheckedOutDocUrl))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(checkedOutHistoryJson)
+        .doesNotContain(checkedOutDocKey)
+        .doesNotContain("/api/v1/admin/")
+        .doesNotContain("/uploads/");
+
+    String checkedOutDetailJson =
+        mockMvc
+            .perform(
+                get("/api/v1/tenant/contracts/{id}", liquidatedContract.getId())
+                    .header("Authorization", "Bearer " + checkedOutToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.id").value(liquidatedContract.getId().toString()))
+            .andExpect(jsonPath("$.data.documents[0].fileUrl").value(expectedCheckedOutDocUrl))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(checkedOutDetailJson)
+        .doesNotContain(checkedOutDocKey)
+        .doesNotContain("/api/v1/admin/")
+        .doesNotContain("/uploads/");
+  }
+
+  @Test
+  @DisplayName(
+      "GET /api/v1/tenant/contracts and /{id}: enforce 401 anonymous, 403 non-TENANT roles, and 404 cross-tenant isolation")
+  void tenantContractHistoryAndDetail_enforcesAuthRbacAndCrossTenantIsolation() throws Exception {
+    setUpFixtures();
+    String activeToken = tokenFor(activeTenantUser);
+    String checkedOutToken = tokenFor(checkedOutTenantUser);
+    String managerToken = tokenFor(managerUser);
+    String techToken = tokenFor(technicianUser);
+
+    // Anonymous -> 401
+    mockMvc.perform(get("/api/v1/tenant/contracts")).andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(get("/api/v1/tenant/contracts/{id}", activeContract.getId()))
+        .andExpect(status().isUnauthorized());
+
+    // MANAGER and TECHNICIAN -> 403
+    for (String nonTenantToken : new String[] {managerToken, techToken}) {
+      mockMvc
+          .perform(
+              get("/api/v1/tenant/contracts").header("Authorization", "Bearer " + nonTenantToken))
+          .andExpect(status().isForbidden());
+      mockMvc
+          .perform(
+              get("/api/v1/tenant/contracts/{id}", activeContract.getId())
+                  .header("Authorization", "Bearer " + nonTenantToken))
+          .andExpect(status().isForbidden());
+    }
+
+    // Cross-tenant contract detail -> 404 CONTRACT_404
+    mockMvc
+        .perform(
+            get("/api/v1/tenant/contracts/{id}", otherContract.getId())
+                .header("Authorization", "Bearer " + activeToken))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.errorCode").value("CONTRACT_404"));
+    mockMvc
+        .perform(
+            get("/api/v1/tenant/contracts/{id}", activeContract.getId())
+                .header("Authorization", "Bearer " + checkedOutToken))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.errorCode").value("CONTRACT_404"));
+
+    // Non-existent contract id -> 404 CONTRACT_404
+    mockMvc
+        .perform(
+            get("/api/v1/tenant/contracts/{id}", UUID.randomUUID())
+                .header("Authorization", "Bearer " + activeToken))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.errorCode").value("CONTRACT_404"));
   }
 }

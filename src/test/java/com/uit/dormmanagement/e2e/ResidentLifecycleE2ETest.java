@@ -47,6 +47,7 @@ import com.uit.dormmanagement.services.ContractService;
 import com.uit.dormmanagement.services.OnboardingService;
 import com.uit.dormmanagement.services.VehicleService;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -280,7 +281,10 @@ class ResidentLifecycleE2ETest {
     // -------------------------------------------------------------------------
     MockMultipartFile contractDoc =
         new MockMultipartFile(
-            "files", "hop_dong_goc.pdf", "application/pdf", new byte[] {10, 20, 30});
+            "files",
+            "hop_dong_goc.pdf",
+            "application/pdf",
+            "%PDF-1.4 hop dong goc".getBytes(StandardCharsets.UTF_8));
     List<ContractDocumentResponse> uploadedDocs =
         contractService.uploadDocuments(
             contractId, ContractDocumentCategory.ORIGINAL_CONTRACT, List.of(contractDoc));
@@ -298,7 +302,10 @@ class ResidentLifecycleE2ETest {
         RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
     MockMultipartFile annexDoc =
         new MockMultipartFile(
-            "annexDocuments", "phu_luc_gia_han.pdf", "application/pdf", new byte[] {40, 50});
+            "annexDocuments",
+            "phu_luc_gia_han.pdf",
+            "application/pdf",
+            "%PDF-1.4 phu luc gia han".getBytes(StandardCharsets.UTF_8));
 
     // Blocked while first invoice is still DEBT (BR-04 §6, FR-12)
     assertThatThrownBy(() -> contractService.renewContract(contractId, renewReq, List.of(annexDoc)))

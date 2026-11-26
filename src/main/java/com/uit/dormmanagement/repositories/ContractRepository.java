@@ -59,6 +59,20 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
   List<Contract> findAllByStatusAndOriginalEndOnLessThanEqual(
       ContractStatus status, LocalDate thresholdDate);
 
+  List<Contract> findByTenantIdOrderByStartOnDescCreatedAtDesc(UUID tenantId);
+
+  @Query(
+      """
+      SELECT c FROM Contract c
+      WHERE c.status = :status
+        AND COALESCE(
+              (SELECT MAX(r.newEndOn) FROM ContractRenewal r WHERE r.contract = c),
+              c.originalEndOn) <= :thresholdDate
+      ORDER BY c.startOn ASC, c.id ASC
+      """)
+  List<Contract> findAllByStatusAndEffectiveEndOnLessThanEqual(
+      @Param("status") ContractStatus status, @Param("thresholdDate") LocalDate thresholdDate);
+
   long countByContractCodeStartingWith(String prefix);
 
   @Query(

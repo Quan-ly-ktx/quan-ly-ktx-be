@@ -32,11 +32,23 @@ public interface ContractService {
   }
 
   List<ContractDocumentResponse> uploadDocuments(
-      UUID contractId, ContractDocumentCategory category, List<MultipartFile> files);
+      UUID contractId,
+      ContractDocumentCategory category,
+      UUID renewalId,
+      List<MultipartFile> files);
+
+  default List<ContractDocumentResponse> uploadDocuments(
+      UUID contractId, ContractDocumentCategory category, List<MultipartFile> files) {
+    return uploadDocuments(contractId, category, null, files);
+  }
 
   void deleteDocument(UUID contractId, UUID documentId);
 
   ContractDetailResponse getMyContract(UUID userId);
+
+  List<ContractDetailResponse> getMyContractHistory(UUID userId);
+
+  ContractDetailResponse getMyContractById(UUID userId, UUID contractId);
 
   ContractDocumentContent loadDocumentContentForAdmin(UUID contractId, UUID documentId);
 

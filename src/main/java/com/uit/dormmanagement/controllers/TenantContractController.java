@@ -8,6 +8,7 @@ import com.uit.dormmanagement.services.ContractService;
 import com.uit.dormmanagement.utils.StreamingResponseUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
@@ -31,6 +32,18 @@ public class TenantContractController extends AbstractBaseController {
   private final ContractService contractService;
 
   @Operation(
+      summary = "Get my contract history",
+      description =
+          "Retrieve all contracts (active and liquidated) with renewals and documents for logged-in tenant")
+  @PreAuthorize("hasRole('TENANT')")
+  @GetMapping
+  public ResponseEntity<SingleResponse<List<ContractDetailResponse>>> getMyContractHistory(
+      @AuthenticationPrincipal UserPrincipal principal) {
+    List<ContractDetailResponse> response = contractService.getMyContractHistory(principal.getId());
+    return responseFactory.success(response, "Lấy lịch sử hợp đồng thành công");
+  }
+
+  @Operation(
       summary = "Get my contract",
       description = "Retrieve current active contract and documents of logged-in tenant")
   @PreAuthorize("hasRole('TENANT')")
@@ -38,6 +51,17 @@ public class TenantContractController extends AbstractBaseController {
   public ResponseEntity<SingleResponse<ContractDetailResponse>> getMyContract(
       @AuthenticationPrincipal UserPrincipal principal) {
     ContractDetailResponse response = contractService.getMyContract(principal.getId());
+    return responseFactory.success(response, "Lấy thông tin hợp đồng thành công");
+  }
+
+  @Operation(
+      summary = "Get my contract detail",
+      description = "Retrieve a specific contract owned by the logged-in tenant")
+  @PreAuthorize("hasRole('TENANT')")
+  @GetMapping("/{id}")
+  public ResponseEntity<SingleResponse<ContractDetailResponse>> getMyContractById(
+      @AuthenticationPrincipal UserPrincipal principal, @PathVariable UUID id) {
+    ContractDetailResponse response = contractService.getMyContractById(principal.getId(), id);
     return responseFactory.success(response, "Lấy thông tin hợp đồng thành công");
   }
 

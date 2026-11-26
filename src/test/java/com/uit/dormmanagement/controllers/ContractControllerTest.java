@@ -3,6 +3,7 @@ package com.uit.dormmanagement.controllers;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -40,6 +41,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -423,7 +425,11 @@ class ContractControllerTest {
   @DisplayName("POST /api/v1/admin/contracts/{id}/documents: should upload multi documents")
   void uploadDocuments_shouldReturn200() throws Exception {
     MockMultipartFile docFile =
-        new MockMultipartFile("files", "contract.pdf", "application/pdf", new byte[] {1, 2});
+        new MockMultipartFile(
+            "files",
+            "contract.pdf",
+            "application/pdf",
+            "%PDF-1.4 contract".getBytes(StandardCharsets.UTF_8));
 
     UUID docId = UUID.randomUUID();
     String expectedUrl =
@@ -438,7 +444,7 @@ class ContractControllerTest {
             .build();
 
     when(contractService.uploadDocuments(
-            eq(contractId), eq(ContractDocumentCategory.ORIGINAL_CONTRACT), any()))
+            eq(contractId), eq(ContractDocumentCategory.ORIGINAL_CONTRACT), eq(null), any()))
         .thenReturn(List.of(docRes));
 
     adminMockMvc
@@ -449,7 +455,81 @@ class ContractControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.data[0].fileName").value("contract.pdf"))
-        .andExpect(jsonPath("$.data[0].fileUrl").value(expectedUrl));
+        .andExpect(jsonPath("$.data[0].fileUrl").value(expectedUrl))
+        .andExpect(jsonPath("$.data[0].renewalId").doesNotExist());
+  }
+
+  @Test
+  @DisplayName(
+      "POST /api/v1/admin/contracts/{id}/documents: forwards optional renewalId and returns renewalId")
+  void uploadDocuments_withRenewalId_shouldForwardRenewalIdAndReturn200() throws Exception {
+    UUID renewalId = UUID.randomUUID();
+    UUID docId = UUID.randomUUID();
+    MockMultipartFile annexFile =
+        new MockMultipartFile(
+            "files",
+            "annex.pdf",
+            "application/pdf",
+            "%PDF-1.4 annex".getBytes(StandardCharsets.UTF_8));
+
+    String expectedUrl =
+        "/api/v1/admin/contracts/" + contractId + "/documents/" + docId + "/content";
+    ContractDocumentResponse docRes =
+        ContractDocumentResponse.builder()
+            .id(docId)
+            .contractId(contractId)
+            .renewalId(renewalId)
+            .fileName("annex.pdf")
+            .fileUrl(expectedUrl)
+            .fileType("application/pdf")
+            .documentCategory(ContractDocumentCategory.RENEWAL_ANNEX)
+            .build();
+
+    when(contractService.uploadDocuments(
+            eq(contractId), eq(ContractDocumentCategory.RENEWAL_ANNEX), eq(renewalId), any()))
+        .thenReturn(List.of(docRes));
+
+    adminMockMvc
+        .perform(
+            multipart("/api/v1/admin/contracts/{id}/documents", contractId)
+                .file(annexFile)
+                .param("category", "RENEWAL_ANNEX")
+                .param("renewalId", renewalId.toString()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data[0].renewalId").value(renewalId.toString()))
+        .andExpect(jsonPath("$.data[0].documentCategory").value("RENEWAL_ANNEX"));
+  }
+
+  @Test
+  @DisplayName(
+      "POST /api/v1/admin/contracts/{id}/documents: maps FR-10 validation errors to 400 domain error codes")
+  void uploadDocuments_whenDomainValidationError_shouldMap400() throws Exception {
+    MockMultipartFile docFile =
+        new MockMultipartFile(
+            "files",
+            "annex.pdf",
+            "application/pdf",
+            "%PDF-1.4 annex".getBytes(StandardCharsets.UTF_8));
+
+    for (ContractErrorCode code :
+        List.of(
+            ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK,
+            ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT,
+            ContractErrorCode.DOCUMENT_FILE_SIZE_EXCEEDED)) {
+      doThrow(new BaseAppException(code))
+          .when(contractService)
+          .uploadDocuments(any(), any(), any(), any());
+
+      adminMockMvc
+          .perform(
+              multipart("/api/v1/admin/contracts/{id}/documents", contractId)
+                  .file(docFile)
+                  .param("category", "RENEWAL_ANNEX"))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.httpStatus").value(400))
+          .andExpect(jsonPath("$.errorCode").value(code.getErrorCode()));
+    }
   }
 
   @Test
@@ -488,6 +568,44 @@ class ContractControllerTest {
         .andExpect(jsonPath("$.httpStatus").value(200));
 
     verify(contractService).deleteDocument(contractId, docId);
+  }
+
+  @Test
+  @DisplayName("GET /api/v1/tenant/contracts: should return logged-in tenant contract history")
+  void getMyContractHistory_shouldReturnHistory() throws Exception {
+    when(contractService.getMyContractHistory(userId)).thenReturn(List.of(sampleDetail));
+
+    tenantMockMvc
+        .perform(get("/api/v1/tenant/contracts"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.message").value("Lấy lịch sử hợp đồng thành công"))
+        .andExpect(jsonPath("$.data").isArray())
+        .andExpect(jsonPath("$.data[0].contractCode").value("HD-2026-0187"));
+  }
+
+  @Test
+  @DisplayName(
+      "GET /api/v1/tenant/contracts/{id}: should return owned contract detail and 404 when not found")
+  void getMyContractById_shouldReturnDetailAndMap404() throws Exception {
+    when(contractService.getMyContractById(userId, contractId)).thenReturn(sampleDetail);
+
+    tenantMockMvc
+        .perform(get("/api/v1/tenant/contracts/{id}", contractId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.message").value("Lấy thông tin hợp đồng thành công"))
+        .andExpect(jsonPath("$.data.contractCode").value("HD-2026-0187"));
+
+    UUID otherContractId = UUID.randomUUID();
+    when(contractService.getMyContractById(userId, otherContractId))
+        .thenThrow(new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
+
+    tenantMockMvc
+        .perform(get("/api/v1/tenant/contracts/{id}", otherContractId))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.httpStatus").value(404))
+        .andExpect(jsonPath("$.errorCode").value("CONTRACT_404"));
   }
 
   @Test

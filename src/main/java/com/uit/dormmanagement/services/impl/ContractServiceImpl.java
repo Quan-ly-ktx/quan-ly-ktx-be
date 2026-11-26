@@ -99,7 +99,19 @@ public class ContractServiceImpl implements ContractService {
           "jpeg", "image/jpeg",
           "png", "image/png",
           "webp", "image/webp");
-  private static final Set<String> ALLOWED_MIME_TYPES = Set.copyOf(EXTENSION_TO_MIME.values());
+  private static final Map<String, Set<String>> EXTENSION_TO_ALLOWED_DECLARED_MIMES =
+      Map.of(
+          "jpg", Set.of("image/jpeg", "image/pjpeg"),
+          "jpeg", Set.of("image/jpeg", "image/pjpeg"),
+          "png", Set.of("image/png"),
+          "webp", Set.of("image/webp"),
+          "pdf", Set.of("application/pdf", "application/x-pdf"),
+          "doc", Set.of("application/msword", "application/x-msword"),
+          "docx",
+              Set.of(
+                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                  "application/zip",
+                  "application/x-zip-compressed"));
 
   private static final List<ContractStatus> ACTIVE_STATUSES = List.of(ContractStatus.ACTIVE);
 
@@ -223,30 +235,27 @@ public class ContractServiceImpl implements ContractService {
       registerRollbackCleanup(uploadedKeys);
       try {
         for (MultipartFile file : annexDocuments) {
-          if (file != null && !file.isEmpty()) {
-            String extension = validateFileAndExtractExtension(file);
-            String originalFilename =
-                file.getOriginalFilename() != null ? file.getOriginalFilename() : "phu-luc.pdf";
-            String objectKey =
-                buildDocumentObjectKey(contract.getId(), originalFilename, extension);
-            String mimeType = resolveDocumentMimeType(file, extension);
-            try (InputStream is = file.getInputStream()) {
-              privateObjectStorage.putObject(objectKey, mimeType, is, file.getSize());
-            }
-            uploadedKeys.add(objectKey);
-
-            ContractDocument doc =
-                ContractDocument.builder()
-                    .contract(contract)
-                    .renewal(savedRenewal)
-                    .originalFilename(originalFilename)
-                    .storageFileKey(objectKey)
-                    .mimeType(mimeType)
-                    .documentType(ContractDocumentCategory.RENEWAL_ANNEX)
-                    .build();
-            ContractDocument savedDoc = contractDocumentRepository.saveAndFlush(doc);
-            syncDocumentInMemory(contract, savedDoc);
+          ValidatedDocumentFile validated = validateDocumentFile(file);
+          String originalFilename = validated.originalFilename();
+          String extension = validated.extension();
+          String mimeType = validated.canonicalMimeType();
+          String objectKey = buildDocumentObjectKey(contract.getId(), originalFilename, extension);
+          try (InputStream is = file.getInputStream()) {
+            privateObjectStorage.putObject(objectKey, mimeType, is, file.getSize());
           }
+          uploadedKeys.add(objectKey);
+
+          ContractDocument doc =
+              ContractDocument.builder()
+                  .contract(contract)
+                  .renewal(savedRenewal)
+                  .originalFilename(originalFilename)
+                  .storageFileKey(objectKey)
+                  .mimeType(mimeType)
+                  .documentType(ContractDocumentCategory.RENEWAL_ANNEX)
+                  .build();
+          ContractDocument savedDoc = contractDocumentRepository.saveAndFlush(doc);
+          syncDocumentInMemory(contract, savedDoc);
         }
       } catch (RuntimeException | IOException e) {
         cleanupUploadedKeys(uploadedKeys);
@@ -397,10 +406,25 @@ public class ContractServiceImpl implements ContractService {
   @Transactional
   public List<ContractDocumentResponse> uploadDocuments(
       UUID contractId, ContractDocumentCategory category, List<MultipartFile> files) {
+    return uploadDocuments(contractId, category, null, files);
+  }
+
+  @Override
+  @Transactional
+  public List<ContractDocumentResponse> uploadDocuments(
+      UUID contractId,
+      ContractDocumentCategory category,
+      UUID renewalId,
+      List<MultipartFile> files) {
     Contract contract =
         contractRepository
             .findById(contractId)
             .orElseThrow(() -> new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
+
+    ContractDocumentCategory effectiveCategory =
+        category != null ? category : ContractDocumentCategory.ORIGINAL_CONTRACT;
+    ContractRenewal resolvedRenewal =
+        resolveDocumentRenewal(contractId, effectiveCategory, renewalId);
 
     if (files == null || files.isEmpty()) {
       return List.of();
@@ -416,41 +440,40 @@ public class ContractServiceImpl implements ContractService {
     List<ContractDocumentResponse> results = new ArrayList<>();
     try {
       for (MultipartFile file : files) {
-        if (file != null && !file.isEmpty()) {
-          String extension = validateFileAndExtractExtension(file);
-          String originalFilename =
-              file.getOriginalFilename() != null ? file.getOriginalFilename() : "document";
-          String objectKey = buildDocumentObjectKey(contractId, originalFilename, extension);
-          String mimeType = resolveDocumentMimeType(file, extension);
-          try (InputStream is = file.getInputStream()) {
-            privateObjectStorage.putObject(objectKey, mimeType, is, file.getSize());
-          }
-          uploadedKeys.add(objectKey);
-
-          ContractDocument doc =
-              ContractDocument.builder()
-                  .contract(contract)
-                  .originalFilename(originalFilename)
-                  .storageFileKey(objectKey)
-                  .mimeType(mimeType)
-                  .documentType(
-                      category != null ? category : ContractDocumentCategory.ORIGINAL_CONTRACT)
-                  .build();
-          ContractDocument saved = contractDocumentRepository.save(doc);
-          contract.getDocuments().add(saved);
-
-          results.add(
-              ContractDocumentResponse.builder()
-                  .id(saved.getId())
-                  .contractId(contractId)
-                  .fileName(saved.getFileName())
-                  .fileUrl(adminDocumentContentPath(contractId, saved.getId()))
-                  .fileType(saved.getMimeType())
-                  .fileSize(file.getSize())
-                  .documentCategory(saved.getDocumentCategory())
-                  .uploadedAt(saved.getUploadedAt())
-                  .build());
+        ValidatedDocumentFile validated = validateDocumentFile(file);
+        String originalFilename = validated.originalFilename();
+        String extension = validated.extension();
+        String mimeType = validated.canonicalMimeType();
+        String objectKey = buildDocumentObjectKey(contractId, originalFilename, extension);
+        try (InputStream is = file.getInputStream()) {
+          privateObjectStorage.putObject(objectKey, mimeType, is, file.getSize());
         }
+        uploadedKeys.add(objectKey);
+
+        ContractDocument doc =
+            ContractDocument.builder()
+                .contract(contract)
+                .renewal(resolvedRenewal)
+                .originalFilename(originalFilename)
+                .storageFileKey(objectKey)
+                .mimeType(mimeType)
+                .documentType(effectiveCategory)
+                .build();
+        ContractDocument saved = contractDocumentRepository.saveAndFlush(doc);
+        syncDocumentInMemory(contract, saved);
+
+        results.add(
+            ContractDocumentResponse.builder()
+                .id(saved.getId())
+                .contractId(contractId)
+                .renewalId(saved.getRenewal() != null ? saved.getRenewal().getId() : null)
+                .fileName(saved.getFileName())
+                .fileUrl(adminDocumentContentPath(contractId, saved.getId()))
+                .fileType(saved.getMimeType())
+                .fileSize(file.getSize())
+                .documentCategory(saved.getDocumentCategory())
+                .uploadedAt(saved.getUploadedAt())
+                .build());
       }
     } catch (RuntimeException | IOException e) {
       cleanupUploadedKeys(uploadedKeys);
@@ -508,6 +531,39 @@ public class ContractServiceImpl implements ContractService {
         .findFirstByTenantIdAndStatusIn(tenant.getId(), ACTIVE_STATUSES)
         .map(contract -> toDetailResponse(contract, false))
         .orElse(null);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<ContractDetailResponse> getMyContractHistory(UUID userId) {
+    Tenant tenant =
+        tenantRepository
+            .findByUserId(userId)
+            .orElseThrow(() -> new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND));
+
+    return contractRepository.findByTenantIdOrderByStartOnDescCreatedAtDesc(tenant.getId()).stream()
+        .map(contract -> toDetailResponse(contract, false))
+        .toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public ContractDetailResponse getMyContractById(UUID userId, UUID contractId) {
+    Tenant tenant =
+        tenantRepository
+            .findByUserId(userId)
+            .orElseThrow(() -> new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
+
+    Contract contract =
+        contractRepository
+            .findById(contractId)
+            .orElseThrow(() -> new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
+
+    if (contract.getTenant() == null || !tenant.getId().equals(contract.getTenant().getId())) {
+      throw new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND);
+    }
+
+    return toDetailResponse(contract, false);
   }
 
   @Override
@@ -580,9 +636,40 @@ public class ContractServiceImpl implements ContractService {
         stored.resource(), contentType, stored.contentLength(), document.getOriginalFilename());
   }
 
-  private String validateFileAndExtractExtension(MultipartFile file) {
+  private record ValidatedDocumentFile(
+      String extension, String canonicalMimeType, String originalFilename) {}
+
+  private ContractRenewal resolveDocumentRenewal(
+      UUID contractId, ContractDocumentCategory effectiveCategory, UUID renewalId) {
+    if (effectiveCategory == ContractDocumentCategory.RENEWAL_ANNEX) {
+      if (renewalId == null) {
+        throw new BaseAppException(ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK);
+      }
+      ContractRenewal renewal =
+          contractRenewalRepository
+              .findById(renewalId)
+              .orElseThrow(
+                  () -> new BaseAppException(ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK));
+      if (renewal.getContract() == null || !contractId.equals(renewal.getContract().getId())) {
+        throw new BaseAppException(ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK);
+      }
+      return renewal;
+    }
+    if (renewalId != null) {
+      throw new BaseAppException(ContractErrorCode.INVALID_DOCUMENT_RENEWAL_LINK);
+    }
+    return null;
+  }
+
+  private ValidatedDocumentFile validateDocumentFile(MultipartFile file) throws IOException {
+    if (file == null) {
+      throw new BaseAppException(ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
+    }
     if (file.getSize() > MAX_FILE_SIZE) {
       throw new BaseAppException(ContractErrorCode.DOCUMENT_FILE_SIZE_EXCEEDED);
+    }
+    if (file.isEmpty() || file.getSize() <= 0) {
+      throw new BaseAppException(ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
     }
 
     String filename = file.getOriginalFilename();
@@ -595,15 +682,96 @@ public class ContractServiceImpl implements ContractService {
     String nameOnly =
         lastSlash >= 0 ? normalizedSlashes.substring(lastSlash + 1) : normalizedSlashes;
     int dotIndex = nameOnly.lastIndexOf('.');
-    if (dotIndex < 0 || dotIndex == nameOnly.length() - 1) {
+    if (dotIndex <= 0 || dotIndex == nameOnly.length() - 1) {
       throw new BaseAppException(ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
     }
 
     String extension = nameOnly.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
-    if (!EXTENSION_TO_MIME.containsKey(extension)) {
+    String canonicalMime = EXTENSION_TO_MIME.get(extension);
+    if (canonicalMime == null) {
       throw new BaseAppException(ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
     }
-    return extension;
+
+    String rawContentType = file.getContentType();
+    if (rawContentType != null && !rawContentType.isBlank()) {
+      int semicolonIndex = rawContentType.indexOf(';');
+      String baseContentType =
+          (semicolonIndex >= 0 ? rawContentType.substring(0, semicolonIndex) : rawContentType)
+              .trim()
+              .toLowerCase(Locale.ROOT);
+      if (!baseContentType.isEmpty()
+          && !MediaType.APPLICATION_OCTET_STREAM_VALUE.equals(baseContentType)) {
+        Set<String> allowedDeclared = EXTENSION_TO_ALLOWED_DECLARED_MIMES.get(extension);
+        if (allowedDeclared == null || !allowedDeclared.contains(baseContentType)) {
+          throw new BaseAppException(ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
+        }
+      }
+    }
+
+    byte[] header = new byte[12];
+    int bytesRead;
+    try (InputStream is = file.getInputStream()) {
+      bytesRead = is.readNBytes(header, 0, header.length);
+    }
+    if (!matchesMagicBytes(extension, header, bytesRead)) {
+      throw new BaseAppException(ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT);
+    }
+
+    return new ValidatedDocumentFile(extension, canonicalMime, filename);
+  }
+
+  private static boolean matchesMagicBytes(String extension, byte[] header, int bytesRead) {
+    return switch (extension) {
+      case "jpg", "jpeg" ->
+          bytesRead >= 3
+              && (header[0] & 0xFF) == 0xFF
+              && (header[1] & 0xFF) == 0xD8
+              && (header[2] & 0xFF) == 0xFF;
+      case "png" ->
+          bytesRead >= 8
+              && (header[0] & 0xFF) == 0x89
+              && header[1] == 0x50
+              && header[2] == 0x4E
+              && header[3] == 0x47
+              && header[4] == 0x0D
+              && header[5] == 0x0A
+              && header[6] == 0x1A
+              && header[7] == 0x0A;
+      case "webp" ->
+          bytesRead >= 12
+              && header[0] == 'R'
+              && header[1] == 'I'
+              && header[2] == 'F'
+              && header[3] == 'F'
+              && header[8] == 'W'
+              && header[9] == 'E'
+              && header[10] == 'B'
+              && header[11] == 'P';
+      case "pdf" ->
+          bytesRead >= 5
+              && header[0] == '%'
+              && header[1] == 'P'
+              && header[2] == 'D'
+              && header[3] == 'F'
+              && header[4] == '-';
+      case "doc" ->
+          bytesRead >= 8
+              && (header[0] & 0xFF) == 0xD0
+              && (header[1] & 0xFF) == 0xCF
+              && (header[2] & 0xFF) == 0x11
+              && (header[3] & 0xFF) == 0xE0
+              && (header[4] & 0xFF) == 0xA1
+              && (header[5] & 0xFF) == 0xB1
+              && (header[6] & 0xFF) == 0x1A
+              && (header[7] & 0xFF) == 0xE1;
+      case "docx" ->
+          bytesRead >= 4
+              && (header[0] & 0xFF) == 0x50
+              && (header[1] & 0xFF) == 0x4B
+              && (header[2] & 0xFF) == 0x03
+              && (header[3] & 0xFF) == 0x04;
+      default -> false;
+    };
   }
 
   private String buildDocumentObjectKey(
@@ -637,17 +805,6 @@ public class ContractServiceImpl implements ContractService {
         + cleanBaseName
         + "."
         + extension;
-  }
-
-  private String resolveDocumentMimeType(MultipartFile file, String extension) {
-    String rawContentType = file.getContentType();
-    if (rawContentType != null) {
-      String normalized = rawContentType.trim().toLowerCase(Locale.ROOT);
-      if (ALLOWED_MIME_TYPES.contains(normalized)) {
-        return normalized;
-      }
-    }
-    return EXTENSION_TO_MIME.getOrDefault(extension, MediaType.APPLICATION_OCTET_STREAM_VALUE);
   }
 
   private void registerRollbackCleanup(List<String> uploadedKeys) {
@@ -781,6 +938,7 @@ public class ContractServiceImpl implements ContractService {
                         ContractDocumentResponse.builder()
                             .id(doc.getId())
                             .contractId(contract.getId())
+                            .renewalId(doc.getRenewal() != null ? doc.getRenewal().getId() : null)
                             .fileName(doc.getFileName())
                             .fileUrl(
                                 adminView

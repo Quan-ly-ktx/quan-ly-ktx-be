@@ -65,6 +65,10 @@ public enum ContractErrorCode implements AppErrorCode {
       "CONTRACT_400_FILE_FORMAT",
       "Định dạng tập tin tài liệu không được hỗ trợ",
       HttpStatus.BAD_REQUEST),
+  INVALID_DOCUMENT_RENEWAL_LINK(
+      "CONTRACT_400_DOCUMENT_RENEWAL",
+      "Thông tin liên kết phụ lục gia hạn của tài liệu không hợp lệ",
+      HttpStatus.BAD_REQUEST),
   INVALID_CHECKOUT_BED_STATUS(
       "CONTRACT_400_CHECKOUT_BED_STATUS",
       "Trạng thái giường sau bàn giao phải là AVAILABLE hoặc MAINTENANCE",

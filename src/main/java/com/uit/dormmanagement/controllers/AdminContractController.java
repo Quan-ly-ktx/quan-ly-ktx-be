@@ -109,8 +109,10 @@ public class AdminContractController extends AbstractBaseController {
   public ResponseEntity<SingleResponse<List<ContractDocumentResponse>>> uploadDocuments(
       @PathVariable UUID id,
       @RequestParam("category") ContractDocumentCategory category,
+      @RequestParam(value = "renewalId", required = false) UUID renewalId,
       @RequestParam("files") List<MultipartFile> files) {
-    List<ContractDocumentResponse> response = contractService.uploadDocuments(id, category, files);
+    List<ContractDocumentResponse> response =
+        contractService.uploadDocuments(id, category, renewalId, files);
     return responseFactory.success(response, "Tải lên tài liệu hợp đồng thành công");
   }
 
