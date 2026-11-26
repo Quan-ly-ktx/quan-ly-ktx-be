@@ -12,6 +12,7 @@ import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.VehicleEvidenceAccessService;
 import com.uit.dormmanagement.services.VehicleService;
+import com.uit.dormmanagement.utils.StreamingResponseUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -20,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -141,13 +143,12 @@ public class AdminVehicleController extends AbstractBaseController {
   public ResponseEntity<Resource> getVehicleEvidence(
       @AuthenticationPrincipal UserPrincipal principal,
       @PathVariable UUID vehicleId,
-      @PathVariable String side) {
+      @PathVariable String side,
+      HttpMethod httpMethod) {
     UUID managerUserId = principal != null ? principal.getId() : null;
     VehicleEvidenceContent content =
         vehicleEvidenceAccessService.loadVehicleEvidence(managerUserId, true, vehicleId, side);
-    return ResponseEntity.ok()
-        .contentType(MediaType.parseMediaType(content.contentType()))
-        .contentLength(content.contentLength())
-        .body(content.resource());
+    return StreamingResponseUtils.ok(
+        content.resource(), content.contentType(), content.contentLength(), httpMethod);
   }
 }

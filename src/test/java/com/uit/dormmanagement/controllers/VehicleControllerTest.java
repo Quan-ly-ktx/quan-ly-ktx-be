@@ -7,10 +7,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -30,9 +32,13 @@ import com.uit.dormmanagement.exceptions.AppExceptionHandler;
 import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.VehicleEvidenceAccessService;
 import com.uit.dormmanagement.services.VehicleService;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,10 +48,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -327,5 +335,63 @@ class VehicleControllerTest {
                 .content("{}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.errorCode").value("WEB_400"));
+  }
+
+  @Test
+  @DisplayName("HEAD vehicle evidence endpoints return headers, empty body, and close stream")
+  void headVehicleEvidence_shouldReturnHeadersAndCloseResource() throws Exception {
+    byte[] data = "head-evidence-bytes".getBytes();
+
+    TrackingCloseableResource adminResource = new TrackingCloseableResource(data);
+    when(vehicleEvidenceAccessService.loadVehicleEvidence(
+            any(), eq(true), eq(vehicleId), eq("front")))
+        .thenReturn(new VehicleEvidenceContent(adminResource, "image/jpeg", data.length));
+
+    adminMockMvc
+        .perform(head("/api/v1/admin/vehicles/{id}/evidence/front", vehicleId))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_JPEG_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(data.length)))
+        .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION))
+        .andExpect(content().bytes(new byte[0]));
+    assertThat(adminResource.closed.get()).isTrue();
+    assertThat(adminResource.streamOpened.get()).isFalse();
+
+    TrackingCloseableResource tenantResource = new TrackingCloseableResource(data);
+    when(vehicleEvidenceAccessService.loadVehicleEvidence(
+            eq(userId), eq(false), eq(vehicleId), eq("back")))
+        .thenReturn(new VehicleEvidenceContent(tenantResource, "image/png", data.length));
+
+    tenantMockMvc
+        .perform(head("/api/v1/tenant/vehicles/{id}/evidence/back", vehicleId))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_PNG_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(data.length)))
+        .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION))
+        .andExpect(content().bytes(new byte[0]));
+    assertThat(tenantResource.closed.get()).isTrue();
+    assertThat(tenantResource.streamOpened.get()).isFalse();
+  }
+
+  private static final class TrackingCloseableResource extends InputStreamResource
+      implements AutoCloseable {
+
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final AtomicBoolean streamOpened = new AtomicBoolean(false);
+
+    private TrackingCloseableResource(byte[] bytes) {
+      super(new ByteArrayInputStream(bytes));
+    }
+
+    @Override
+    public InputStream getInputStream() throws IOException, IllegalStateException {
+      streamOpened.set(true);
+      return super.getInputStream();
+    }
+
+    @Override
+    public void close() {
+      closed.set(true);
+    }
   }
 }

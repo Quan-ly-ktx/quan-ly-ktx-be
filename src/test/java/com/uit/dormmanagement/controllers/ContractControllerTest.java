@@ -1,11 +1,13 @@
 package com.uit.dormmanagement.controllers;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -28,11 +30,15 @@ import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.AppExceptionHandler;
 import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.ContractService;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,6 +48,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -329,5 +336,78 @@ class ContractControllerTest {
             header()
                 .string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"my-contract.pdf\""))
         .andExpect(content().bytes(bytes));
+  }
+
+  @Test
+  @DisplayName(
+      "HEAD contract document content endpoints return headers, empty body, and close unconsumed stream")
+  void headDocumentContent_shouldReturnHeadersAndCloseResource() throws Exception {
+    UUID docId = UUID.randomUUID();
+    byte[] bytes = "head-pdf-bytes".getBytes();
+
+    TrackingCloseableResource adminResource = new TrackingCloseableResource(bytes);
+    when(contractService.loadDocumentContentForAdmin(contractId, docId))
+        .thenReturn(
+            new ContractDocumentContent(
+                adminResource, "application/pdf", bytes.length, "admin-doc.pdf"));
+
+    adminMockMvc
+        .perform(
+            head(
+                "/api/v1/admin/contracts/{contractId}/documents/{documentId}/content",
+                contractId,
+                docId))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(bytes.length)))
+        .andExpect(
+            header().string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"admin-doc.pdf\""))
+        .andExpect(content().bytes(new byte[0]));
+    assertThat(adminResource.closed.get()).isTrue();
+    assertThat(adminResource.streamOpened.get()).isFalse();
+
+    TrackingCloseableResource tenantResource = new TrackingCloseableResource(bytes);
+    when(contractService.loadDocumentContentForTenant(userId, contractId, docId))
+        .thenReturn(
+            new ContractDocumentContent(
+                tenantResource, "application/pdf", bytes.length, "tenant-doc.pdf"));
+
+    tenantMockMvc
+        .perform(
+            head(
+                "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                contractId,
+                docId))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(bytes.length)))
+        .andExpect(
+            header()
+                .string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"tenant-doc.pdf\""))
+        .andExpect(content().bytes(new byte[0]));
+    assertThat(tenantResource.closed.get()).isTrue();
+    assertThat(tenantResource.streamOpened.get()).isFalse();
+  }
+
+  private static final class TrackingCloseableResource extends InputStreamResource
+      implements AutoCloseable {
+
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final AtomicBoolean streamOpened = new AtomicBoolean(false);
+
+    private TrackingCloseableResource(byte[] bytes) {
+      super(new ByteArrayInputStream(bytes));
+    }
+
+    @Override
+    public InputStream getInputStream() throws IOException, IllegalStateException {
+      streamOpened.set(true);
+      return super.getInputStream();
+    }
+
+    @Override
+    public void close() {
+      closed.set(true);
+    }
   }
 }

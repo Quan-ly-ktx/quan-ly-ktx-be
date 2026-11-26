@@ -3,6 +3,7 @@ package com.uit.dormmanagement.services;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -12,8 +13,10 @@ import com.uit.dormmanagement.exceptions.ObjectStorageNotFoundException;
 import com.uit.dormmanagement.exceptions.error.SystemErrorCode;
 import com.uit.dormmanagement.services.impl.S3PrivateObjectStorage;
 import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -212,5 +215,127 @@ class S3PrivateObjectStorageTest {
     assertThatThrownBy(() -> storage.putObject(null, "text/plain", new byte[] {1}))
         .isInstanceOf(IllegalArgumentException.class);
     verifyNoInteractions(s3Client);
+  }
+
+  @Test
+  @DisplayName(
+      "getObject aborts and closes ResponseInputStream if metadata extraction throws after getObject")
+  @SuppressWarnings("unchecked")
+  void getObject_whenPostGetObjectMetadataFails_shouldAbortAndCloseStream() throws IOException {
+    ResponseInputStream<GetObjectResponse> runtimeFailureStream = mock(ResponseInputStream.class);
+    when(runtimeFailureStream.response())
+        .thenThrow(new IllegalStateException("metadata read failed"));
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(runtimeFailureStream);
+
+    assertThatThrownBy(() -> storage.getObject("contracts/123/broken-meta.pdf"))
+        .isInstanceOf(IllegalStateException.class);
+    verify(runtimeFailureStream).abort();
+    verify(runtimeFailureStream).close();
+
+    ResponseInputStream<GetObjectResponse> nullMetaStream = mock(ResponseInputStream.class);
+    when(nullMetaStream.response()).thenReturn(null);
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(nullMetaStream);
+
+    assertThatThrownBy(() -> storage.getObject("contracts/123/null-meta.pdf"))
+        .isInstanceOf(NullPointerException.class);
+    verify(nullMetaStream).abort();
+    verify(nullMetaStream).close();
+
+    ResponseInputStream<GetObjectResponse> sdkFailureStream = mock(ResponseInputStream.class);
+    when(sdkFailureStream.response()).thenThrow(SdkClientException.create("sdk meta failure"));
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(sdkFailureStream);
+
+    assertThatThrownBy(() -> storage.getObject("contracts/123/sdk-meta.pdf"))
+        .isInstanceOf(BaseAppException.class)
+        .satisfies(
+            ex ->
+                assertThat(((BaseAppException) ex).getErrorCode())
+                    .isEqualTo(SystemErrorCode.EXTERNAL_SERVICE_ERROR));
+    verify(sdkFailureStream).abort();
+    verify(sdkFailureStream).close();
+  }
+
+  @Test
+  @DisplayName(
+      "Closing unconsumed Resource returned by getObject aborts and closes ResponseInputStream without reading bytes")
+  void getObject_closingUnconsumedResource_shouldAbortWithoutDraining() throws Exception {
+    byte[] data = "large-contract-pdf".getBytes(StandardCharsets.UTF_8);
+    AtomicInteger abortCount = new AtomicInteger(0);
+    AtomicInteger closeCount = new AtomicInteger(0);
+    AtomicInteger readCalls = new AtomicInteger(0);
+
+    FilterInputStream trackingStream =
+        new FilterInputStream(new ByteArrayInputStream(data)) {
+          @Override
+          public int read() throws IOException {
+            readCalls.incrementAndGet();
+            return super.read();
+          }
+
+          @Override
+          public int read(byte[] b, int off, int len) throws IOException {
+            readCalls.incrementAndGet();
+            return super.read(b, off, len);
+          }
+
+          @Override
+          public void close() throws IOException {
+            closeCount.incrementAndGet();
+            super.close();
+          }
+        };
+
+    GetObjectResponse metadata =
+        GetObjectResponse.builder()
+            .contentType("application/pdf")
+            .contentLength((long) data.length)
+            .build();
+    ResponseInputStream<GetObjectResponse> s3Stream =
+        new ResponseInputStream<>(
+            metadata, AbortableInputStream.create(trackingStream, abortCount::incrementAndGet));
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(s3Stream);
+
+    StoredObjectContent content = storage.getObject("contracts/123/unconsumed.pdf");
+
+    assertThat(content.resource()).isInstanceOf(AutoCloseable.class);
+    assertThat(content.resource().contentLength()).isEqualTo(data.length);
+
+    AutoCloseable closeable = (AutoCloseable) content.resource();
+    closeable.close();
+    int closeCountAfterFirstClose = closeCount.get();
+    closeable.close();
+
+    assertThat(abortCount.get()).isEqualTo(1);
+    assertThat(closeCountAfterFirstClose).isGreaterThanOrEqualTo(1);
+    assertThat(closeCount.get()).isEqualTo(closeCountAfterFirstClose);
+    assertThat(readCalls.get()).isZero();
+    assertThatThrownBy(() -> content.resource().getInputStream())
+        .isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  @DisplayName("Closing already-consumed Resource does not abort ResponseInputStream")
+  void getObject_closingConsumedResource_shouldNotAbort() throws Exception {
+    byte[] data = "consumed-evidence".getBytes(StandardCharsets.UTF_8);
+    AtomicInteger abortCount = new AtomicInteger(0);
+    GetObjectResponse metadata =
+        GetObjectResponse.builder()
+            .contentType("image/jpeg")
+            .contentLength((long) data.length)
+            .build();
+    ResponseInputStream<GetObjectResponse> s3Stream =
+        new ResponseInputStream<>(
+            metadata,
+            AbortableInputStream.create(
+                new ByteArrayInputStream(data), abortCount::incrementAndGet));
+    when(s3Client.getObject(any(GetObjectRequest.class))).thenReturn(s3Stream);
+
+    StoredObjectContent content = storage.getObject("vehicles/123/consumed.jpg");
+    try (var is = content.resource().getInputStream()) {
+      assertThat(is.readAllBytes()).isEqualTo(data);
+    }
+
+    ((AutoCloseable) content.resource()).close();
+    assertThat(abortCount.get()).isZero();
   }
 }

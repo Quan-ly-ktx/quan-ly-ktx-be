@@ -8,6 +8,7 @@ import com.uit.dormmanagement.services.StoredObjectContent;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.MediaType;
@@ -90,14 +91,19 @@ public class S3PrivateObjectStorage implements PrivateObjectStorage {
 
     try {
       ResponseInputStream<GetObjectResponse> responseStream = s3Client.getObject(request);
-      GetObjectResponse meta = responseStream.response();
-      String contentType =
-          (meta.contentType() != null && !meta.contentType().isBlank())
-              ? meta.contentType()
-              : MediaType.APPLICATION_OCTET_STREAM_VALUE;
-      long contentLength = meta.contentLength() != null ? meta.contentLength() : -1L;
-      return new StoredObjectContent(
-          new InputStreamResource(responseStream), contentType, contentLength);
+      try {
+        GetObjectResponse meta = responseStream.response();
+        String contentType =
+            (meta.contentType() != null && !meta.contentType().isBlank())
+                ? meta.contentType()
+                : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        long contentLength = meta.contentLength() != null ? meta.contentLength() : -1L;
+        return new StoredObjectContent(
+            new ManagedStreamResource(responseStream, contentLength), contentType, contentLength);
+      } catch (RuntimeException | Error ex) {
+        abortOrCloseQuietly(responseStream);
+        throw ex;
+      }
     } catch (NoSuchKeyException e) {
       throw new ObjectStorageNotFoundException("Stored object not found");
     } catch (S3Exception e) {
@@ -146,5 +152,69 @@ public class S3PrivateObjectStorage implements PrivateObjectStorage {
     return e.awsErrorDetails() != null && e.awsErrorDetails().errorCode() != null
         ? e.awsErrorDetails().errorCode()
         : "UNKNOWN";
+  }
+
+  static void abortOrCloseQuietly(InputStream stream) {
+    if (stream == null) {
+      return;
+    }
+    if (stream instanceof ResponseInputStream<?> responseStream) {
+      try {
+        responseStream.abort();
+      } catch (RuntimeException ex) {
+        log.debug(
+            "Ignoring error while aborting S3 response stream: {}", ex.getClass().getSimpleName());
+      }
+    }
+    try {
+      stream.close();
+    } catch (IOException | RuntimeException ex) {
+      log.debug(
+          "Ignoring error while closing S3 response stream: {}", ex.getClass().getSimpleName());
+    }
+  }
+
+  public static final class ManagedStreamResource extends InputStreamResource
+      implements AutoCloseable {
+
+    private final InputStream delegate;
+    private final long contentLength;
+    private final AtomicBoolean consumed = new AtomicBoolean(false);
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    public ManagedStreamResource(InputStream delegate) {
+      this(delegate, -1L);
+    }
+
+    public ManagedStreamResource(InputStream delegate, long contentLength) {
+      super(delegate);
+      this.delegate = Objects.requireNonNull(delegate, "Response stream must not be null");
+      this.contentLength = contentLength;
+    }
+
+    @Override
+    public InputStream getInputStream() throws IOException, IllegalStateException {
+      if (closed.get()) {
+        throw new IllegalStateException("ManagedStreamResource has already been closed");
+      }
+      InputStream stream = super.getInputStream();
+      consumed.set(true);
+      return stream;
+    }
+
+    @Override
+    public long contentLength() throws IOException {
+      return contentLength >= 0 ? contentLength : super.contentLength();
+    }
+
+    @Override
+    public void close() {
+      if (!closed.compareAndSet(false, true)) {
+        return;
+      }
+      if (!consumed.get()) {
+        abortOrCloseQuietly(delegate);
+      }
+    }
   }
 }

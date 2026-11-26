@@ -2,6 +2,7 @@ package com.uit.dormmanagement.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -462,6 +463,149 @@ class ContractDocumentSecurityIntegrationTest {
     mockMvc
         .perform(
             get(
+                    "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    otherDoc.getId())
+                .header("Authorization", "Bearer " + activeToken))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
+  @DisplayName(
+      "HEAD contract document content endpoints return 200 with headers and empty body for authorized callers")
+  void headDocumentContent_authorizedCallersReturnHeadersAndEmptyBody() throws Exception {
+    setUpFixtures();
+    String managerToken = tokenFor(managerUser);
+    String activeToken = tokenFor(activeTenantUser);
+    String checkedOutToken = tokenFor(checkedOutTenantUser);
+
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/admin/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    activeDoc.getId())
+                .header("Authorization", "Bearer " + managerToken))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
+        .andExpect(
+            header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(activeDocBytes.length)))
+        .andExpect(
+            header()
+                .string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Hop_dong_thue.pdf\""))
+        .andExpect(content().bytes(new byte[0]));
+
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    activeDoc.getId())
+                .header("Authorization", "Bearer " + activeToken))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
+        .andExpect(
+            header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(activeDocBytes.length)))
+        .andExpect(
+            header()
+                .string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Hop_dong_thue.pdf\""))
+        .andExpect(content().bytes(new byte[0]));
+
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                    liquidatedContract.getId(),
+                    checkedOutDoc.getId())
+                .header("Authorization", "Bearer " + checkedOutToken))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
+        .andExpect(
+            header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(checkedOutDocBytes.length)))
+        .andExpect(
+            header().string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"handover.pdf\""))
+        .andExpect(content().bytes(new byte[0]));
+  }
+
+  @Test
+  @DisplayName("HEAD contract document content endpoints enforce auth, RBAC, ownership, and binding")
+  void headDocumentContent_enforcesAuthRbacOwnershipAndContractBinding() throws Exception {
+    setUpFixtures();
+    String activeToken = tokenFor(activeTenantUser);
+    String otherToken = tokenFor(otherTenantUser);
+    String managerToken = tokenFor(managerUser);
+    String techToken = tokenFor(technicianUser);
+
+    // Anonymous -> 401
+    mockMvc
+        .perform(
+            head(
+                "/api/v1/admin/contracts/{contractId}/documents/{documentId}/content",
+                activeContract.getId(),
+                activeDoc.getId()))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(
+            head(
+                "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                activeContract.getId(),
+                activeDoc.getId()))
+        .andExpect(status().isUnauthorized());
+
+    // Technician & cross-role -> 403
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/admin/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    activeDoc.getId())
+                .header("Authorization", "Bearer " + techToken))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    activeDoc.getId())
+                .header("Authorization", "Bearer " + techToken))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/admin/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    activeDoc.getId())
+                .header("Authorization", "Bearer " + activeToken))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    activeDoc.getId())
+                .header("Authorization", "Bearer " + managerToken))
+        .andExpect(status().isForbidden());
+
+    // Non-owning tenant & cross-contract documentId -> 404
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    activeDoc.getId())
+                .header("Authorization", "Bearer " + otherToken))
+        .andExpect(status().isNotFound());
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/admin/contracts/{contractId}/documents/{documentId}/content",
+                    activeContract.getId(),
+                    otherDoc.getId())
+                .header("Authorization", "Bearer " + managerToken))
+        .andExpect(status().isNotFound());
+    mockMvc
+        .perform(
+            head(
                     "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
                     activeContract.getId(),
                     otherDoc.getId())

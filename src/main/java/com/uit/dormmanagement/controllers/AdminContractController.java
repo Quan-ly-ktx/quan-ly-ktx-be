@@ -11,7 +11,7 @@ import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.services.ContractService;
-import com.uit.dormmanagement.utils.ContentDispositionUtils;
+import com.uit.dormmanagement.utils.StreamingResponseUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -21,7 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -113,19 +113,15 @@ public class AdminContractController extends AbstractBaseController {
   @PreAuthorize("hasRole('MANAGER')")
   @GetMapping("/{contractId}/documents/{documentId}/content")
   public ResponseEntity<Resource> getDocumentContent(
-      @PathVariable UUID contractId, @PathVariable UUID documentId) {
+      @PathVariable UUID contractId, @PathVariable UUID documentId, HttpMethod httpMethod) {
     ContractDocumentContent content =
         contractService.loadDocumentContentForAdmin(contractId, documentId);
-    ResponseEntity.BodyBuilder builder =
-        ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType(content.contentType()))
-            .header(
-                HttpHeaders.CONTENT_DISPOSITION,
-                ContentDispositionUtils.inline(content.originalFilename()).toString());
-    if (content.contentLength() >= 0) {
-      builder.contentLength(content.contentLength());
-    }
-    return builder.body(content.resource());
+    return StreamingResponseUtils.okInline(
+        content.resource(),
+        content.contentType(),
+        content.contentLength(),
+        content.originalFilename(),
+        httpMethod);
   }
 
   @Operation(

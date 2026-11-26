@@ -4,8 +4,11 @@
 - **Repository Branch:** `feat/orca-phase3-final` (hardened from baseline `18e1d6e`)
 - **Execution Date:** November 26, 2026
 - **Stack:** Java 25 | Spring Boot `4.1.2` | PostgreSQL 16/17 + Flyway | Redis 8 | OpenAPI `/v3/api-docs` & Scalar `/scalar` (`/docs`)
-- **Implementation Mode:** Phase 2 Hardening (`F-03`, `F-05`, `F-08`, `F-09`, `F-02` regression verified; `F-01`, `F-04`, `F-06`, `F-07` explicitly `DEFERRED / ACCEPTED RISK`)
-- **Verification Status:** **388 / 388** Maven Tests Passed (`0` Failures, `0` Errors, `0` Skipped)
+- **Implementation Mode:** Phase 2 Hardening (`F-03`, `F-05`, `F-08`, `F-09`, `F-02` regression verified; `F-01`, `F-04`, `F-06`, `F-07` explicitly `DEFERRED / ACCEPTED RISK`) + Phase 3A OCI S3 Storage & Streaming (`2b391e3`) + Phase 3A MINOR Fixes (Task `3A-Fix`)
+- **Verification Status:**
+  - Phase 2 Hardening (`f479fe6`): **388 / 388** Maven tests passed (`0` Failures, `0` Errors, `0` Skipped)
+  - Phase 3A (`2b391e3`): **398** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`)
+  - Phase 3A MINOR Fixes (`Task 3A-Fix`): **413** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`)
 
 ---
 
@@ -35,7 +38,7 @@ Phase 2 Backend covers four foundational modules of the KTX Hub dormitory manage
 - **Anti-Deadlock Lock Ordering:**
   - Room hierarchy: `rooms` (`PESSIMISTIC_WRITE`) locked before `beds` (`id` ASC).
   - Vehicle change workflow: `vehicles` (`PESSIMISTIC_WRITE`) locked before `vehicle_change_requests`.
-- **Private Vehicle Evidence (F-02 verified):** Evidence files are stored in private local storage (`private-storage/vehicles`), `/uploads/vehicles/**` is denied by `SecurityConfig`, `PUT /api/v1/admin/vehicles/{id}` is absent in both controller and OpenAPI `/v3/api-docs`, and evidence writes/rollbacks clean up orphaned files.
+- **Private Vehicle Evidence (F-02 verified, Phase 3A updated):** Evidence files are stored under `vehicles/` keys in the private OCI S3-compatible object storage bucket via `PrivateObjectStorage` / `S3PrivateObjectStorage` (`PrivateVehicleEvidenceStorage`, backed by `InMemoryPrivateObjectStorage` in offline test suites) and served exclusively via authorized Backend Streaming endpoints; `/uploads/**` is denied (`denyAll()`) by `SecurityConfig`, `PUT /api/v1/admin/vehicles/{id}` is absent in both controller and OpenAPI `/v3/api-docs`, and evidence writes/rollbacks clean up orphaned objects.
 - **Non-unique Phone & License Plate:** Neither `phone` (Staff/Tenant) nor `license_plate` enforces global uniqueness in `V1__clean_baseline.sql` or service logic.
 
 ---
@@ -150,8 +153,10 @@ Note: **`PUT /api/v1/admin/vehicles/{id}` does not exist** (removed in F-02). `V
 ## 3. Verification & Test Suite Summary
 
 ### Test Execution Metrics
-- **Compile:** `./mvnw -o -DskipTests compile` → `BUILD SUCCESS` (`205` main source files, Java 25, Spring Boot `4.1.2`).
-- **Total Test Suite:** **388 tests** (`0` Failures, `0` Errors, `0` Skipped).
+- **Compile:** `./mvnw -DskipTests compile` → `BUILD SUCCESS` (`209` main source files, Java 25, Spring Boot `4.1.2`).
+- **Phase 2 Hardening (`f479fe6`):** **388 / 388** Maven tests passed (`0` Failures, `0` Errors, `0` Skipped).
+- **Phase 3A (`2b391e3`):** **398** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`).
+- **Phase 3A MINOR Fixes (`Task 3A-Fix`, current commit):** **413** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test `OciS3LiveSmokeTest`) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`).
 - **Build Status:** `BUILD SUCCESS`.
 
 ### Key Verification Suites Executed
@@ -165,11 +170,13 @@ Note: **`PUT /api/v1/admin/vehicles/{id}` does not exist** (removed in F-02). `V
    - `AuthenticationSecurityIntegrationTest` (`8` tests) — Filter chain, Redis session invalidation, rate-limiting locks, role checks.
    - `RoomBedSecurityIntegrationTest` (`4` tests) — Room/Bed authorization boundaries.
    - `TenantProfileSecurityIntegrationTest` (`10` tests) — Actor-specific profile editing and blank-identity rejection.
-   - `VehicleSecurityIntegrationTest` (`7` tests) — Anonymous 401, RBAC 403, cross-tenant 404, evidence streaming, `/uploads/vehicles/**` denial.
+   - `VehicleSecurityIntegrationTest` (`9` tests) — Anonymous 401, RBAC 403, cross-tenant 404, `GET`/`HEAD` evidence streaming, `/uploads/**` denial.
+   - `ContractDocumentSecurityIntegrationTest` (`8` tests) — Manager & owning `ACTIVE`/`CHECKED_OUT` tenant `GET`/`HEAD` document streaming, cross-tenant/cross-contract fail-closed 404, `/uploads/**` denial, commit/rollback object cleanup.
    - `LogMaskingUtilsTest` (`4` tests), `LoginAttemptServiceTest` (`8` tests), `CustomUserDetailsServiceTest` (`1` test), `EmailServiceImplTest` (`1` test), `OtpServiceTest` (`7` tests), `OnboardingServiceImplTest` (`10` tests), `AuthServiceTest` (`17` tests), `UserServiceTest` (`11` tests) — Sensitive log masking (`ListAppender`) & auth unit coverage.
-3. **Domain Unit / MVC / OpenAPI & E2E Acceptance:**
-   - `OpenApiContractVerificationTest` (`1` test) — Live `/v3/api-docs` route & HTTP method contract verification including absence of `PUT /api/v1/admin/vehicles/{id}`.
-   - `TenantServiceImplTest` (`13` tests), `TenantControllerTest` (`8` tests), `TenantProfileControllerTest` (`3` tests), `TenantContractVehicleDtoValidationTest` (`16` tests), `RoomServiceTest` (`15` tests), `RoomControllerTest` (`11` tests), `VehicleServiceImplTest` (`14` tests), `VehicleControllerTest` (`11` tests), `VehicleChangeRequestServiceTest` (`6` tests), `VehicleChangeRequestControllerTest` (`5` tests), `LocalVehicleEvidenceStorageTest` (`3` tests), `DomainErrorCodeTest` (`4` tests).
+3. **Domain Unit / MVC / Storage / OpenAPI & E2E Acceptance:**
+   - `OpenApiContractVerificationTest` (`1` test) — Live `/v3/api-docs` route & HTTP method contract verification including absence of `PUT /api/v1/admin/vehicles/{id}` and verification that streaming endpoints expose no `httpMethod` parameter.
+   - `S3PrivateObjectStorageTest` (`20` tests), `StreamingResponseUtilsTest` (`5` tests), `PrivateVehicleEvidenceStorageTest` (`3` tests), `StorageConfigTest` (`4` tests), and live `OciS3LiveSmokeTest` (`1` test when `OCI_SMOKE_TEST_ENABLED=true`).
+   - `TenantServiceImplTest` (`13` tests), `TenantControllerTest` (`8` tests), `TenantProfileControllerTest` (`3` tests), `TenantContractVehicleDtoValidationTest` (`16` tests), `RoomServiceTest` (`15` tests), `RoomControllerTest` (`11` tests), `ContractServiceImplTest` (`13` tests), `ContractControllerTest` (`10` tests), `VehicleServiceImplTest` (`14` tests), `VehicleControllerTest` (`12` tests), `VehicleChangeRequestServiceTest` (`6` tests), `VehicleChangeRequestControllerTest` (`6` tests), `DomainErrorCodeTest` (`4` tests).
    - `Phase2CoreModulesE2ETest` (`4` tests) & `ResidentLifecycleE2ETest` (`1` test).
 
 ---
@@ -180,6 +187,7 @@ Implemented on branch `feat/orca-phase3-final` without modifying `V1__clean_base
 
 - **Unified Private Object Storage:** Replaced `LocalStorageServiceImpl`, `LocalVehicleEvidenceStorage`, simulated `OciObjectStorageServiceImpl`, legacy `StorageService`, and `WebMvcResourceConfig` with `PrivateObjectStorage` / `S3PrivateObjectStorage` (AWS SDK for Java v2 `S3Client` targeting the private OCI bucket via S3 Compatibility API) and `PrivateVehicleEvidenceStorage`. Test suites use `InMemoryPrivateObjectStorage` (`app.storage.provider=in-memory`).
 - **Static `/uploads/**` Retired & Fail-Closed:** Removed `"/uploads/**"` from `SecurityConfig` `permitAll()` and enforced `.requestMatchers("/uploads/**").denyAll()`.
+- **Safe Stream Lifecycle on `HEAD` & Post-`getObject` Errors (Task `3A-Fix`):** `S3PrivateObjectStorage.getObject` wraps post-`getObject` metadata extraction in an abort-and-close guard and returns `ManagedStreamResource` (`AutoCloseable` `InputStreamResource`), which aborts and closes the underlying `ResponseInputStream` without draining bytes when closed unconsumed. All six streaming endpoints (`AdminContractController`, `TenantContractController`, `AdminVehicleController`, `TenantVehicleController`, `AdminVehicleChangeRequestController`, `TenantVehicleChangeRequestController`) delegate header construction and `HEAD` early closure to `StreamingResponseUtils` without exposing `httpMethod` in `/v3/api-docs`.
 - **Authorized Contract Document Backend Streaming (`ContractDocumentResponse.fileUrl` never exposes raw `storage_file_key` or `/uploads/`):**
 
 | HTTP Method | Route | Authorization | Success Response | Error Codes |
@@ -191,4 +199,4 @@ Implemented on branch `feat/orca-phase3-final` without modifying `V1__clean_base
 
 ## 5. Branch Status Notice
 
-All Phase 2 Hardening and Phase 3A storage integration changes are committed locally on branch `feat/orca-phase3-final` (on top of `18e1d6e` / `f479fe6`). No merge, push, or deployment has been performed.
+All Phase 2 Hardening (`f479fe6`), Phase 3A storage integration (`2b391e3`), and Phase 3A MINOR fixes (Task `3A-Fix`) are committed locally on branch `feat/orca-phase3-final` (on top of `18e1d6e`). No merge, push, or deployment has been performed.

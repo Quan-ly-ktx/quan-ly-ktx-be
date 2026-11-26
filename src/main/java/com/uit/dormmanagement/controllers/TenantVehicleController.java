@@ -7,6 +7,7 @@ import com.uit.dormmanagement.dtos.response.vehicle.VehicleResponse;
 import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.VehicleEvidenceAccessService;
 import com.uit.dormmanagement.services.VehicleService;
+import com.uit.dormmanagement.utils.StreamingResponseUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -85,12 +87,11 @@ public class TenantVehicleController extends AbstractBaseController {
   public ResponseEntity<Resource> getVehicleEvidence(
       @AuthenticationPrincipal UserPrincipal principal,
       @PathVariable UUID vehicleId,
-      @PathVariable String side) {
+      @PathVariable String side,
+      HttpMethod httpMethod) {
     VehicleEvidenceContent content =
         vehicleEvidenceAccessService.loadVehicleEvidence(principal.getId(), false, vehicleId, side);
-    return ResponseEntity.ok()
-        .contentType(MediaType.parseMediaType(content.contentType()))
-        .contentLength(content.contentLength())
-        .body(content.resource());
+    return StreamingResponseUtils.ok(
+        content.resource(), content.contentType(), content.contentLength(), httpMethod);
   }
 }

@@ -5,14 +5,13 @@ import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
 import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.ContractService;
-import com.uit.dormmanagement.utils.ContentDispositionUtils;
+import com.uit.dormmanagement.utils.StreamingResponseUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -50,18 +49,15 @@ public class TenantContractController extends AbstractBaseController {
   public ResponseEntity<Resource> getDocumentContent(
       @AuthenticationPrincipal UserPrincipal principal,
       @PathVariable UUID contractId,
-      @PathVariable UUID documentId) {
+      @PathVariable UUID documentId,
+      HttpMethod httpMethod) {
     ContractDocumentContent content =
         contractService.loadDocumentContentForTenant(principal.getId(), contractId, documentId);
-    ResponseEntity.BodyBuilder builder =
-        ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType(content.contentType()))
-            .header(
-                HttpHeaders.CONTENT_DISPOSITION,
-                ContentDispositionUtils.inline(content.originalFilename()).toString());
-    if (content.contentLength() >= 0) {
-      builder.contentLength(content.contentLength());
-    }
-    return builder.body(content.resource());
+    return StreamingResponseUtils.okInline(
+        content.resource(),
+        content.contentType(),
+        content.contentLength(),
+        content.originalFilename(),
+        httpMethod);
   }
 }

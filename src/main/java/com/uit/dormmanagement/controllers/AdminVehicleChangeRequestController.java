@@ -9,6 +9,7 @@ import com.uit.dormmanagement.enums.VehicleChangeRequestStatus;
 import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.VehicleChangeRequestService;
 import com.uit.dormmanagement.services.VehicleEvidenceAccessService;
+import com.uit.dormmanagement.utils.StreamingResponseUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -17,7 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.MediaType;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -102,14 +103,13 @@ public class AdminVehicleChangeRequestController extends AbstractBaseController 
   public ResponseEntity<Resource> getChangeRequestEvidence(
       @AuthenticationPrincipal UserPrincipal principal,
       @PathVariable UUID requestId,
-      @PathVariable String side) {
+      @PathVariable String side,
+      HttpMethod httpMethod) {
     UUID managerUserId = principal != null ? principal.getId() : null;
     VehicleEvidenceContent content =
         vehicleEvidenceAccessService.loadChangeRequestEvidence(
             managerUserId, true, requestId, side);
-    return ResponseEntity.ok()
-        .contentType(MediaType.parseMediaType(content.contentType()))
-        .contentLength(content.contentLength())
-        .body(content.resource());
+    return StreamingResponseUtils.ok(
+        content.resource(), content.contentType(), content.contentLength(), httpMethod);
   }
 }

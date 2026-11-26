@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uit.dormmanagement.support.RedisTestContainerSupport;
+import java.util.ArrayList;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -118,5 +120,44 @@ class OpenApiContractVerificationTest {
                 .get("/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content")
                 .has("get"))
         .isTrue();
+
+    // Streaming endpoints must not expose injected HttpMethod as a client API parameter
+    assertStreamingEndpointHasNoHttpMethodParam(
+        paths,
+        "/api/v1/admin/contracts/{contractId}/documents/{documentId}/content",
+        List.of("contractId", "documentId"));
+    assertStreamingEndpointHasNoHttpMethodParam(
+        paths,
+        "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+        List.of("contractId", "documentId"));
+    assertStreamingEndpointHasNoHttpMethodParam(
+        paths, "/api/v1/admin/vehicles/{vehicleId}/evidence/{side}", List.of("vehicleId", "side"));
+    assertStreamingEndpointHasNoHttpMethodParam(
+        paths, "/api/v1/tenant/vehicles/{vehicleId}/evidence/{side}", List.of("vehicleId", "side"));
+    assertStreamingEndpointHasNoHttpMethodParam(
+        paths,
+        "/api/v1/admin/vehicle-change-requests/{requestId}/evidence/{side}",
+        List.of("requestId", "side"));
+    assertStreamingEndpointHasNoHttpMethodParam(
+        paths,
+        "/api/v1/tenant/vehicle-change-requests/{requestId}/evidence/{side}",
+        List.of("requestId", "side"));
+  }
+
+  private void assertStreamingEndpointHasNoHttpMethodParam(
+      JsonNode paths, String path, List<String> expectedPathParams) {
+    JsonNode getOp = paths.get(path).get("get");
+    assertThat(getOp).isNotNull();
+    JsonNode parameters = getOp.get("parameters");
+    assertThat(parameters).isNotNull();
+    List<String> actualNames = new ArrayList<>();
+    for (JsonNode param : parameters) {
+      String name = param.get("name").asText();
+      String in = param.get("in").asText();
+      assertThat(name).isNotEqualTo("httpMethod");
+      assertThat(in).isEqualTo("path");
+      actualNames.add(name);
+    }
+    assertThat(actualNames).containsExactlyInAnyOrderElementsOf(expectedPathParams);
   }
 }
