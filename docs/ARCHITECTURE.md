@@ -23,14 +23,14 @@ dormitory-management/
 │   ├── Logical-ERD.md              # Lược đồ logic chi tiết CSDL (v3.6 FINAL — 20 bảng PostgreSQL)
 │   ├── SRS.md                      # Đặc tả yêu cầu phần mềm v3.4.1 FINAL (BR-01..BR-11, FR-01..FR-27)
 │   └── audits/                     # Kiểm kê hợp đồng API, đánh giá code và tương thích prototype
-├── private-storage/                # Lưu trữ cục bộ riêng tư ảnh cà vẹt xe (Phase 2; OCI ở Phase 3)
+├── private-storage/                # Dữ liệu thử nghiệm cục bộ cũ (Phase 2; Phase 3A đã chuyển sang OCI S3 private bucket)
 ├── src/
 │   ├── main/
 │   │   ├── java/
 │   │   │   └── com/
 │   │   │       └── uit/
 │   │   │           └── dormmanagement/
-│   │   │               ├── configs/        # Cấu hình Spring Beans (OpenAPI, Redis, StorageConfig, WebMvcResourceConfig)
+│   │   │               ├── configs/        # Cấu hình Spring Beans (OpenAPI, Redis, StorageConfig, StorageProperties)
 │   │   │               ├── constants/      # Hằng số Redis keys (RedisKeyConstants)
 │   │   │               ├── controllers/    # REST API endpoints, @Valid DTO, định tuyến mỏng (AbstractBaseController, ScalarDocsController)
 │   │   │               ├── dtos/           # Data Transfer Objects (Java record, request / response)
@@ -88,7 +88,7 @@ Dự án áp dụng kiến trúc phân tầng kỹ thuật nghiêm ngặt (**Tec
                  repositories/    ◄────────────────────────────────┴──► entities/ & enums/
                         │
                         ▼
-    [PostgreSQL 17 (20 Bảng CSDL) | Redis 8 (Session/OTP/Rate Limit) | private-storage/vehicles]
+    [PostgreSQL 17 (20 Bảng CSDL) | Redis 8 (Session/OTP/Rate Limit) | OCI Object Storage (Private S3 API)]
 ```
 
 ### Quy tắc Chi tiết Từng Gói (Package Responsibilities)
@@ -111,7 +111,7 @@ Dự án áp dụng kiến trúc phân tầng kỹ thuật nghiêm ngặt (**Tec
 - Đóng gói toàn bộ các quy tắc nghiệp vụ cốt lõi (Core Business Rules BR-01..BR-11):
   - Kiểm tra cách ly giới tính nghiêm ngặt (`BR-02`) trước khi gán giường hoặc cập nhật phòng/hồ sơ khách thuê.
   - Quản lý trạng thái giường, `room_code_registry` (`used_in_business`) và mã vị trí duy nhất `slotKey` (`BR-01`).
-  - Xử lý đăng ký xe, cấp/thu thẻ từ, yêu cầu đổi xe (khóa bi-quan `Vehicle` $\rightarrow$ `VehicleChangeRequest`) và lưu trữ ảnh cà vẹt qua private local storage (`LocalVehicleEvidenceStorage`); tích hợp **OCI Object Storage private bucket** (`OciObjectStorageServiceImpl`) thực hiện ở đầu Phase 3.
+  - Xử lý đăng ký xe, cấp/thu thẻ từ, yêu cầu đổi xe (khóa bi-quan `Vehicle` $\rightarrow$ `VehicleChangeRequest`), đồng thời lưu trữ và stream ảnh cà vẹt xe (`PrivateVehicleEvidenceStorage`) và tài liệu hợp đồng qua **OCI Object Storage private bucket** (`PrivateObjectStorage` / `S3PrivateObjectStorage`, AWS SDK v2 S3 API).
   - Phạm vi triển khai: Phase 2 bao gồm Auth/RBAC, Rooms/Beds/Amenities, Tenant Profile, Vehicles/Change Requests; Phase 3 xử lý Onboarding/Contracts; **FR-11** (chuyển phòng) đang tạm hoãn (`deferred`) và các phân hệ **4.6** (Chi phí & Lợi nhuận), **4.7** (Hóa đơn & Thu tiền), **4.8** (Sự cố, Vi phạm, Báo cáo & Thông báo) bị loại trừ khỏi phạm vi hiện tại.
 - Thao tác truy vấn dữ liệu đánh dấu `@Transactional(readOnly = true)`.
 - Thao tác thay đổi trạng thái bắt buộc đánh dấu `@Transactional`.
@@ -183,7 +183,7 @@ Dự án áp dụng kiến trúc phân tầng kỹ thuật nghiêm ngặt (**Tec
 - Quy tắc đăng nhập theo vai trò: `MANAGER` và `TECHNICIAN` đăng nhập bằng canonical email; `TENANT` đăng nhập bằng CCCD 12 chữ số (email Tenant chỉ dùng để liên hệ và nhận OTP khôi phục mật khẩu).
 - Đổi mật khẩu khi đã đăng nhập (`POST /api/v1/auth/change-password`) xác thực qua `oldPassword` và xoay `sessionGeneration` trên Redis (không dùng OTP); quên mật khẩu (`forgot-password` $\rightarrow$ `verify-forgot-password-otp` $\rightarrow$ `reset-password`) dùng OTP 6 số hiệu lực 5 phút (`recoveryRequestId`, `resetToken`) lưu trên Redis.
 - Băm mật khẩu bằng BCrypt; khóa tài khoản/tác nhân sau >5 lần đăng nhập sai trong 15 phút (`LoginAttemptServiceImpl`).
-- `SecurityConfig` chặn truy cập tĩnh trực tiếp vào `/uploads/vehicles/**` (`denyAll()`) và mọi log xác thực/định danh đều được che nhạy cảm qua `LogMaskingUtils`.
+- `SecurityConfig` chặn toàn bộ truy cập tĩnh trực tiếp vào `/uploads/**` (`denyAll()`, đã gỡ bỏ `WebMvcResourceConfig` và local storage fallback); toàn bộ ảnh cà vẹt xe và tài liệu hợp đồng được stream có kiểm tra quyền qua Backend, và mọi log xác thực/định danh đều được che nhạy cảm qua `LogMaskingUtils`.
 
 #### 10. `exceptions/`:
 - Xử lý ngoại lệ tập trung qua `AppExceptionHandler` (`@RestControllerAdvice`) phối hợp với `DataIntegrityViolationClassifier`.

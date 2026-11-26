@@ -24,7 +24,6 @@ import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
-import com.uit.dormmanagement.enums.RoomType;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
@@ -33,8 +32,8 @@ import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
-import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.repositories.RoomCodeRegistryRepository;
+import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
@@ -212,6 +211,14 @@ class ResidentLifecycleE2ETest {
         contractService.uploadDocuments(
             contractId, ContractDocumentCategory.ORIGINAL_CONTRACT, List.of(contractDoc));
     assertThat(uploadedDocs).hasSize(1);
+    assertThat(uploadedDocs.getFirst().fileUrl())
+        .isEqualTo(
+            "/api/v1/admin/contracts/"
+                + contractId
+                + "/documents/"
+                + uploadedDocs.getFirst().id()
+                + "/content")
+        .doesNotContain("/uploads/");
 
     RenewContractRequest renewReq =
         RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 9, 1)).build();
@@ -239,8 +246,7 @@ class ResidentLifecycleE2ETest {
     assertThat(dbBed.getStatus()).isEqualTo(BedStatus.AVAILABLE);
 
     Room dbRoom = roomRepository.findById(testRoom.getId()).orElseThrow();
-    assertThat(bedRepository.countByRoomIdAndStatus(testRoom.getId(), BedStatus.OCCUPIED))
-        .isZero();
+    assertThat(bedRepository.countByRoomIdAndStatus(testRoom.getId(), BedStatus.OCCUPIED)).isZero();
 
     // 3. Tenant is CHECKED_OUT with deletedAt NULL
     Tenant dbTenant = tenantRepository.findById(tenantId).orElseThrow();

@@ -2,6 +2,7 @@ package com.uit.dormmanagement.services;
 
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
+import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
@@ -30,4 +31,9 @@ public interface ContractService {
   void deleteDocument(UUID contractId, UUID documentId);
 
   ContractDetailResponse getMyContract(UUID userId);
+
+  ContractDocumentContent loadDocumentContentForAdmin(UUID contractId, UUID documentId);
+
+  ContractDocumentContent loadDocumentContentForTenant(
+      UUID tenantUserId, UUID contractId, UUID documentId);
 }

@@ -174,6 +174,21 @@ Note: **`PUT /api/v1/admin/vehicles/{id}` does not exist** (removed in F-02). `V
 
 ---
 
-## 4. Branch Status Notice
+## 4. Phase 3A Addendum — OCI S3 Private Storage & Contract Document Streaming
 
-All Phase 2 Hardening changes are committed locally on branch `feat/orca-phase3-final` (on top of `18e1d6e`). No merge, push, or deployment has been performed.
+Implemented on branch `feat/orca-phase3-final` without modifying `V1__clean_baseline.sql`, JPA entities, Phase 2 Vehicle API contracts, or deferred Phase 2 findings (`F-01`, `F-04`, `F-06`, `F-07`):
+
+- **Unified Private Object Storage:** Replaced `LocalStorageServiceImpl`, `LocalVehicleEvidenceStorage`, simulated `OciObjectStorageServiceImpl`, legacy `StorageService`, and `WebMvcResourceConfig` with `PrivateObjectStorage` / `S3PrivateObjectStorage` (AWS SDK for Java v2 `S3Client` targeting the private OCI bucket via S3 Compatibility API) and `PrivateVehicleEvidenceStorage`. Test suites use `InMemoryPrivateObjectStorage` (`app.storage.provider=in-memory`).
+- **Static `/uploads/**` Retired & Fail-Closed:** Removed `"/uploads/**"` from `SecurityConfig` `permitAll()` and enforced `.requestMatchers("/uploads/**").denyAll()`.
+- **Authorized Contract Document Backend Streaming (`ContractDocumentResponse.fileUrl` never exposes raw `storage_file_key` or `/uploads/`):**
+
+| HTTP Method | Route | Authorization | Success Response | Error Codes |
+|---|---|---|---|---|
+| `GET` | `/api/v1/admin/contracts/{contractId}/documents/{documentId}/content` | `MANAGER` | `200 OK` → Binary `Resource` stream (`Content-Type`, `Content-Length`, `Content-Disposition: inline`) | `CONTRACT_404_DOCUMENT` (404)<br>`WEB_401` (401)<br>`WEB_403` (403) |
+| `GET` | `/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content` | `TENANT` (Owning `ACTIVE` or `CHECKED_OUT` tenant) | `200 OK` → Binary `Resource` stream (`Content-Type`, `Content-Length`, `Content-Disposition: inline`) | `CONTRACT_404` (404)<br>`CONTRACT_404_DOCUMENT` (404)<br>`WEB_401` (401)<br>`WEB_403` (403) |
+
+---
+
+## 5. Branch Status Notice
+
+All Phase 2 Hardening and Phase 3A storage integration changes are committed locally on branch `feat/orca-phase3-final` (on top of `18e1d6e` / `f479fe6`). No merge, push, or deployment has been performed.

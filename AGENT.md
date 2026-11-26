@@ -107,7 +107,7 @@ Mọi dòng code, API endpoint, migration SQL và logic Service **BẮT BUỘC**
 - **Vòng đời xe (`VehicleStatus` — 6 trạng thái):** `PENDING_CARD` $\rightarrow$ `ISSUED` (khi Manager nhập `card_code`, duy nhất giữa các xe `ISSUED`), hoặc `REJECTED` (từ chối kèm lý do bắt buộc), `CANCELLED` (hủy đơn chờ cấp thẻ), `REVOKED` (thu hồi khi checkout hoặc thu thẻ), `REPLACED` (xe cũ sau khi duyệt yêu cầu đổi xe). Tối đa 01 xe `PENDING_CARD`/`ISSUED` mỗi khách thuê đang cư trú (`ACTIVE`); biển số không ràng buộc duy nhất toàn cục.
 - **Yêu cầu đổi xe (`VehicleChangeRequestStatus` — 4 trạng thái):** Khách thuê đang có xe `ISSUED` có thể tạo `PENDING` change request; khi Manager duyệt (`APPROVED`), hệ thống khóa `Vehicle` trước rồi `VehicleChangeRequest`, chuyển xe cũ sang `REPLACED` và tạo xe kế nhiệm `ISSUED` giữ nguyên `card_code`. Từ chối (`REJECTED`) giữ nguyên xe cũ; checkout hủy yêu cầu đang chờ (`CANCELLED`).
 - Phí gửi xe bao trọn gói 100% trong tiền phòng; **hệ thống tuyệt đối không thu thêm bất kỳ khoản phí xe nào**.
-- Ảnh cà vẹt xe hiện lưu trong private local storage (`private-storage/vehicles`, chặn truy cập trực tiếp `/uploads/vehicles/**`, stream qua endpoint kiểm tra quyền/chủ sở hữu); tích hợp **OCI Object Storage private bucket** dự kiến thực hiện ở đầu Phase 3.
+- Ảnh cà vẹt xe lưu trong **OCI Object Storage private bucket** qua AWS SDK v2 S3 Compatibility API (`PrivateObjectStorage` / `S3PrivateObjectStorage`), chặn toàn bộ truy cập tĩnh `/uploads/**` (`denyAll()`), stream qua endpoint Backend kiểm tra quyền/chủ sở hữu (`AdminVehicleController`, `TenantVehicleController`, `AdminVehicleChangeRequestController`, `TenantVehicleChangeRequestController`).
 
 ### BR-11: Phân quyền quản trị tinh giản (Simplified RBAC & Exclusive Subtyping)
 - Phân định rõ 3 vai trò qua `users.role`:
@@ -140,7 +140,7 @@ Toàn bộ mã nguồn backend được tổ chức theo kiến trúc phân tầ
 
 ```text
 com.uit.dormmanagement/
-├── configs/            # Cấu hình Spring Beans (OpenAPI, Redis, StorageConfig, WebMvcResourceConfig)
+├── configs/            # Cấu hình Spring Beans (OpenAPI, Redis, StorageConfig, StorageProperties)
 ├── constants/          # Hằng số Redis key (RedisKeyConstants)
 ├── controllers/        # REST Controllers mỏng (AbstractBaseController, ScalarDocsController)
 ├── dtos/               # Request/Response DTOs (Java record, Jakarta Validation)
@@ -164,7 +164,7 @@ com.uit.dormmanagement/
 - **Fetch Type:** Mọi quan hệ `@ManyToOne` và `@OneToOne` trong JPA Entity bắt buộc thiết lập `fetch = FetchType.LAZY`.
 - **Controllers:** Giữ controller mỏng (thin controller), chỉ đón nhận `@Valid` request DTO và trả về response DTO bọc qua `ResponseFactory`. Tuyệt đối không inject `Repository` vào `Controller`.
 - **Services:** Chứa 100% logic nghiệp vụ; thao tác đọc dùng `@Transactional(readOnly = true)`, thao tác ghi dùng `@Transactional`.
-- **Lưu trữ file chứng từ:** Phase 2 dùng private local storage (`private-storage/vehicles`, chặn public access `/uploads/vehicles/**`); tích hợp OCI Object Storage private bucket (`OciObjectStorageServiceImpl`) thực hiện ở đầu Phase 3.
+- **Lưu trữ file chứng từ:** Tích hợp **OCI Object Storage private bucket** qua AWS SDK v2 S3 Compatibility API (`PrivateObjectStorage` / `S3PrivateObjectStorage`); chặn truy cập tĩnh `/uploads/**` (`denyAll()`), toàn bộ ảnh cà vẹt xe và tài liệu hợp đồng được stream qua Backend (`GET /api/v1/admin/contracts/{contractId}/documents/{documentId}/content`, `GET /api/v1/tenant/contracts/{contractId}/documents/{documentId}/content`, và các endpoint vehicle evidence) kèm kiểm tra quyền/chủ sở hữu.
 
 ---
 
@@ -264,8 +264,8 @@ Khi nhận task phát triển tính năng, Agent đối soát trạng thái th�
 | **Hệ thống & Phân quyền (4.1)** | FR-21 $\rightarrow$ FR-24 | Đăng nhập Bcrypt, JWT/Redis session, nhân sự Kỹ thuật viên, OTP quên mật khẩu | **Phase 2 (Hoàn thiện + Hardening).** Staff email / Tenant CCCD 12 số; OTP qua Redis. |
 | **Phòng & Giường (4.2)** | FR-01 $\rightarrow$ FR-05 | Ma trận phòng giường, thêm phòng 4/6/8 giường, cập nhật, lưu trữ/khôi phục/xóa nhầm | **Phase 2 (Hoàn thiện + Hardening).** `gender_policy` & `slot_key` + `room_code_registry`. |
 | **Khách thuê (4.3)** | FR-06, FR-07 | Danh sách/chi tiết khách thuê, cập nhật hồ sơ, đổi SĐT/khẩn cấp | **Phase 2 (Hoàn thiện + Hardening).** Từ chối chuỗi rỗng cho `idCardNumber`/`email`. |
-| **Phương tiện (4.4)** | FR-08 | Đăng ký xe (01 xe hoạt động/khách), cấp/thu thẻ từ, từ chối, yêu cầu đổi xe, ảnh private | **Phase 2 (Hoàn thiện + Hardening).** Local private storage; tích hợp OCI ở đầu Phase 3. |
-| **Tiếp nhận & Hợp đồng (4.5)** | FR-09, FR-10, FR-12, FR-13 | Direct Onboarding, tài liệu hợp đồng, gia hạn, checkout thanh lý | **Phase 3.** Riêng **FR-11 (Chuyển phòng)** đang **hoãn (deferred)**. |
+| **Phương tiện (4.4)** | FR-08 | Đăng ký xe (01 xe hoạt động/khách), cấp/thu thẻ từ, từ chối, yêu cầu đổi xe, ảnh private | **Phase 2 (Hoàn thiện + Hardening) + Phase 3A Storage.** Lưu trữ private trên OCI Object Storage (S3 API) qua Backend Streaming. |
+| **Tiếp nhận & Hợp đồng (4.5)** | FR-09, FR-10, FR-12, FR-13 | Direct Onboarding, tài liệu hợp đồng, gia hạn, checkout thanh lý | **Phase 3 (Phase 3A đã hoàn tất OCI S3 storage & streaming tài liệu hợp đồng; nghiệp vụ Phase 3B chưa triển khai).** Riêng **FR-11 (Chuyển phòng)** đang **hoãn (deferred)**. |
 | **Chi phí & Lợi nhuận (4.6)** | FR-14 | Chi phí cơ sở (`facility_expenses`), Lợi nhuận ròng ước tính | **Ngoài phạm vi triển khai hiện tại (Excluded).** Chỉ có bảng nền V1. |
 | **Hóa đơn & Thu tiền (4.7)** | FR-15, FR-16 | Phát hành ngày 25, hạn ngày 05, xác nhận VietQR / tiền mặt | **Ngoài phạm vi triển khai hiện tại (Excluded).** Chỉ có bảng nền V1. |
 | **Sự cố, Vi phạm, Báo cáo & TB (4.8)** | FR-17 $\rightarrow$ FR-20, FR-25 $\rightarrow$ FR-27 | Phiếu sửa chữa ưu tiên, biên bản vi phạm, KPI dashboard, thông báo, cổng di động | **Ngoài phạm vi triển khai hiện tại (Excluded).** Chỉ có bảng nền V1. |

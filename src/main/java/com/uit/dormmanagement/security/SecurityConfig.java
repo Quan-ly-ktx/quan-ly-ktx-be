@@ -77,7 +77,7 @@ public class SecurityConfig {
             })
         .authorizeHttpRequests(
             auth ->
-                auth.requestMatchers("/uploads/vehicles/**")
+                auth.requestMatchers("/uploads/**")
                     .denyAll()
                     .requestMatchers(
                         "/api/v1/auth/login",
@@ -92,8 +92,7 @@ public class SecurityConfig {
                         "/docs/**",
                         "/scalar",
                         "/scalar/**",
-                        "/actuator/health",
-                        "/uploads/**")
+                        "/actuator/health")
                     .permitAll()
                     .requestMatchers(
                         "/api/v1/auth/logout",

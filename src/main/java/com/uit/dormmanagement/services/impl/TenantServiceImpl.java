@@ -398,7 +398,9 @@ public class TenantServiceImpl implements TenantService {
                             .id(doc.getId())
                             .contractId(contract.getId())
                             .fileName(doc.getFileName())
-                            .fileUrl(doc.getFileUrl())
+                            .fileUrl(
+                                ContractServiceImpl.adminDocumentContentPath(
+                                    contract.getId(), doc.getId()))
                             .fileType(doc.getFileType())
                             .fileSize(doc.getFileSize())
                             .documentCategory(doc.getDocumentCategory())

@@ -102,5 +102,21 @@ class OpenApiContractVerificationTest {
         .isTrue();
     assertThat(paths.has("/api/v1/admin/vehicle-change-requests/{requestId}/evidence/{side}"))
         .isTrue();
+
+    // Contract Document Backend Streaming (Phase 3A)
+    assertThat(paths.has("/api/v1/admin/contracts/{contractId}/documents/{documentId}/content"))
+        .isTrue();
+    assertThat(
+            paths
+                .get("/api/v1/admin/contracts/{contractId}/documents/{documentId}/content")
+                .has("get"))
+        .isTrue();
+    assertThat(paths.has("/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content"))
+        .isTrue();
+    assertThat(
+            paths
+                .get("/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content")
+                .has("get"))
+        .isTrue();
   }
 }

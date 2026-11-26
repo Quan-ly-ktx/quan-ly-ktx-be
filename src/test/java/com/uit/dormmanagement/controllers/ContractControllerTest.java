@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,6 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
+import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.entities.User;
@@ -38,10 +41,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -221,11 +227,15 @@ class ContractControllerTest {
     MockMultipartFile docFile =
         new MockMultipartFile("files", "contract.pdf", "application/pdf", new byte[] {1, 2});
 
+    UUID docId = UUID.randomUUID();
+    String expectedUrl =
+        "/api/v1/admin/contracts/" + contractId + "/documents/" + docId + "/content";
     ContractDocumentResponse docRes =
         ContractDocumentResponse.builder()
-            .id(UUID.randomUUID())
+            .id(docId)
+            .contractId(contractId)
             .fileName("contract.pdf")
-            .fileUrl("/uploads/contracts/contract.pdf")
+            .fileUrl(expectedUrl)
             .documentCategory(ContractDocumentCategory.ORIGINAL_CONTRACT)
             .build();
 
@@ -240,7 +250,33 @@ class ContractControllerTest {
                 .param("category", "ORIGINAL_CONTRACT"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
-        .andExpect(jsonPath("$.data[0].fileName").value("contract.pdf"));
+        .andExpect(jsonPath("$.data[0].fileName").value("contract.pdf"))
+        .andExpect(jsonPath("$.data[0].fileUrl").value(expectedUrl));
+  }
+
+  @Test
+  @DisplayName(
+      "GET /api/v1/admin/contracts/{contractId}/documents/{documentId}/content: streams file")
+  void getAdminDocumentContent_shouldStream() throws Exception {
+    UUID docId = UUID.randomUUID();
+    byte[] bytes = "pdf-bytes".getBytes();
+    ContractDocumentContent content =
+        new ContractDocumentContent(
+            new ByteArrayResource(bytes), "application/pdf", bytes.length, "contract.pdf");
+    when(contractService.loadDocumentContentForAdmin(contractId, docId)).thenReturn(content);
+
+    adminMockMvc
+        .perform(
+            get(
+                "/api/v1/admin/contracts/{contractId}/documents/{documentId}/content",
+                contractId,
+                docId))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(bytes.length)))
+        .andExpect(
+            header().string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"contract.pdf\""))
+        .andExpect(content().bytes(bytes));
   }
 
   @Test
@@ -266,5 +302,32 @@ class ContractControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.data.contractCode").value("HD-2026-0187"));
+  }
+
+  @Test
+  @DisplayName(
+      "GET /api/v1/tenant/contracts/{contractId}/documents/{documentId}/content: streams file")
+  void getTenantDocumentContent_shouldStream() throws Exception {
+    UUID docId = UUID.randomUUID();
+    byte[] bytes = "tenant-pdf".getBytes();
+    ContractDocumentContent content =
+        new ContractDocumentContent(
+            new ByteArrayResource(bytes), "application/pdf", bytes.length, "my-contract.pdf");
+    when(contractService.loadDocumentContentForTenant(userId, contractId, docId))
+        .thenReturn(content);
+
+    tenantMockMvc
+        .perform(
+            get(
+                "/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content",
+                contractId,
+                docId))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(bytes.length)))
+        .andExpect(
+            header()
+                .string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"my-contract.pdf\""))
+        .andExpect(content().bytes(bytes));
   }
 }

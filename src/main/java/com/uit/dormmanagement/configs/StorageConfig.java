@@ -1,42 +1,116 @@
 package com.uit.dormmanagement.configs;
 
-import com.uit.dormmanagement.services.StorageService;
-import com.uit.dormmanagement.services.impl.LocalStorageServiceImpl;
-import com.uit.dormmanagement.services.impl.OciObjectStorageServiceImpl;
-import org.springframework.beans.factory.annotation.Value;
+import com.uit.dormmanagement.services.PrivateObjectStorage;
+import com.uit.dormmanagement.services.VehicleEvidenceStorage;
+import com.uit.dormmanagement.services.impl.PrivateVehicleEvidenceStorage;
+import com.uit.dormmanagement.services.impl.S3PrivateObjectStorage;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.checksums.RequestChecksumCalculation;
+import software.amazon.awssdk.core.checksums.ResponseChecksumValidation;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
 
 @Configuration
+@EnableConfigurationProperties(StorageProperties.class)
 public class StorageConfig {
 
-  @Bean
-  @ConditionalOnProperty(name = "oci.storage.enabled", havingValue = "true")
-  public StorageService ociStorageService(
-      @Value("${oci.storage.tenancy-id:}") String tenancyId,
-      @Value("${oci.storage.user-id:}") String userId,
-      @Value("${oci.storage.fingerprint:}") String fingerprint,
-      @Value("${oci.storage.private-key-path:}") String privateKeyPath,
-      @Value("${oci.storage.region:ap-singapore-1}") String region,
-      @Value("${oci.storage.namespace:}") String namespace,
-      @Value("${oci.storage.bucket-name:dormitory-storage}") String bucketName) {
-    return new OciObjectStorageServiceImpl(
-        tenancyId, userId, fingerprint, privateKeyPath, region, namespace, bucketName);
+  @Bean(destroyMethod = "close")
+  @ConditionalOnProperty(name = "app.storage.provider", havingValue = "s3", matchIfMissing = true)
+  public S3Client s3Client(StorageProperties properties) {
+    StorageProperties.S3Properties s3 =
+        properties != null && properties.getS3() != null
+            ? properties.getS3()
+            : new StorageProperties.S3Properties();
+    validateS3Properties(s3);
+    return buildS3Client(s3.getEndpoint(), s3.getRegion(), s3.getAccessKey(), s3.getSecretKey());
   }
 
   @Bean
-  @ConditionalOnMissingBean(StorageService.class)
-  public StorageService localStorageService(
-      @Value("${storage.local.base-dir:uploads}") String baseDir) {
-    return new LocalStorageServiceImpl(baseDir);
+  @ConditionalOnProperty(name = "app.storage.provider", havingValue = "s3", matchIfMissing = true)
+  @ConditionalOnMissingBean(PrivateObjectStorage.class)
+  public PrivateObjectStorage s3PrivateObjectStorage(
+      S3Client s3Client, StorageProperties properties) {
+    return new S3PrivateObjectStorage(s3Client, properties.getS3().getBucketName().trim());
   }
 
   @Bean
-  @ConditionalOnMissingBean(com.uit.dormmanagement.services.VehicleEvidenceStorage.class)
-  public com.uit.dormmanagement.services.VehicleEvidenceStorage vehicleEvidenceStorage(
-      @Value("${storage.vehicle.private-base-dir:private-storage/vehicles}") String privateBaseDir) {
-    return new com.uit.dormmanagement.services.impl.LocalVehicleEvidenceStorage(privateBaseDir);
+  @ConditionalOnMissingBean(VehicleEvidenceStorage.class)
+  public VehicleEvidenceStorage vehicleEvidenceStorage(PrivateObjectStorage privateObjectStorage) {
+    return new PrivateVehicleEvidenceStorage(privateObjectStorage);
+  }
+
+  public static S3Client buildS3Client(
+      String endpoint, String region, String accessKey, String secretKey) {
+    if (isBlank(endpoint) || isBlank(region) || isBlank(accessKey) || isBlank(secretKey)) {
+      throw new IllegalStateException("Missing required S3 storage configuration properties");
+    }
+
+    URI endpointUri;
+    try {
+      endpointUri = URI.create(endpoint.trim());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException("Invalid S3 storage endpoint URI configuration");
+    }
+
+    String scheme = endpointUri.getScheme();
+    if (scheme == null
+        || (!scheme.equalsIgnoreCase("https") && !scheme.equalsIgnoreCase("http"))
+        || isBlank(endpointUri.getHost())) {
+      throw new IllegalStateException("Invalid S3 storage endpoint URI configuration");
+    }
+
+    S3Configuration s3Configuration =
+        S3Configuration.builder()
+            .pathStyleAccessEnabled(true)
+            .chunkedEncodingEnabled(false)
+            .build();
+
+    return S3Client.builder()
+        .endpointOverride(endpointUri)
+        .region(Region.of(region.trim()))
+        .credentialsProvider(
+            StaticCredentialsProvider.create(
+                AwsBasicCredentials.create(accessKey.trim(), secretKey.trim())))
+        .serviceConfiguration(s3Configuration)
+        .requestChecksumCalculation(RequestChecksumCalculation.WHEN_REQUIRED)
+        .responseChecksumValidation(ResponseChecksumValidation.WHEN_REQUIRED)
+        .build();
+  }
+
+  private static void validateS3Properties(StorageProperties.S3Properties s3) {
+    List<String> missing = new ArrayList<>();
+    if (isBlank(s3.getEndpoint())) {
+      missing.add("app.storage.s3.endpoint");
+    }
+    if (isBlank(s3.getRegion())) {
+      missing.add("app.storage.s3.region");
+    }
+    if (isBlank(s3.getBucketName())) {
+      missing.add("app.storage.s3.bucket-name");
+    }
+    if (isBlank(s3.getAccessKey())) {
+      missing.add("app.storage.s3.access-key");
+    }
+    if (isBlank(s3.getSecretKey())) {
+      missing.add("app.storage.s3.secret-key");
+    }
+    if (!missing.isEmpty()) {
+      throw new IllegalStateException(
+          "Missing required S3 storage configuration properties: " + String.join(", ", missing));
+    }
+  }
+
+  private static boolean isBlank(String value) {
+    return value == null || value.isBlank();
   }
 }

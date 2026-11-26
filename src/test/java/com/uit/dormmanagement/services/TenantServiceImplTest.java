@@ -15,11 +15,13 @@ import com.uit.dormmanagement.dtos.response.tenant.TenantDetailResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
+import com.uit.dormmanagement.entities.ContractDocument;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
+import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
@@ -192,6 +194,19 @@ class TenantServiceImplTest {
   @Test
   @DisplayName("getTenantById: when found should return complete detail response")
   void getTenantById_whenFound_shouldReturnDetail() {
+    UUID docId = UUID.randomUUID();
+    String rawStorageKey = "contracts/" + activeContract.getId() + "/secret-key.pdf";
+    ContractDocument doc =
+        ContractDocument.builder()
+            .id(docId)
+            .contract(activeContract)
+            .documentType(ContractDocumentCategory.ORIGINAL_CONTRACT)
+            .originalFilename("hop-dong.pdf")
+            .mimeType("application/pdf")
+            .storageFileKey(rawStorageKey)
+            .build();
+    activeContract.getDocuments().add(doc);
+
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
     when(contractRepository.findFirstByTenantIdAndStatusIn(eq(tenantId), any()))
         .thenReturn(Optional.of(activeContract));
@@ -206,6 +221,16 @@ class TenantServiceImplTest {
     assertThat(detail.currentBedCode()).isEqualTo("G02");
     assertThat(detail.currentContract()).isNotNull();
     assertThat(detail.currentContract().contractCode()).isEqualTo("HD-2026-0187");
+    assertThat(detail.currentContract().documents()).hasSize(1);
+    assertThat(detail.currentContract().documents().getFirst().fileUrl())
+        .isEqualTo(
+            "/api/v1/admin/contracts/"
+                + activeContract.getId()
+                + "/documents/"
+                + docId
+                + "/content")
+        .doesNotContain(rawStorageKey)
+        .doesNotContain("/uploads/");
     assertThat(detail.vehicles()).hasSize(1);
     assertThat(detail.vehicles().getFirst().licensePlate()).isEqualTo("59-X3 789.12");
     assertThat(detail.contractHistory()).hasSize(1);

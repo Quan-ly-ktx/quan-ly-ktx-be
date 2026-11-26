@@ -39,3 +39,5 @@ app:
     max-attempts: 3
     resend-cooldown-seconds: 60
     reset-max-per-hour: 3
+  storage:
+    provider: in-memory

@@ -5,19 +5,23 @@ import com.uit.dormmanagement.dtos.response.base.PageResponse;
 import com.uit.dormmanagement.dtos.response.base.SingleResponse;
 import com.uit.dormmanagement.dtos.response.base.SuccessResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
+import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.services.ContractService;
+import com.uit.dormmanagement.utils.ContentDispositionUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -101,6 +105,27 @@ public class AdminContractController extends AbstractBaseController {
       @RequestParam("files") List<MultipartFile> files) {
     List<ContractDocumentResponse> response = contractService.uploadDocuments(id, category, files);
     return responseFactory.success(response, "Tải lên tài liệu hợp đồng thành công");
+  }
+
+  @Operation(
+      summary = "Stream contract document content",
+      description = "Stream private contract document content for manager")
+  @PreAuthorize("hasRole('MANAGER')")
+  @GetMapping("/{contractId}/documents/{documentId}/content")
+  public ResponseEntity<Resource> getDocumentContent(
+      @PathVariable UUID contractId, @PathVariable UUID documentId) {
+    ContractDocumentContent content =
+        contractService.loadDocumentContentForAdmin(contractId, documentId);
+    ResponseEntity.BodyBuilder builder =
+        ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(content.contentType()))
+            .header(
+                HttpHeaders.CONTENT_DISPOSITION,
+                ContentDispositionUtils.inline(content.originalFilename()).toString());
+    if (content.contentLength() >= 0) {
+      builder.contentLength(content.contentLength());
+    }
+    return builder.body(content.resource());
   }
 
   @Operation(
