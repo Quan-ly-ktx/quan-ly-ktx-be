@@ -1,5 +1,6 @@
 package com.uit.dormmanagement.controllers;
 
+import com.uit.dormmanagement.dtos.request.contract.CheckoutContractRequest;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.response.base.PageResponse;
 import com.uit.dormmanagement.dtos.response.base.SingleResponse;
@@ -10,6 +11,7 @@ import com.uit.dormmanagement.dtos.response.contract.ContractDocumentResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
+import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.ContractService;
 import com.uit.dormmanagement.utils.StreamingResponseUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,11 +27,13 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -89,8 +93,11 @@ public class AdminContractController extends AbstractBaseController {
   @PreAuthorize("hasRole('MANAGER')")
   @PostMapping("/{id}/terminate")
   public ResponseEntity<SingleResponse<ContractDetailResponse>> terminateContract(
-      @PathVariable UUID id) {
-    ContractDetailResponse response = contractService.terminateContract(id);
+      @AuthenticationPrincipal UserPrincipal principal,
+      @PathVariable UUID id,
+      @Valid @RequestBody CheckoutContractRequest request) {
+    UUID managerUserId = principal != null ? principal.getId() : null;
+    ContractDetailResponse response = contractService.terminateContract(managerUserId, id, request);
     return responseFactory.success(response, "Thanh lý hợp đồng và giải phóng giường thành công");
   }
 

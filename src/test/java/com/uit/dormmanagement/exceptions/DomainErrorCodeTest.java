@@ -77,8 +77,7 @@ class DomainErrorCodeTest {
     assertThat(ContractErrorCode.ROOM_ARCHIVED.getErrorCode())
         .isEqualTo("CONTRACT_409_ROOM_ARCHIVED");
     assertThat(ContractErrorCode.CONTRACT_EXPIRED.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
-    assertThat(ContractErrorCode.CONTRACT_EXPIRED.getErrorCode())
-        .isEqualTo("CONTRACT_409_EXPIRED");
+    assertThat(ContractErrorCode.CONTRACT_EXPIRED.getErrorCode()).isEqualTo("CONTRACT_409_EXPIRED");
     assertThat(ContractErrorCode.CONTRACT_RENEWAL_CONFLICT.getHttpStatus())
         .isEqualTo(HttpStatus.CONFLICT);
     assertThat(ContractErrorCode.CONTRACT_RENEWAL_CONFLICT.getErrorCode())
@@ -89,6 +88,14 @@ class DomainErrorCodeTest {
         .isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(ContractErrorCode.UNSUPPORTED_DOCUMENT_FORMAT.getHttpStatus())
         .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ContractErrorCode.INVALID_CHECKOUT_BED_STATUS.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ContractErrorCode.INVALID_CHECKOUT_BED_STATUS.getErrorCode())
+        .isEqualTo("CONTRACT_400_CHECKOUT_BED_STATUS");
+    assertThat(ContractErrorCode.CHECKOUT_HANDOVER_NOT_CONFIRMED.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ContractErrorCode.CHECKOUT_HANDOVER_NOT_CONFIRMED.getErrorCode())
+        .isEqualTo("CONTRACT_400_HANDOVER_REQUIRED");
 
     for (ContractErrorCode code : ContractErrorCode.values()) {
       assertThat(code.getErrorCode()).isNotBlank().startsWith("CONTRACT_");

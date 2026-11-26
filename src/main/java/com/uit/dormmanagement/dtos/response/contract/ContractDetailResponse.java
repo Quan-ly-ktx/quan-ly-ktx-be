@@ -26,6 +26,7 @@ public record ContractDetailResponse(
     ContractStatus status,
     String contractDocumentUrl,
     Instant signedAt,
+    Instant checkedOutAt,
     Instant createdAt,
     List<ContractDocumentResponse> documents,
     List<ContractRenewalResponse> renewals) {

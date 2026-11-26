@@ -15,12 +15,18 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface VehicleChangeRequestRepository
-    extends JpaRepository<VehicleChangeRequest, UUID> {
+public interface VehicleChangeRequestRepository extends JpaRepository<VehicleChangeRequest, UUID> {
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("SELECT r FROM VehicleChangeRequest r WHERE r.id = :id")
   Optional<VehicleChangeRequest> findByIdForUpdate(@Param("id") UUID id);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query(
+      "SELECT r FROM VehicleChangeRequest r WHERE r.tenant.id = :tenantId AND r.status = :status"
+          + " ORDER BY r.id ASC")
+  List<VehicleChangeRequest> findByTenantIdAndStatusForUpdateOrderById(
+      @Param("tenantId") UUID tenantId, @Param("status") VehicleChangeRequestStatus status);
 
   @Query("SELECT r.currentVehicle.id FROM VehicleChangeRequest r WHERE r.id = :id")
   Optional<UUID> findCurrentVehicleIdById(@Param("id") UUID id);

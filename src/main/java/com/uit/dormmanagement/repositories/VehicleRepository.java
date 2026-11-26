@@ -21,6 +21,10 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
   @Query("SELECT v FROM Vehicle v WHERE v.id = :id")
   Optional<Vehicle> findByIdForUpdate(@Param("id") UUID id);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT v FROM Vehicle v WHERE v.tenant.id = :tenantId ORDER BY v.id ASC")
+  List<Vehicle> findByTenantIdForUpdateOrderById(@Param("tenantId") UUID tenantId);
+
   Optional<Vehicle> findByLicensePlate(String licensePlate);
 
   Optional<Vehicle> findByCardCode(String cardCode);
@@ -35,14 +39,12 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
 
   List<Vehicle> findByStatus(VehicleStatus status);
 
-  long countByTenantIdAndStatusIn(
-      UUID tenantId, Collection<VehicleStatus> statuses);
+  long countByTenantIdAndStatusIn(UUID tenantId, Collection<VehicleStatus> statuses);
 
   Optional<Vehicle> findFirstByTenantIdAndStatusIn(
       UUID tenantId, Collection<VehicleStatus> statuses);
 
-  boolean existsByLicensePlateAndStatusIn(
-      String licensePlate, Collection<VehicleStatus> statuses);
+  boolean existsByLicensePlateAndStatusIn(String licensePlate, Collection<VehicleStatus> statuses);
 
   boolean existsByCardCodeAndStatus(String cardCode, VehicleStatus status);
 

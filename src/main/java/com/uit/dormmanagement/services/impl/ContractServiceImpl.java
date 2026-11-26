@@ -1,6 +1,7 @@
 package com.uit.dormmanagement.services.impl;
 
 import com.uit.dormmanagement.configs.TimeConfig;
+import com.uit.dormmanagement.dtos.request.contract.CheckoutContractRequest;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
@@ -12,12 +13,15 @@ import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.ContractDocument;
 import com.uit.dormmanagement.entities.ContractRenewal;
 import com.uit.dormmanagement.entities.Room;
+import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.Vehicle;
+import com.uit.dormmanagement.entities.VehicleChangeRequest;
 import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.ResidentStatus;
+import com.uit.dormmanagement.enums.VehicleChangeRequestStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
@@ -30,7 +34,10 @@ import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractDocumentRepository;
 import com.uit.dormmanagement.repositories.ContractRenewalRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
+import com.uit.dormmanagement.repositories.RoomRepository;
+import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
+import com.uit.dormmanagement.repositories.VehicleChangeRequestRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.ContractService;
 import com.uit.dormmanagement.services.InvoiceIssuanceService;
@@ -72,9 +79,12 @@ public class ContractServiceImpl implements ContractService {
   private final ContractRepository contractRepository;
   private final ContractRenewalRepository contractRenewalRepository;
   private final ContractDocumentRepository contractDocumentRepository;
+  private final RoomRepository roomRepository;
   private final BedRepository bedRepository;
   private final TenantRepository tenantRepository;
   private final VehicleRepository vehicleRepository;
+  private final VehicleChangeRequestRepository vehicleChangeRequestRepository;
+  private final StaffProfileRepository staffProfileRepository;
   private final PrivateObjectStorage privateObjectStorage;
   private final InvoiceIssuanceService invoiceIssuanceService;
   private final Clock clock;
@@ -262,53 +272,125 @@ public class ContractServiceImpl implements ContractService {
 
   @Override
   @Transactional
-  public ContractDetailResponse terminateContract(UUID id) {
-    Contract contract =
+  public ContractDetailResponse terminateContract(
+      UUID managerUserId, UUID id, CheckoutContractRequest request) {
+    if (request == null || !Boolean.TRUE.equals(request.handoverConfirmed())) {
+      throw new BaseAppException(ContractErrorCode.CHECKOUT_HANDOVER_NOT_CONFIRMED);
+    }
+
+    BedStatus targetBedStatus = request.bedStatusAfterCheckout();
+    if (targetBedStatus != BedStatus.AVAILABLE && targetBedStatus != BedStatus.MAINTENANCE) {
+      throw new BaseAppException(ContractErrorCode.INVALID_CHECKOUT_BED_STATUS);
+    }
+
+    Contract preRead =
         contractRepository
             .findById(id)
             .orElseThrow(() -> new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
 
-    if (contract.getStatus() == ContractStatus.LIQUIDATED) {
+    Bed preReadBed = preRead.getBed();
+    if (preReadBed == null || preReadBed.getId() == null) {
+      throw new BaseAppException(RoomErrorCode.BED_NOT_FOUND);
+    }
+    Room preReadRoom = preReadBed.getRoom();
+    if (preReadRoom == null || preReadRoom.getId() == null) {
+      throw new BaseAppException(RoomErrorCode.ROOM_NOT_FOUND);
+    }
+    Tenant preReadTenant = preRead.getTenant();
+    if (preReadTenant == null || preReadTenant.getId() == null) {
+      throw new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND);
+    }
+
+    UUID roomId = preReadRoom.getId();
+    UUID bedId = preReadBed.getId();
+    UUID tenantId = preReadTenant.getId();
+
+    // Acquire PESSIMISTIC_WRITE locks in strict order:
+    // Room -> Bed -> Contract -> Tenant -> Vehicles (id ASC) -> VehicleChangeRequests (id ASC)
+    roomRepository
+        .findByIdUnfilteredForUpdate(roomId)
+        .orElseThrow(() -> new BaseAppException(RoomErrorCode.ROOM_NOT_FOUND));
+    Bed bed =
+        bedRepository
+            .findByIdForUpdate(bedId)
+            .orElseThrow(() -> new BaseAppException(RoomErrorCode.BED_NOT_FOUND));
+    Contract contract =
+        contractRepository
+            .findByIdForUpdate(id)
+            .orElseThrow(() -> new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
+    if (contract.getStatus() != ContractStatus.ACTIVE) {
       throw new BaseAppException(ContractErrorCode.CONTRACT_ALREADY_TERMINATED);
     }
+    Tenant tenant =
+        tenantRepository
+            .findByIdForUpdate(tenantId)
+            .orElseThrow(() -> new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND));
+    List<Vehicle> vehicles = vehicleRepository.findByTenantIdForUpdateOrderById(tenant.getId());
+    List<VehicleChangeRequest> pendingChangeRequests =
+        vehicleChangeRequestRepository.findByTenantIdAndStatusForUpdateOrderById(
+            tenant.getId(), VehicleChangeRequestStatus.PENDING);
 
-    // 1. Contract -> LIQUIDATED
+    Instant now = Instant.now(clock);
+
+    // 1. Contract -> LIQUIDATED (satisfies ck_contracts_checkout_status)
     contract.setStatus(ContractStatus.LIQUIDATED);
-    contract.setCheckedOutAt(Instant.now());
+    contract.setCheckedOutAt(now);
+    Contract savedContract = contractRepository.saveAndFlush(contract);
 
-    // 2. Bed -> AVAILABLE; room occupancy is derived from Bed status.
-    Bed bed = contract.getBed();
-    if (bed != null) {
-      bed.setStatus(BedStatus.AVAILABLE);
-      bedRepository.save(bed);
-    }
+    // 2. Bed -> manager-chosen AVAILABLE or MAINTENANCE
+    bed.setStatus(targetBedStatus);
+    bedRepository.saveAndFlush(bed);
 
-    // 3. Tenant -> CHECKED_OUT
-    Tenant tenant = contract.getTenant();
-    if (tenant != null) {
-      tenant.setResidentStatus(ResidentStatus.CHECKED_OUT);
-      tenantRepository.save(tenant);
+    // 3. Tenant -> CHECKED_OUT (User account remains ACTIVE for post-checkout history & invoices)
+    tenant.setResidentStatus(ResidentStatus.CHECKED_OUT);
+    tenantRepository.saveAndFlush(tenant);
 
-      // 4. Vehicle -> REVOKED
-      List<Vehicle> vehicles = vehicleRepository.findByTenantId(tenant.getId());
-      for (Vehicle vehicle : vehicles) {
-        if (vehicle.getStatus() == VehicleStatus.ISSUED
-            || vehicle.getStatus() == VehicleStatus.PENDING_CARD) {
-          vehicle.setStatus(VehicleStatus.REVOKED);
-          vehicle.setRevokedAt(Instant.now());
-          vehicleRepository.save(vehicle);
-          log.info(
-              "Revoked vehicle {} on checkout for tenant {}",
-              vehicle.getLicensePlate(),
-              tenant.getTenantCode());
-        }
+    // 4. Vehicles -> ISSUED becomes REVOKED (cardCode kept), PENDING_CARD becomes CANCELLED
+    for (Vehicle vehicle : vehicles) {
+      if (vehicle.getStatus() == VehicleStatus.ISSUED) {
+        vehicle.setStatus(VehicleStatus.REVOKED);
+        vehicle.setRevokedAt(now);
+        vehicleRepository.saveAndFlush(vehicle);
+        log.info(
+            "Revoked vehicle {} on checkout for tenant {}",
+            vehicle.getId(),
+            tenant.getTenantCode());
+      } else if (vehicle.getStatus() == VehicleStatus.PENDING_CARD) {
+        vehicle.setStatus(VehicleStatus.CANCELLED);
+        vehicle.setCancelledAt(now);
+        vehicleRepository.saveAndFlush(vehicle);
+        log.info(
+            "Cancelled pending vehicle {} on checkout for tenant {}",
+            vehicle.getId(),
+            tenant.getTenantCode());
       }
     }
 
-    Contract saved = contractRepository.save(contract);
+    // 5. Pending VehicleChangeRequests -> CANCELLED (satisfies
+    // ck_vehicle_change_requests_status_lifecycle)
+    if (!pendingChangeRequests.isEmpty()) {
+      StaffProfile staff =
+          managerUserId != null
+              ? staffProfileRepository.findByUserId(managerUserId).orElse(null)
+              : null;
+      for (VehicleChangeRequest changeRequest : pendingChangeRequests) {
+        changeRequest.setStatus(VehicleChangeRequestStatus.CANCELLED);
+        changeRequest.setProcessedAt(now);
+        changeRequest.setProcessedByStaff(staff);
+        vehicleChangeRequestRepository.saveAndFlush(changeRequest);
+        log.info(
+            "Cancelled pending vehicle change request {} on checkout for tenant {}",
+            changeRequest.getId(),
+            tenant.getTenantCode());
+      }
+    }
+
     log.info(
-        "Checkout completed: Liquidated contract {} and released bed", saved.getContractCode());
-    return toDetailResponse(saved, true);
+        "Checkout completed: liquidated contract {}, set bed {} to {}",
+        savedContract.getContractCode(),
+        bed.getBedCode(),
+        targetBedStatus);
+    return toDetailResponse(savedContract, true);
   }
 
   @Override
@@ -760,6 +842,7 @@ public class ContractServiceImpl implements ContractService {
         .documents(docResponses)
         .renewals(renewalResponses)
         .signedAt(contract.getSignedAt())
+        .checkedOutAt(contract.getCheckedOutAt())
         .createdAt(contract.getCreatedAt())
         .build();
   }

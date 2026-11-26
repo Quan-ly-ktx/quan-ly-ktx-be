@@ -64,6 +64,14 @@ public enum ContractErrorCode implements AppErrorCode {
   UNSUPPORTED_DOCUMENT_FORMAT(
       "CONTRACT_400_FILE_FORMAT",
       "Định dạng tập tin tài liệu không được hỗ trợ",
+      HttpStatus.BAD_REQUEST),
+  INVALID_CHECKOUT_BED_STATUS(
+      "CONTRACT_400_CHECKOUT_BED_STATUS",
+      "Trạng thái giường sau bàn giao phải là AVAILABLE hoặc MAINTENANCE",
+      HttpStatus.BAD_REQUEST),
+  CHECKOUT_HANDOVER_NOT_CONFIRMED(
+      "CONTRACT_400_HANDOVER_REQUIRED",
+      "Phải xác nhận đã hoàn tất bàn giao phòng trước khi thanh lý hợp đồng",
       HttpStatus.BAD_REQUEST);
 
   private final String errorCode;

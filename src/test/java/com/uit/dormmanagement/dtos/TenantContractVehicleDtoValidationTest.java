@@ -2,11 +2,13 @@ package com.uit.dormmanagement.dtos;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.uit.dormmanagement.dtos.request.contract.CheckoutContractRequest;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.request.onboarding.OnboardingRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.CreateVehicleAdminRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.IssueCardRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.TenantRegisterVehicleRequest;
+import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
@@ -197,6 +199,41 @@ class TenantContractVehicleDtoValidationTest {
     Set<ConstraintViolation<RenewContractRequest>> violations = validator.validate(req);
 
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("newEndDate"));
+  }
+
+  @Test
+  @DisplayName(
+      "CheckoutContractRequest should require bedStatusAfterCheckout and handoverConfirmed=true")
+  void checkoutContractRequest_validationRules() {
+    assertThat(
+            validator.validate(
+                CheckoutContractRequest.builder()
+                    .bedStatusAfterCheckout(BedStatus.AVAILABLE)
+                    .handoverConfirmed(true)
+                    .build()))
+        .isEmpty();
+    assertThat(
+            validator.validate(
+                CheckoutContractRequest.builder()
+                    .bedStatusAfterCheckout(BedStatus.MAINTENANCE)
+                    .handoverConfirmed(true)
+                    .build()))
+        .isEmpty();
+
+    var missingFields = validator.validate(CheckoutContractRequest.builder().build());
+    assertThat(missingFields)
+        .anyMatch(v -> v.getPropertyPath().toString().equals("bedStatusAfterCheckout"));
+    assertThat(missingFields)
+        .anyMatch(v -> v.getPropertyPath().toString().equals("handoverConfirmed"));
+
+    var falseHandover =
+        validator.validate(
+            CheckoutContractRequest.builder()
+                .bedStatusAfterCheckout(BedStatus.AVAILABLE)
+                .handoverConfirmed(false)
+                .build());
+    assertThat(falseHandover)
+        .anyMatch(v -> v.getPropertyPath().toString().equals("handoverConfirmed"));
   }
 
   @Test

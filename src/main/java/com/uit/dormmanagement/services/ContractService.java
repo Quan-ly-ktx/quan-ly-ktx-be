@@ -1,5 +1,6 @@
 package com.uit.dormmanagement.services;
 
+import com.uit.dormmanagement.dtos.request.contract.CheckoutContractRequest;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
@@ -23,7 +24,12 @@ public interface ContractService {
   ContractDetailResponse renewContract(
       UUID id, RenewContractRequest request, List<MultipartFile> annexDocuments);
 
-  ContractDetailResponse terminateContract(UUID id);
+  ContractDetailResponse terminateContract(
+      UUID managerUserId, UUID id, CheckoutContractRequest request);
+
+  default ContractDetailResponse terminateContract(UUID id, CheckoutContractRequest request) {
+    return terminateContract(null, id, request);
+  }
 
   List<ContractDocumentResponse> uploadDocuments(
       UUID contractId, ContractDocumentCategory category, List<MultipartFile> files);

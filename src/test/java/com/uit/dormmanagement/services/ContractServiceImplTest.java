@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.uit.dormmanagement.configs.TimeConfig;
+import com.uit.dormmanagement.dtos.request.contract.CheckoutContractRequest;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
@@ -23,13 +24,16 @@ import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.ContractDocument;
 import com.uit.dormmanagement.entities.ContractRenewal;
 import com.uit.dormmanagement.entities.Room;
+import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.Vehicle;
+import com.uit.dormmanagement.entities.VehicleChangeRequest;
 import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
+import com.uit.dormmanagement.enums.VehicleChangeRequestStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.enums.VehicleType;
 import com.uit.dormmanagement.exceptions.BaseAppException;
@@ -42,7 +46,10 @@ import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractDocumentRepository;
 import com.uit.dormmanagement.repositories.ContractRenewalRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
+import com.uit.dormmanagement.repositories.RoomRepository;
+import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
+import com.uit.dormmanagement.repositories.VehicleChangeRequestRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.impl.ContractServiceImpl;
 import java.io.InputStream;
@@ -63,7 +70,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -83,9 +92,12 @@ class ContractServiceImplTest {
   @Mock private ContractRepository contractRepository;
   @Mock private ContractRenewalRepository contractRenewalRepository;
   @Mock private ContractDocumentRepository contractDocumentRepository;
+  @Mock private RoomRepository roomRepository;
   @Mock private BedRepository bedRepository;
   @Mock private TenantRepository tenantRepository;
   @Mock private VehicleRepository vehicleRepository;
+  @Mock private VehicleChangeRequestRepository vehicleChangeRequestRepository;
+  @Mock private StaffProfileRepository staffProfileRepository;
   @Mock private PrivateObjectStorage privateObjectStorage;
   @Mock private InvoiceIssuanceService invoiceIssuanceService;
 
@@ -104,9 +116,12 @@ class ContractServiceImplTest {
         contractRepository,
         contractRenewalRepository,
         contractDocumentRepository,
+        roomRepository,
         bedRepository,
         tenantRepository,
         vehicleRepository,
+        vehicleChangeRequestRepository,
+        staffProfileRepository,
         privateObjectStorage,
         invoiceIssuanceService,
         clock);
@@ -338,7 +353,8 @@ class ContractServiceImplTest {
         .when(privateObjectStorage)
         .putObject(any(), eq("image/png"), any(InputStream.class), anyLong());
 
-    assertThatThrownBy(() -> contractService.renewContract(contractId, request, List.of(file1, file2)))
+    assertThatThrownBy(
+            () -> contractService.renewContract(contractId, request, List.of(file1, file2)))
         .isInstanceOf(BaseAppException.class)
         .matches(
             ex -> ((BaseAppException) ex).getErrorCode() == SystemErrorCode.EXTERNAL_SERVICE_ERROR);
@@ -403,7 +419,8 @@ class ContractServiceImplTest {
   }
 
   @Test
-  @DisplayName("renewContract: rejects missing, liquidated, inactive tenant, non-occupied bed, or archived/missing room")
+  @DisplayName(
+      "renewContract: rejects missing, liquidated, inactive tenant, non-occupied bed, or archived/missing room")
   void renewContract_preconditionRejections() {
     RenewContractRequest request =
         RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
@@ -411,7 +428,8 @@ class ContractServiceImplTest {
     when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_NOT_FOUND);
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_NOT_FOUND);
 
     when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
     contract.setStatus(ContractStatus.LIQUIDATED);
@@ -432,7 +450,8 @@ class ContractServiceImplTest {
     bed.setStatus(BedStatus.AVAILABLE);
     assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.BED_NOT_AVAILABLE);
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.BED_NOT_AVAILABLE);
 
     bed.setStatus(BedStatus.OCCUPIED);
     room.setArchivedAt(Instant.now());
@@ -463,7 +482,8 @@ class ContractServiceImplTest {
         createServiceWithClock(Clock.fixed(Instant.parse("2027-08-31T17:00:00Z"), ZoneOffset.UTC));
     assertThatThrownBy(() -> expiredService.renewContract(contractId, request, null))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_EXPIRED);
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_EXPIRED);
     verify(invoiceIssuanceService, never()).hasUnsettledInvoices(any());
     verify(contractRenewalRepository, never()).saveAndFlush(any());
 
@@ -584,38 +604,341 @@ class ContractServiceImplTest {
 
   @Test
   @DisplayName(
-      "terminateContract (Checkout): should cascade to Bed, Room, Tenant, and Vehicle in 1 transaction")
-  void terminateContract_shouldCascadeToBedTenantAndVehicle() {
-    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
-    when(vehicleRepository.findByTenantId(tenant.getId())).thenReturn(List.of(vehicle));
-    when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
+      "terminateContract (Checkout): acquires ordered pessimistic locks, revokes ISSUED, cancels PENDING_CARD & PENDING change requests, preserves historical vehicles, and uses Clock")
+  void terminateContract_available_shouldLockInOrderTransitionAtomicallyAndPreserveHistory() {
+    UUID managerUserId = UUID.randomUUID();
+    StaffProfile managerStaff =
+        StaffProfile.builder()
+            .id(UUID.randomUUID())
+            .fullName("Manager A")
+            .phone("0909111222")
+            .build();
 
-    ContractDetailResponse res = contractService.terminateContract(contractId);
+    Vehicle pendingCardVehicle =
+        Vehicle.builder()
+            .id(UUID.randomUUID())
+            .tenant(tenant)
+            .vehicleType(VehicleType.BICYCLE)
+            .brand("Thống Nhất")
+            .color("Xanh")
+            .cardCode(null)
+            .status(VehicleStatus.PENDING_CARD)
+            .build();
+    Instant oldReplacedAt = Instant.parse("2027-01-01T00:00:00Z");
+    Instant oldRejectedAt = Instant.parse("2027-02-01T00:00:00Z");
+    Instant oldRevokedAt = Instant.parse("2027-03-01T00:00:00Z");
+    Instant oldCancelledAt = Instant.parse("2027-04-01T00:00:00Z");
+    Vehicle replacedVehicle =
+        Vehicle.builder()
+            .id(UUID.randomUUID())
+            .tenant(tenant)
+            .vehicleType(VehicleType.SCOOTER)
+            .licensePlate("59-X1 100.01")
+            .brand("Honda")
+            .color("Đỏ")
+            .cardCode("THE-0187")
+            .status(VehicleStatus.REPLACED)
+            .replacedAt(oldReplacedAt)
+            .build();
+    Vehicle rejectedVehicle =
+        Vehicle.builder()
+            .id(UUID.randomUUID())
+            .tenant(tenant)
+            .vehicleType(VehicleType.BICYCLE)
+            .brand("Giant")
+            .color("Trắng")
+            .cardCode(null)
+            .status(VehicleStatus.REJECTED)
+            .rejectedAt(oldRejectedAt)
+            .rejectionReason("Ảnh mờ")
+            .build();
+    Vehicle previouslyRevokedVehicle =
+        Vehicle.builder()
+            .id(UUID.randomUUID())
+            .tenant(tenant)
+            .vehicleType(VehicleType.BICYCLE)
+            .brand("Asama")
+            .color("Bạc")
+            .cardCode("THE-OLD-01")
+            .status(VehicleStatus.REVOKED)
+            .revokedAt(oldRevokedAt)
+            .build();
+    Vehicle previouslyCancelledVehicle =
+        Vehicle.builder()
+            .id(UUID.randomUUID())
+            .tenant(tenant)
+            .vehicleType(VehicleType.BICYCLE)
+            .brand("Martin")
+            .color("Xám")
+            .cardCode(null)
+            .status(VehicleStatus.CANCELLED)
+            .cancelledAt(oldCancelledAt)
+            .build();
+
+    VehicleChangeRequest pendingChangeRequest =
+        VehicleChangeRequest.builder()
+            .id(UUID.randomUUID())
+            .tenant(tenant)
+            .currentVehicle(vehicle)
+            .proposedVehicleType(VehicleType.MANUAL_MOTORCYCLE)
+            .proposedLicensePlate("59-X2 222.33")
+            .proposedBrand("Yamaha")
+            .proposedColor("Xanh")
+            .status(VehicleChangeRequestStatus.PENDING)
+            .build();
+
+    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+    when(roomRepository.findByIdUnfilteredForUpdate(room.getId())).thenReturn(Optional.of(room));
+    when(bedRepository.findByIdForUpdate(bed.getId())).thenReturn(Optional.of(bed));
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(tenantRepository.findByIdForUpdate(tenant.getId())).thenReturn(Optional.of(tenant));
+    when(vehicleRepository.findByTenantIdForUpdateOrderById(tenant.getId()))
+        .thenReturn(
+            List.of(
+                vehicle,
+                pendingCardVehicle,
+                replacedVehicle,
+                rejectedVehicle,
+                previouslyRevokedVehicle,
+                previouslyCancelledVehicle));
+    when(vehicleChangeRequestRepository.findByTenantIdAndStatusForUpdateOrderById(
+            tenant.getId(), VehicleChangeRequestStatus.PENDING))
+        .thenReturn(List.of(pendingChangeRequest));
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(contractRepository.saveAndFlush(any(Contract.class)))
+        .thenAnswer(inv -> inv.getArgument(0));
+    when(bedRepository.saveAndFlush(any(Bed.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(tenantRepository.saveAndFlush(any(Tenant.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(vehicleRepository.saveAndFlush(any(Vehicle.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(vehicleChangeRequestRepository.saveAndFlush(any(VehicleChangeRequest.class)))
+        .thenAnswer(inv -> inv.getArgument(0));
+
+    CheckoutContractRequest request =
+        CheckoutContractRequest.builder()
+            .bedStatusAfterCheckout(BedStatus.AVAILABLE)
+            .handoverConfirmed(true)
+            .build();
+
+    ContractDetailResponse res =
+        contractService.terminateContract(managerUserId, contractId, request);
+
+    InOrder lockOrder =
+        Mockito.inOrder(
+            roomRepository,
+            bedRepository,
+            contractRepository,
+            tenantRepository,
+            vehicleRepository,
+            vehicleChangeRequestRepository);
+    lockOrder.verify(roomRepository).findByIdUnfilteredForUpdate(room.getId());
+    lockOrder.verify(bedRepository).findByIdForUpdate(bed.getId());
+    lockOrder.verify(contractRepository).findByIdForUpdate(contractId);
+    lockOrder.verify(tenantRepository).findByIdForUpdate(tenant.getId());
+    lockOrder.verify(vehicleRepository).findByTenantIdForUpdateOrderById(tenant.getId());
+    lockOrder
+        .verify(vehicleChangeRequestRepository)
+        .findByTenantIdAndStatusForUpdateOrderById(
+            tenant.getId(), VehicleChangeRequestStatus.PENDING);
 
     assertThat(res.status()).isEqualTo(ContractStatus.LIQUIDATED);
+    assertThat(res.checkedOutAt()).isEqualTo(DEFAULT_RENEWAL_INSTANT);
     assertThat(contract.getStatus()).isEqualTo(ContractStatus.LIQUIDATED);
+    assertThat(contract.getCheckedOutAt()).isEqualTo(DEFAULT_RENEWAL_INSTANT);
     assertThat(bed.getStatus()).isEqualTo(BedStatus.AVAILABLE);
     assertThat(tenant.getResidentStatus()).isEqualTo(ResidentStatus.CHECKED_OUT);
-    assertThat(vehicle.getStatus()).isEqualTo(VehicleStatus.REVOKED);
 
-    verify(bedRepository).save(bed);
-    verify(tenantRepository).save(tenant);
-    verify(vehicleRepository).save(vehicle);
+    // ISSUED -> REVOKED (cardCode kept)
+    assertThat(vehicle.getStatus()).isEqualTo(VehicleStatus.REVOKED);
+    assertThat(vehicle.getRevokedAt()).isEqualTo(DEFAULT_RENEWAL_INSTANT);
+    assertThat(vehicle.getCancelledAt()).isNull();
+    assertThat(vehicle.getCardCode()).isEqualTo("THE-0187");
+
+    // PENDING_CARD -> CANCELLED (cardCode stays null, revokedAt stays null)
+    assertThat(pendingCardVehicle.getStatus()).isEqualTo(VehicleStatus.CANCELLED);
+    assertThat(pendingCardVehicle.getCancelledAt()).isEqualTo(DEFAULT_RENEWAL_INSTANT);
+    assertThat(pendingCardVehicle.getRevokedAt()).isNull();
+    assertThat(pendingCardVehicle.getCardCode()).isNull();
+
+    // Historical vehicles remain completely untouched
+    assertThat(replacedVehicle.getStatus()).isEqualTo(VehicleStatus.REPLACED);
+    assertThat(replacedVehicle.getReplacedAt()).isEqualTo(oldReplacedAt);
+    assertThat(replacedVehicle.getRevokedAt()).isNull();
+    assertThat(rejectedVehicle.getStatus()).isEqualTo(VehicleStatus.REJECTED);
+    assertThat(rejectedVehicle.getRejectedAt()).isEqualTo(oldRejectedAt);
+    assertThat(previouslyRevokedVehicle.getStatus()).isEqualTo(VehicleStatus.REVOKED);
+    assertThat(previouslyRevokedVehicle.getRevokedAt()).isEqualTo(oldRevokedAt);
+    assertThat(previouslyCancelledVehicle.getStatus()).isEqualTo(VehicleStatus.CANCELLED);
+    assertThat(previouslyCancelledVehicle.getCancelledAt()).isEqualTo(oldCancelledAt);
+
+    verify(vehicleRepository).saveAndFlush(vehicle);
+    verify(vehicleRepository).saveAndFlush(pendingCardVehicle);
+    verify(vehicleRepository, never()).saveAndFlush(replacedVehicle);
+    verify(vehicleRepository, never()).saveAndFlush(rejectedVehicle);
+    verify(vehicleRepository, never()).saveAndFlush(previouslyRevokedVehicle);
+    verify(vehicleRepository, never()).saveAndFlush(previouslyCancelledVehicle);
+
+    // PENDING VehicleChangeRequest -> CANCELLED
+    assertThat(pendingChangeRequest.getStatus()).isEqualTo(VehicleChangeRequestStatus.CANCELLED);
+    assertThat(pendingChangeRequest.getProcessedAt()).isEqualTo(DEFAULT_RENEWAL_INSTANT);
+    assertThat(pendingChangeRequest.getProcessedByStaff()).isSameAs(managerStaff);
+    assertThat(pendingChangeRequest.getNewVehicle()).isNull();
+    assertThat(pendingChangeRequest.getRejectionReason()).isNull();
+    verify(vehicleChangeRequestRepository).saveAndFlush(pendingChangeRequest);
+
+    verify(contractRepository).saveAndFlush(contract);
+    verify(bedRepository).saveAndFlush(bed);
+    verify(tenantRepository).saveAndFlush(tenant);
+    verifyNoInteractions(invoiceIssuanceService);
   }
 
   @Test
   @DisplayName(
-      "terminateContract: when contract already terminated should throw CONTRACT_ALREADY_TERMINATED")
-  void terminateContract_whenAlreadyTerminated_shouldThrow() {
+      "terminateContract (Checkout): supports MAINTENANCE bed status, ignores unsettled invoices, and allows null managerUserId")
+  void terminateContract_maintenanceWithoutManager_shouldSucceedEvenWithUnsettledInvoices() {
+    VehicleChangeRequest pendingChangeRequest =
+        VehicleChangeRequest.builder()
+            .id(UUID.randomUUID())
+            .tenant(tenant)
+            .currentVehicle(vehicle)
+            .proposedVehicleType(VehicleType.SCOOTER)
+            .proposedLicensePlate("59-X3 000.99")
+            .proposedBrand("Honda")
+            .proposedColor("Trắng")
+            .status(VehicleChangeRequestStatus.PENDING)
+            .build();
+
+    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+    when(roomRepository.findByIdUnfilteredForUpdate(room.getId())).thenReturn(Optional.of(room));
+    when(bedRepository.findByIdForUpdate(bed.getId())).thenReturn(Optional.of(bed));
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(tenantRepository.findByIdForUpdate(tenant.getId())).thenReturn(Optional.of(tenant));
+    when(vehicleRepository.findByTenantIdForUpdateOrderById(tenant.getId()))
+        .thenReturn(List.of(vehicle));
+    when(vehicleChangeRequestRepository.findByTenantIdAndStatusForUpdateOrderById(
+            tenant.getId(), VehicleChangeRequestStatus.PENDING))
+        .thenReturn(List.of(pendingChangeRequest));
+    when(contractRepository.saveAndFlush(any(Contract.class)))
+        .thenAnswer(inv -> inv.getArgument(0));
+    when(bedRepository.saveAndFlush(any(Bed.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(tenantRepository.saveAndFlush(any(Tenant.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(vehicleRepository.saveAndFlush(any(Vehicle.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(vehicleChangeRequestRepository.saveAndFlush(any(VehicleChangeRequest.class)))
+        .thenAnswer(inv -> inv.getArgument(0));
+
+    CheckoutContractRequest request =
+        CheckoutContractRequest.builder()
+            .bedStatusAfterCheckout(BedStatus.MAINTENANCE)
+            .handoverConfirmed(true)
+            .build();
+
+    ContractDetailResponse res = contractService.terminateContract(contractId, request);
+
+    assertThat(res.status()).isEqualTo(ContractStatus.LIQUIDATED);
+    assertThat(res.checkedOutAt()).isEqualTo(DEFAULT_RENEWAL_INSTANT);
+    assertThat(bed.getStatus()).isEqualTo(BedStatus.MAINTENANCE);
+    assertThat(tenant.getResidentStatus()).isEqualTo(ResidentStatus.CHECKED_OUT);
+    assertThat(vehicle.getStatus()).isEqualTo(VehicleStatus.REVOKED);
+    assertThat(pendingChangeRequest.getStatus()).isEqualTo(VehicleChangeRequestStatus.CANCELLED);
+    assertThat(pendingChangeRequest.getProcessedAt()).isEqualTo(DEFAULT_RENEWAL_INSTANT);
+    assertThat(pendingChangeRequest.getProcessedByStaff()).isNull();
+    verifyNoInteractions(staffProfileRepository, invoiceIssuanceService);
+  }
+
+  @Test
+  @DisplayName(
+      "terminateContract: rejects unconfirmed handover, invalid bed status, missing contract, and already liquidated contract")
+  void terminateContract_rejections_shouldThrowExpectedErrorCodes() {
+    assertThatThrownBy(() -> contractService.terminateContract(contractId, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.CHECKOUT_HANDOVER_NOT_CONFIRMED);
+
+    CheckoutContractRequest unconfirmedFalse =
+        CheckoutContractRequest.builder()
+            .bedStatusAfterCheckout(BedStatus.AVAILABLE)
+            .handoverConfirmed(false)
+            .build();
+    assertThatThrownBy(() -> contractService.terminateContract(contractId, unconfirmedFalse))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.CHECKOUT_HANDOVER_NOT_CONFIRMED);
+
+    CheckoutContractRequest unconfirmedNull =
+        CheckoutContractRequest.builder()
+            .bedStatusAfterCheckout(BedStatus.AVAILABLE)
+            .handoverConfirmed(null)
+            .build();
+    assertThatThrownBy(() -> contractService.terminateContract(contractId, unconfirmedNull))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.CHECKOUT_HANDOVER_NOT_CONFIRMED);
+
+    CheckoutContractRequest nullBedStatus =
+        CheckoutContractRequest.builder()
+            .bedStatusAfterCheckout(null)
+            .handoverConfirmed(true)
+            .build();
+    assertThatThrownBy(() -> contractService.terminateContract(contractId, nullBedStatus))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.INVALID_CHECKOUT_BED_STATUS);
+
+    CheckoutContractRequest occupiedBedStatus =
+        CheckoutContractRequest.builder()
+            .bedStatusAfterCheckout(BedStatus.OCCUPIED)
+            .handoverConfirmed(true)
+            .build();
+    assertThatThrownBy(() -> contractService.terminateContract(contractId, occupiedBedStatus))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.INVALID_CHECKOUT_BED_STATUS);
+
+    verifyNoInteractions(
+        roomRepository,
+        bedRepository,
+        contractRepository,
+        tenantRepository,
+        vehicleRepository,
+        vehicleChangeRequestRepository);
+
+    CheckoutContractRequest validRequest =
+        CheckoutContractRequest.builder()
+            .bedStatusAfterCheckout(BedStatus.AVAILABLE)
+            .handoverConfirmed(true)
+            .build();
+
+    when(contractRepository.findById(contractId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> contractService.terminateContract(contractId, validRequest))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_NOT_FOUND);
+
     contract.setStatus(ContractStatus.LIQUIDATED);
     when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+    when(roomRepository.findByIdUnfilteredForUpdate(room.getId())).thenReturn(Optional.of(room));
+    when(bedRepository.findByIdForUpdate(bed.getId())).thenReturn(Optional.of(bed));
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
 
-    assertThatThrownBy(() -> contractService.terminateContract(contractId))
+    assertThatThrownBy(() -> contractService.terminateContract(contractId, validRequest))
         .isInstanceOf(BaseAppException.class)
         .matches(
             ex ->
                 ((BaseAppException) ex).getErrorCode()
                     == ContractErrorCode.CONTRACT_ALREADY_TERMINATED);
+
+    verify(contractRepository, never()).saveAndFlush(any());
+    verify(bedRepository, never()).saveAndFlush(any());
+    verifyNoInteractions(tenantRepository, vehicleRepository, vehicleChangeRequestRepository);
   }
 
   @Test

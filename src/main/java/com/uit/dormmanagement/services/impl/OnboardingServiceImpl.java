@@ -414,6 +414,7 @@ public class OnboardingServiceImpl implements OnboardingService {
         .depositAmount(contract.getDepositAmount())
         .status(contract.getStatus())
         .signedAt(contract.getSignedAt())
+        .checkedOutAt(contract.getCheckedOutAt())
         .createdAt(contract.getCreatedAt())
         .documents(List.of())
         .build();

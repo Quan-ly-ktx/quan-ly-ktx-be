@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -17,6 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.uit.dormmanagement.dtos.request.contract.CheckoutContractRequest;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
@@ -24,6 +26,7 @@ import com.uit.dormmanagement.dtos.response.contract.ContractDocumentResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractRenewalResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.entities.User;
+import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.UserRole;
@@ -84,9 +87,11 @@ class ContractControllerTest {
   private UUID contractId;
   private UUID tenantId;
   private UUID userId;
+  private UUID managerUserId;
   private ContractSummaryResponse sampleSummary;
   private ContractDetailResponse sampleDetail;
   private UserPrincipal userPrincipal;
+  private UserPrincipal managerPrincipal;
 
   @BeforeEach
   void setUp() {
@@ -96,6 +101,7 @@ class ContractControllerTest {
     contractId = UUID.randomUUID();
     tenantId = UUID.randomUUID();
     userId = UUID.randomUUID();
+    managerUserId = UUID.randomUUID();
 
     User user =
         User.builder()
@@ -106,6 +112,16 @@ class ContractControllerTest {
             .status(UserStatus.ACTIVE)
             .build();
     userPrincipal = UserPrincipal.create(user);
+
+    User managerUser =
+        User.builder()
+            .id(managerUserId)
+            .email("manager@example.com")
+            .passwordHash("hashed")
+            .role(UserRole.MANAGER)
+            .status(UserStatus.ACTIVE)
+            .build();
+    managerPrincipal = UserPrincipal.create(managerUser);
 
     HandlerMethodArgumentResolver principalResolver =
         new HandlerMethodArgumentResolver() {
@@ -125,9 +141,28 @@ class ContractControllerTest {
           }
         };
 
+    HandlerMethodArgumentResolver managerPrincipalResolver =
+        new HandlerMethodArgumentResolver() {
+          @Override
+          public boolean supportsParameter(MethodParameter parameter) {
+            return parameter.hasParameterAnnotation(AuthenticationPrincipal.class)
+                && parameter.getParameterType().isAssignableFrom(UserPrincipal.class);
+          }
+
+          @Override
+          public Object resolveArgument(
+              MethodParameter parameter,
+              ModelAndViewContainer mavContainer,
+              NativeWebRequest webRequest,
+              WebDataBinderFactory binderFactory) {
+            return managerPrincipal;
+          }
+        };
+
     adminMockMvc =
         MockMvcBuilders.standaloneSetup(adminContractController)
-            .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
+            .setCustomArgumentResolvers(
+                managerPrincipalResolver, new PageableHandlerMethodArgumentResolver())
             .setControllerAdvice(new AppExceptionHandler(responseFactory))
             .build();
 
@@ -199,21 +234,123 @@ class ContractControllerTest {
   }
 
   @Test
-  @DisplayName("POST /api/v1/admin/contracts/{id}/terminate: Checkout should return 200")
+  @DisplayName(
+      "POST /api/v1/admin/contracts/{id}/terminate: Checkout with bedStatusAfterCheckout returns 200 and checkedOutAt")
   void terminateContract_shouldReturn200() throws Exception {
+    Instant checkedOutAt = Instant.parse("2027-08-15T02:00:00Z");
     ContractDetailResponse terminated =
-        ContractDetailResponse.builder().id(contractId).status(ContractStatus.LIQUIDATED).build();
-    when(contractService.terminateContract(contractId)).thenReturn(terminated);
+        ContractDetailResponse.builder()
+            .id(contractId)
+            .status(ContractStatus.LIQUIDATED)
+            .checkedOutAt(checkedOutAt)
+            .build();
+    CheckoutContractRequest expectedReq = new CheckoutContractRequest(BedStatus.MAINTENANCE, true);
+    when(contractService.terminateContract(managerUserId, contractId, expectedReq))
+        .thenReturn(terminated);
 
     adminMockMvc
-        .perform(post("/api/v1/admin/contracts/{id}/terminate", contractId))
+        .perform(
+            post("/api/v1/admin/contracts/{id}/terminate", contractId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"bedStatusAfterCheckout":"MAINTENANCE","handoverConfirmed":true}
+                    """))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
-        .andExpect(jsonPath("$.data.status").value("LIQUIDATED"));
+        .andExpect(jsonPath("$.data.status").value("LIQUIDATED"))
+        .andExpect(jsonPath("$.data.checkedOutAt").isNotEmpty());
+
+    verify(contractService).terminateContract(managerUserId, contractId, expectedReq);
   }
 
   @Test
-  @DisplayName("POST /api/v1/admin/contracts/{id}/renew: should renew and return 200 with renewal history")
+  @DisplayName(
+      "POST /api/v1/admin/contracts/{id}/terminate: accepts FE prototype bedStatus alias and returns 200")
+  void terminateContract_withBedStatusAlias_shouldReturn200() throws Exception {
+    Instant checkedOutAt = Instant.parse("2027-08-15T02:00:00Z");
+    ContractDetailResponse terminated =
+        ContractDetailResponse.builder()
+            .id(contractId)
+            .status(ContractStatus.LIQUIDATED)
+            .checkedOutAt(checkedOutAt)
+            .build();
+    CheckoutContractRequest expectedReq = new CheckoutContractRequest(BedStatus.AVAILABLE, true);
+    when(contractService.terminateContract(managerUserId, contractId, expectedReq))
+        .thenReturn(terminated);
+
+    adminMockMvc
+        .perform(
+            post("/api/v1/admin/contracts/{id}/terminate", contractId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"bedStatus":"AVAILABLE","handoverConfirmed":true}
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200))
+        .andExpect(jsonPath("$.data.status").value("LIQUIDATED"))
+        .andExpect(jsonPath("$.data.checkedOutAt").isNotEmpty());
+
+    verify(contractService).terminateContract(managerUserId, contractId, expectedReq);
+  }
+
+  @Test
+  @DisplayName(
+      "POST /api/v1/admin/contracts/{id}/terminate: missing bedStatusAfterCheckout or false handoverConfirmed returns 400")
+  void terminateContract_whenMissingBedStatusOrUnconfirmedHandover_shouldReturn400()
+      throws Exception {
+    adminMockMvc
+        .perform(
+            post("/api/v1/admin/contracts/{id}/terminate", contractId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"handoverConfirmed":true}
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.httpStatus").value(400))
+        .andExpect(jsonPath("$.errorCode").value("WEB_400_VAL"));
+
+    adminMockMvc
+        .perform(
+            post("/api/v1/admin/contracts/{id}/terminate", contractId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"bedStatusAfterCheckout":"AVAILABLE","handoverConfirmed":false}
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.httpStatus").value(400))
+        .andExpect(jsonPath("$.errorCode").value("WEB_400_VAL"));
+
+    verifyNoInteractions(contractService);
+  }
+
+  @Test
+  @DisplayName(
+      "POST /api/v1/admin/contracts/{id}/terminate: OCCUPIED bedStatusAfterCheckout maps to 400 CONTRACT_400_CHECKOUT_BED_STATUS")
+  void terminateContract_whenOccupiedBedStatus_shouldReturn400() throws Exception {
+    CheckoutContractRequest occupiedReq = new CheckoutContractRequest(BedStatus.OCCUPIED, true);
+    when(contractService.terminateContract(managerUserId, contractId, occupiedReq))
+        .thenThrow(new BaseAppException(ContractErrorCode.INVALID_CHECKOUT_BED_STATUS));
+
+    adminMockMvc
+        .perform(
+            post("/api/v1/admin/contracts/{id}/terminate", contractId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"bedStatusAfterCheckout":"OCCUPIED","handoverConfirmed":true}
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.httpStatus").value(400))
+        .andExpect(jsonPath("$.errorCode").value("CONTRACT_400_CHECKOUT_BED_STATUS"));
+  }
+
+  @Test
+  @DisplayName(
+      "POST /api/v1/admin/contracts/{id}/renew: should renew and return 200 with renewal history")
   void renewContract_shouldReturn200() throws Exception {
     ContractRenewalResponse renewal =
         ContractRenewalResponse.builder()
@@ -438,8 +575,7 @@ class ContractControllerTest {
         .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE))
         .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, String.valueOf(bytes.length)))
         .andExpect(
-            header()
-                .string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"tenant-doc.pdf\""))
+            header().string(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"tenant-doc.pdf\""))
         .andExpect(content().bytes(new byte[0]));
     assertThat(tenantResource.closed.get()).isTrue();
     assertThat(tenantResource.streamOpened.get()).isFalse();

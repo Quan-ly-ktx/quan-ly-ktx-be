@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.uit.dormmanagement.configs.TimeConfig;
+import com.uit.dormmanagement.dtos.request.contract.CheckoutContractRequest;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.request.onboarding.OnboardingRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.CreateVehicleAdminRequest;
@@ -300,8 +301,7 @@ class ResidentLifecycleE2ETest {
             "annexDocuments", "phu_luc_gia_han.pdf", "application/pdf", new byte[] {40, 50});
 
     // Blocked while first invoice is still DEBT (BR-04 §6, FR-12)
-    assertThatThrownBy(
-            () -> contractService.renewContract(contractId, renewReq, List.of(annexDoc)))
+    assertThatThrownBy(() -> contractService.renewContract(contractId, renewReq, List.of(annexDoc)))
         .isInstanceOf(BaseAppException.class)
         .matches(
             ex ->
@@ -338,12 +338,20 @@ class ResidentLifecycleE2ETest {
     // -------------------------------------------------------------------------
     // Step 6: Checkout 4-in-1 Transaction (FR-07, FR-13, BR-04)
     // -------------------------------------------------------------------------
-    ContractDetailResponse terminatedContract = contractService.terminateContract(contractId);
+    ContractDetailResponse terminatedContract =
+        contractService.terminateContract(
+            contractId,
+            CheckoutContractRequest.builder()
+                .bedStatusAfterCheckout(BedStatus.AVAILABLE)
+                .handoverConfirmed(true)
+                .build());
     assertThat(terminatedContract.status()).isEqualTo(ContractStatus.LIQUIDATED);
+    assertThat(terminatedContract.checkedOutAt()).isNotNull();
 
-    // 1. Contract is LIQUIDATED
+    // 1. Contract is LIQUIDATED with checkedOutAt populated
     Contract dbContract = contractRepository.findById(contractId).orElseThrow();
     assertThat(dbContract.getStatus()).isEqualTo(ContractStatus.LIQUIDATED);
+    assertThat(dbContract.getCheckedOutAt()).isNotNull();
 
     // 2. Bed is AVAILABLE & Room occupied beds is 0
     Bed dbBed = bedRepository.findById(testBed.getId()).orElseThrow();
@@ -359,6 +367,7 @@ class ResidentLifecycleE2ETest {
     // 4. Vehicle card is REVOKED
     Vehicle dbVehicle = vehicleRepository.findById(vehicleId).orElseThrow();
     assertThat(dbVehicle.getStatus()).isEqualTo(VehicleStatus.REVOKED);
+    assertThat(dbVehicle.getRevokedAt()).isNotNull();
 
     // -------------------------------------------------------------------------
     // Step 7: Physical Card & Bed Reissuing to New Tenant (BR-10 & Day-01 FR-09)
