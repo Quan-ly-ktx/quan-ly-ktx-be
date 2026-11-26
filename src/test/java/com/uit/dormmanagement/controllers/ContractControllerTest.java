@@ -21,6 +21,7 @@ import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentResponse;
+import com.uit.dormmanagement.dtos.response.contract.ContractRenewalResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
@@ -28,6 +29,8 @@ import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.AppExceptionHandler;
+import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
 import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.ContractService;
 import java.io.ByteArrayInputStream;
@@ -143,7 +146,7 @@ class ContractControllerTest {
             .roomNumber("P.302")
             .bedCode("G02")
             .startDate(LocalDate.of(2026, 9, 1))
-            .endDate(LocalDate.of(2027, 9, 1))
+            .endDate(LocalDate.of(2027, 8, 31))
             .monthlyRent(new BigDecimal("1500000.00"))
             .depositAmount(new BigDecimal("1500000.00"))
             .status(ContractStatus.ACTIVE)
@@ -158,7 +161,7 @@ class ContractControllerTest {
             .roomNumber("P.302")
             .bedCode("G02")
             .startDate(LocalDate.of(2026, 9, 1))
-            .endDate(LocalDate.of(2027, 9, 1))
+            .endDate(LocalDate.of(2027, 8, 31))
             .monthlyRent(new BigDecimal("1500000.00"))
             .depositAmount(new BigDecimal("1500000.00"))
             .status(ContractStatus.ACTIVE)
@@ -190,7 +193,9 @@ class ContractControllerTest {
         .perform(get("/api/v1/admin/contracts/{id}", contractId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
-        .andExpect(jsonPath("$.data.contractCode").value("HD-2026-0187"));
+        .andExpect(jsonPath("$.data.contractCode").value("HD-2026-0187"))
+        .andExpect(jsonPath("$.data.renewals").isArray())
+        .andExpect(jsonPath("$.data.renewals").isEmpty());
   }
 
   @Test
@@ -208,13 +213,26 @@ class ContractControllerTest {
   }
 
   @Test
-  @DisplayName("POST /api/v1/admin/contracts/{id}/renew: should renew and return 200")
+  @DisplayName("POST /api/v1/admin/contracts/{id}/renew: should renew and return 200 with renewal history")
   void renewContract_shouldReturn200() throws Exception {
+    ContractRenewalResponse renewal =
+        ContractRenewalResponse.builder()
+            .id(UUID.randomUUID())
+            .sequenceNo(1)
+            .signedOn(LocalDate.of(2027, 8, 15))
+            .previousEndOn(LocalDate.of(2027, 8, 31))
+            .effectiveFrom(LocalDate.of(2027, 9, 1))
+            .newEndOn(LocalDate.of(2028, 8, 31))
+            .monthlyRent(new BigDecimal("1800000"))
+            .createdAt(Instant.now())
+            .build();
     ContractDetailResponse renewed =
         ContractDetailResponse.builder()
             .id(contractId)
-            .endDate(LocalDate.of(2028, 9, 1))
+            .endDate(LocalDate.of(2028, 8, 31))
+            .monthlyRent(new BigDecimal("1800000"))
             .status(ContractStatus.ACTIVE)
+            .renewals(List.of(renewal))
             .build();
 
     when(contractService.renewContract(eq(contractId), any(), any())).thenReturn(renewed);
@@ -222,10 +240,46 @@ class ContractControllerTest {
     adminMockMvc
         .perform(
             multipart("/api/v1/admin/contracts/{id}/renew", contractId)
-                .param("newEndDate", "2028-09-01"))
+                .param("newEndDate", "2028-08-31"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
-        .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+        .andExpect(jsonPath("$.data.status").value("ACTIVE"))
+        .andExpect(jsonPath("$.data.endDate").value("2028-08-31"))
+        .andExpect(jsonPath("$.data.monthlyRent").value(1800000))
+        .andExpect(jsonPath("$.data.renewals[0].sequenceNo").value(1))
+        .andExpect(jsonPath("$.data.renewals[0].monthlyRent").value(1800000));
+  }
+
+  @Test
+  @DisplayName("POST /api/v1/admin/contracts/{id}/renew: missing newEndDate returns 400")
+  void renewContract_whenMissingNewEndDate_shouldReturn400() throws Exception {
+    adminMockMvc
+        .perform(multipart("/api/v1/admin/contracts/{id}/renew", contractId))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.httpStatus").value(400));
+  }
+
+  @Test
+  @DisplayName(
+      "POST /api/v1/admin/contracts/{id}/renew: maps FR-12 domain errors to expected HTTP statuses")
+  void renewContract_whenDomainError_shouldMapHttpStatusAndErrorCode() throws Exception {
+    for (ContractErrorCode code :
+        List.of(
+            ContractErrorCode.CONTRACT_EXPIRED,
+            ContractErrorCode.TENANT_HAS_UNSETTLED_INVOICES,
+            ContractErrorCode.CONTRACT_RENEWAL_CONFLICT,
+            ContractErrorCode.INVALID_CONTRACT_DATES)) {
+      when(contractService.renewContract(eq(contractId), any(), any()))
+          .thenThrow(new BaseAppException(code));
+
+      adminMockMvc
+          .perform(
+              multipart("/api/v1/admin/contracts/{id}/renew", contractId)
+                  .param("newEndDate", "2028-08-31"))
+          .andExpect(status().is(code.getHttpStatus().value()))
+          .andExpect(jsonPath("$.httpStatus").value(code.getHttpStatus().value()))
+          .andExpect(jsonPath("$.errorCode").value(code.getErrorCode()));
+    }
   }
 
   @Test
@@ -308,7 +362,9 @@ class ContractControllerTest {
         .perform(get("/api/v1/tenant/contracts/me"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
-        .andExpect(jsonPath("$.data.contractCode").value("HD-2026-0187"));
+        .andExpect(jsonPath("$.data.contractCode").value("HD-2026-0187"))
+        .andExpect(jsonPath("$.data.renewals").isArray())
+        .andExpect(jsonPath("$.data.renewals").isEmpty());
   }
 
   @Test

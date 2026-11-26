@@ -42,6 +42,8 @@ public final class DataIntegrityViolationClassifier {
           Map.entry("uq_contracts_active_bed", ContractErrorCode.BED_ALREADY_RENTED),
           Map.entry(
               "uq_contracts_active_tenant", ContractErrorCode.TENANT_ALREADY_HAS_ACTIVE_CONTRACT),
+          Map.entry("uq_contract_renewals_sequence", ContractErrorCode.CONTRACT_RENEWAL_CONFLICT),
+          Map.entry("uq_contract_renewals_effective", ContractErrorCode.CONTRACT_RENEWAL_CONFLICT),
           Map.entry("uq_vehicles_issued_card_code", VehicleErrorCode.CARD_CODE_DUPLICATED),
           Map.entry("uq_vehicles_tenant_active_quota", VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED),
           Map.entry(

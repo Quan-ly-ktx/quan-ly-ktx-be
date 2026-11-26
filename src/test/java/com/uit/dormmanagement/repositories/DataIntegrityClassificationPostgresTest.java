@@ -208,9 +208,11 @@ class DataIntegrityClassificationPostgresTest {
 
     // 5. Mapped active contract constraints (uq_contracts_active_bed / uq_contracts_active_tenant)
     // and unmapped unique violation (contracts_contract_code_key -> WEB_409)
+    UUID c1 = UUID.randomUUID();
     jdbcTemplate.update(
-        "INSERT INTO contracts(contract_code, tenant_id, bed_id, room_code_snapshot, bed_code_snapshot, start_on, original_end_on, original_monthly_rent, deposit_amount, status) "
-            + "VALUES ('HD-PG-1', ?, ?, 'P.701', 'G01', '2026-09-01', '2027-02-28', 1500000, 1500000, 'ACTIVE')",
+        "INSERT INTO contracts(id, contract_code, tenant_id, bed_id, room_code_snapshot, bed_code_snapshot, start_on, original_end_on, original_monthly_rent, deposit_amount, status) "
+            + "VALUES (?, 'HD-PG-1', ?, ?, 'P.701', 'G01', '2026-09-01', '2027-02-28', 1500000, 1500000, 'ACTIVE')",
+        c1,
         t1,
         b1);
     DataIntegrityViolationException activeBedConflict =
@@ -234,6 +236,30 @@ class DataIntegrityClassificationPostgresTest {
                     b2));
     assertThat(DataIntegrityViolationClassifier.classifyGlobal(activeTenantConflict))
         .contains(ContractErrorCode.TENANT_ALREADY_HAS_ACTIVE_CONTRACT);
+
+    jdbcTemplate.update(
+        "INSERT INTO contract_renewals(contract_id, sequence_no, signed_on, previous_end_on, effective_from, new_end_on, monthly_rent) "
+            + "VALUES (?, 1, '2027-02-15', '2027-02-28', '2027-03-01', '2027-08-31', 1800000)",
+        c1);
+    DataIntegrityViolationException renewalSequenceConflict =
+        captureViolation(
+            () ->
+                jdbcTemplate.update(
+                    "INSERT INTO contract_renewals(contract_id, sequence_no, signed_on, previous_end_on, effective_from, new_end_on, monthly_rent) "
+                        + "VALUES (?, 1, '2027-02-16', '2027-02-28', '2027-04-01', '2027-08-31', 1800000)",
+                    c1));
+    assertThat(DataIntegrityViolationClassifier.classifyGlobal(renewalSequenceConflict))
+        .contains(ContractErrorCode.CONTRACT_RENEWAL_CONFLICT);
+
+    DataIntegrityViolationException renewalEffectiveConflict =
+        captureViolation(
+            () ->
+                jdbcTemplate.update(
+                    "INSERT INTO contract_renewals(contract_id, sequence_no, signed_on, previous_end_on, effective_from, new_end_on, monthly_rent) "
+                        + "VALUES (?, 2, '2027-02-16', '2027-02-28', '2027-03-01', '2027-08-31', 1800000)",
+                    c1));
+    assertThat(DataIntegrityViolationClassifier.classifyGlobal(renewalEffectiveConflict))
+        .contains(ContractErrorCode.CONTRACT_RENEWAL_CONFLICT);
 
     DataIntegrityViolationException unmappedUnique =
         captureViolation(

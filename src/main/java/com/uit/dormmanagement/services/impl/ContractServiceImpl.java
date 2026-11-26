@@ -1,9 +1,11 @@
 package com.uit.dormmanagement.services.impl;
 
+import com.uit.dormmanagement.configs.TimeConfig;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentResponse;
+import com.uit.dormmanagement.dtos.response.contract.ContractRenewalResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
@@ -18,8 +20,10 @@ import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.ObjectStorageNotFoundException;
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
+import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.SystemErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
@@ -29,21 +33,28 @@ import com.uit.dormmanagement.repositories.ContractRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.ContractService;
+import com.uit.dormmanagement.services.InvoiceIssuanceService;
 import com.uit.dormmanagement.services.PrivateObjectStorage;
 import com.uit.dormmanagement.services.StoredObjectContent;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.text.Normalizer;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
@@ -65,6 +76,8 @@ public class ContractServiceImpl implements ContractService {
   private final TenantRepository tenantRepository;
   private final VehicleRepository vehicleRepository;
   private final PrivateObjectStorage privateObjectStorage;
+  private final InvoiceIssuanceService invoiceIssuanceService;
+  private final Clock clock;
 
   private static final long MAX_FILE_SIZE = 10L * 1024 * 1024; // 10 MB
   private static final Map<String, String> EXTENSION_TO_MIME =
@@ -113,41 +126,87 @@ public class ContractServiceImpl implements ContractService {
       UUID id, RenewContractRequest request, List<MultipartFile> annexDocuments) {
     Contract contract =
         contractRepository
-            .findById(id)
+            .findByIdForUpdate(id)
             .orElseThrow(() -> new BaseAppException(ContractErrorCode.CONTRACT_NOT_FOUND));
 
-    if (contract.getStatus() == ContractStatus.LIQUIDATED) {
+    if (contract.getStatus() != ContractStatus.ACTIVE) {
       throw new BaseAppException(ContractErrorCode.CONTRACT_ALREADY_TERMINATED);
     }
 
-    if (request.newEndDate() == null || !request.newEndDate().isAfter(contract.getEndDate())) {
+    Tenant tenant = contract.getTenant();
+    if (tenant == null || tenant.getResidentStatus() != ResidentStatus.ACTIVE) {
+      throw new BaseAppException(TenantErrorCode.TENANT_NOT_ACTIVE);
+    }
+
+    Bed bed = contract.getBed();
+    if (bed == null || bed.getStatus() != BedStatus.OCCUPIED) {
+      throw new BaseAppException(ContractErrorCode.BED_NOT_AVAILABLE);
+    }
+
+    Room room = bed.getRoom();
+    if (room == null) {
+      throw new BaseAppException(RoomErrorCode.ROOM_NOT_FOUND);
+    }
+    if (room.getArchivedAt() != null) {
+      throw new BaseAppException(ContractErrorCode.ROOM_ARCHIVED);
+    }
+
+    Optional<ContractRenewal> latestRenewalOpt =
+        contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contract.getId());
+    LocalDate currentEndDate =
+        latestRenewalOpt.map(ContractRenewal::getNewEndOn).orElse(contract.getOriginalEndOn());
+    int nextSequenceNo = latestRenewalOpt.map(r -> r.getSequenceNo() + 1).orElse(1);
+    if (currentEndDate == null) {
       throw new BaseAppException(ContractErrorCode.INVALID_CONTRACT_DATES);
     }
 
-    LocalDate previousEndDate = contract.getEndDate();
-    LocalDate effectiveFrom = previousEndDate.plusDays(1);
-    int sequenceNo = (contract.getRenewals() != null ? contract.getRenewals().size() : 0) + 1;
+    LocalDate today = LocalDate.now(clock.withZone(TimeConfig.DORM_ZONE));
+    if (today.isAfter(currentEndDate)) {
+      throw new BaseAppException(ContractErrorCode.CONTRACT_EXPIRED);
+    }
+
+    if (invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())) {
+      throw new BaseAppException(ContractErrorCode.TENANT_HAS_UNSETTLED_INVOICES);
+    }
+
+    if (request == null || request.newEndDate() == null) {
+      throw new BaseAppException(ContractErrorCode.INVALID_CONTRACT_DATES);
+    }
+    LocalDate newEndDate = request.newEndDate();
+    LocalDate effectiveFrom = currentEndDate.plusDays(1);
+    if (!newEndDate.isAfter(currentEndDate)
+        || !isLastDayOfMonth(newEndDate)
+        || effectiveFrom.getDayOfMonth() != 1) {
+      throw new BaseAppException(ContractErrorCode.INVALID_CONTRACT_DATES);
+    }
+
+    BigDecimal lockedRoomPrice = validateAndNormalizeMonthlyRent(room.getBasePrice());
 
     ContractRenewal renewal =
         ContractRenewal.builder()
             .contract(contract)
-            .sequenceNo(sequenceNo)
-            .signedOn(LocalDate.now())
-            .previousEndOn(previousEndDate)
+            .sequenceNo(nextSequenceNo)
+            .signedOn(today)
+            .previousEndOn(currentEndDate)
             .effectiveFrom(effectiveFrom)
-            .newEndOn(request.newEndDate())
-            .monthlyRent(contract.getMonthlyRent())
+            .newEndOn(newEndDate)
+            .monthlyRent(lockedRoomPrice)
             .build();
 
-    if (contract.getRenewals() == null) {
-      contract.setRenewals(new ArrayList<>());
+    ContractRenewal savedRenewal;
+    try {
+      savedRenewal = contractRenewalRepository.saveAndFlush(renewal);
+    } catch (DataIntegrityViolationException e) {
+      if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+          e, "uq_contract_renewals_sequence", "uq_contract_renewals_effective")) {
+        throw new BaseAppException(ContractErrorCode.CONTRACT_RENEWAL_CONFLICT);
+      }
+      throw e;
     }
-    if (contract.getDocuments() == null) {
-      contract.setDocuments(new ArrayList<>());
-    }
-    contract.setStatus(ContractStatus.ACTIVE);
-    renewal = contractRenewalRepository.save(renewal);
-    contract.getRenewals().add(renewal);
+
+    syncRenewalInMemory(contract, savedRenewal);
+
+    invoiceIssuanceService.issueRenewalCatchUpInvoiceIfEligible(contract, savedRenewal);
 
     if (annexDocuments != null && !annexDocuments.isEmpty()) {
       List<String> uploadedKeys = new ArrayList<>();
@@ -169,14 +228,14 @@ public class ContractServiceImpl implements ContractService {
             ContractDocument doc =
                 ContractDocument.builder()
                     .contract(contract)
-                    .renewal(renewal)
+                    .renewal(savedRenewal)
                     .originalFilename(originalFilename)
                     .storageFileKey(objectKey)
                     .mimeType(mimeType)
                     .documentType(ContractDocumentCategory.RENEWAL_ANNEX)
                     .build();
-            ContractDocument savedDoc = contractDocumentRepository.save(doc);
-            contract.getDocuments().add(savedDoc);
+            ContractDocument savedDoc = contractDocumentRepository.saveAndFlush(doc);
+            syncDocumentInMemory(contract, savedDoc);
           }
         }
       } catch (RuntimeException | IOException e) {
@@ -192,9 +251,13 @@ public class ContractServiceImpl implements ContractService {
       }
     }
 
-    Contract saved = contractRepository.save(contract);
-    log.info("Renewed contract {} to new end date {}", saved.getContractCode(), saved.getEndDate());
-    return toDetailResponse(saved, true);
+    log.info(
+        "Renewed contract {} (seq={}) to new end date {} with locked rent {}",
+        contract.getContractCode(),
+        savedRenewal.getSequenceNo(),
+        savedRenewal.getNewEndOn(),
+        savedRenewal.getMonthlyRent());
+    return toDetailResponse(contract, true);
   }
 
   @Override
@@ -573,6 +636,56 @@ public class ContractServiceImpl implements ContractService {
         .build();
   }
 
+  private static boolean isLastDayOfMonth(LocalDate date) {
+    return date.equals(date.withDayOfMonth(date.lengthOfMonth()));
+  }
+
+  private static BigDecimal validateAndNormalizeMonthlyRent(BigDecimal basePrice) {
+    if (basePrice == null
+        || basePrice.compareTo(BigDecimal.ZERO) <= 0
+        || basePrice.stripTrailingZeros().scale() > 0) {
+      throw new IllegalStateException("Room basePrice must be a positive integer VND value");
+    }
+    BigDecimal normalized = basePrice.setScale(0, RoundingMode.UNNECESSARY);
+    if (normalized.precision() > 14) {
+      throw new IllegalStateException("Room basePrice exceeds numeric(14,0)");
+    }
+    return normalized;
+  }
+
+  private static void syncRenewalInMemory(Contract contract, ContractRenewal savedRenewal) {
+    if (contract.getRenewals() == null) {
+      contract.setRenewals(new ArrayList<>());
+    }
+    boolean alreadyPresent =
+        contract.getRenewals().stream()
+            .anyMatch(
+                existing ->
+                    existing == savedRenewal
+                        || (savedRenewal.getId() != null
+                            && savedRenewal.getId().equals(existing.getId()))
+                        || (savedRenewal.getSequenceNo() != null
+                            && savedRenewal.getSequenceNo().equals(existing.getSequenceNo())));
+    if (!alreadyPresent) {
+      contract.getRenewals().add(savedRenewal);
+    }
+  }
+
+  private static void syncDocumentInMemory(Contract contract, ContractDocument savedDoc) {
+    if (contract.getDocuments() == null) {
+      contract.setDocuments(new ArrayList<>());
+    }
+    boolean alreadyPresent =
+        contract.getDocuments().stream()
+            .anyMatch(
+                existing ->
+                    existing == savedDoc
+                        || (savedDoc.getId() != null && savedDoc.getId().equals(existing.getId())));
+    if (!alreadyPresent) {
+      contract.getDocuments().add(savedDoc);
+    }
+  }
+
   private ContractDetailResponse toDetailResponse(Contract contract, boolean adminView) {
     Tenant tenant = contract.getTenant();
     Bed bed = contract.getBed();
@@ -599,21 +712,53 @@ public class ContractServiceImpl implements ContractService {
                 .toList()
             : List.of();
 
+    List<ContractRenewalResponse> renewalResponses =
+        contract.getRenewals() != null
+            ? contract.getRenewals().stream()
+                .sorted(
+                    Comparator.comparing(
+                        ContractRenewal::getSequenceNo,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .map(
+                    renewal ->
+                        ContractRenewalResponse.builder()
+                            .id(renewal.getId())
+                            .sequenceNo(renewal.getSequenceNo())
+                            .signedOn(renewal.getSignedOn())
+                            .previousEndOn(renewal.getPreviousEndOn())
+                            .effectiveFrom(renewal.getEffectiveFrom())
+                            .newEndOn(renewal.getNewEndOn())
+                            .monthlyRent(renewal.getMonthlyRent())
+                            .createdAt(renewal.getCreatedAt())
+                            .build())
+                .toList()
+            : List.of();
+
+    LocalDate effectiveEndDate =
+        !renewalResponses.isEmpty() ? renewalResponses.getLast().newEndOn() : contract.getEndDate();
+    BigDecimal effectiveMonthlyRent =
+        !renewalResponses.isEmpty()
+            ? renewalResponses.getLast().monthlyRent()
+            : contract.getMonthlyRent();
+
     return ContractDetailResponse.builder()
         .id(contract.getId())
         .contractCode(contract.getContractCode())
         .tenantId(tenant != null ? tenant.getId() : null)
         .tenantName(tenant != null ? tenant.getFullName() : null)
         .tenantPhone(tenant != null ? tenant.getPhone() : null)
-        .roomNumber(room != null ? room.getRoomNumber() : null)
+        .bedId(bed != null ? bed.getId() : null)
         .bedCode(bed != null ? bed.getBedCode() : null)
+        .roomId(room != null ? room.getId() : null)
+        .roomNumber(room != null ? room.getRoomNumber() : null)
         .startDate(contract.getStartDate())
-        .endDate(contract.getEndDate())
-        .monthlyRent(contract.getMonthlyRent())
+        .endDate(effectiveEndDate)
+        .monthlyRent(effectiveMonthlyRent)
         .depositAmount(contract.getDepositAmount())
         .status(contract.getStatus())
         .contractDocumentUrl(null)
         .documents(docResponses)
+        .renewals(renewalResponses)
         .signedAt(contract.getSignedAt())
         .createdAt(contract.getCreatedAt())
         .build();

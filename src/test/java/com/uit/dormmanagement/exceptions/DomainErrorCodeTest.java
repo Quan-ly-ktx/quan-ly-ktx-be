@@ -76,6 +76,13 @@ class DomainErrorCodeTest {
     assertThat(ContractErrorCode.ROOM_ARCHIVED.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
     assertThat(ContractErrorCode.ROOM_ARCHIVED.getErrorCode())
         .isEqualTo("CONTRACT_409_ROOM_ARCHIVED");
+    assertThat(ContractErrorCode.CONTRACT_EXPIRED.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(ContractErrorCode.CONTRACT_EXPIRED.getErrorCode())
+        .isEqualTo("CONTRACT_409_EXPIRED");
+    assertThat(ContractErrorCode.CONTRACT_RENEWAL_CONFLICT.getHttpStatus())
+        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(ContractErrorCode.CONTRACT_RENEWAL_CONFLICT.getErrorCode())
+        .isEqualTo("CONTRACT_409_RENEWAL_CONFLICT");
     assertThat(ContractErrorCode.DOCUMENT_NOT_FOUND.getHttpStatus())
         .isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(ContractErrorCode.DOCUMENT_FILE_SIZE_EXCEEDED.getHttpStatus())

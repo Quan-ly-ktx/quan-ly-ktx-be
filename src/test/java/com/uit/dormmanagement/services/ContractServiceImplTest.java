@@ -9,8 +9,10 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.uit.dormmanagement.configs.TimeConfig;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
@@ -19,6 +21,7 @@ import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.ContractDocument;
+import com.uit.dormmanagement.entities.ContractRenewal;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.Vehicle;
@@ -32,7 +35,9 @@ import com.uit.dormmanagement.enums.VehicleType;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.ObjectStorageNotFoundException;
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
+import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.SystemErrorCode;
+import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractDocumentRepository;
 import com.uit.dormmanagement.repositories.ContractRenewalRepository;
@@ -42,22 +47,26 @@ import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.impl.ContractServiceImpl;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -69,6 +78,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @ExtendWith(MockitoExtension.class)
 class ContractServiceImplTest {
 
+  private static final Instant DEFAULT_RENEWAL_INSTANT = Instant.parse("2027-08-15T02:00:00Z");
+
   @Mock private ContractRepository contractRepository;
   @Mock private ContractRenewalRepository contractRenewalRepository;
   @Mock private ContractDocumentRepository contractDocumentRepository;
@@ -76,8 +87,9 @@ class ContractServiceImplTest {
   @Mock private TenantRepository tenantRepository;
   @Mock private VehicleRepository vehicleRepository;
   @Mock private PrivateObjectStorage privateObjectStorage;
+  @Mock private InvoiceIssuanceService invoiceIssuanceService;
 
-  @InjectMocks private ContractServiceImpl contractService;
+  private ContractServiceImpl contractService;
 
   private UUID contractId;
   private UUID tenantUserId;
@@ -87,12 +99,33 @@ class ContractServiceImplTest {
   private Tenant tenant;
   private Vehicle vehicle;
 
+  private ContractServiceImpl createServiceWithClock(Clock clock) {
+    return new ContractServiceImpl(
+        contractRepository,
+        contractRenewalRepository,
+        contractDocumentRepository,
+        bedRepository,
+        tenantRepository,
+        vehicleRepository,
+        privateObjectStorage,
+        invoiceIssuanceService,
+        clock);
+  }
+
   @BeforeEach
   void setUp() {
+    contractService =
+        createServiceWithClock(Clock.fixed(DEFAULT_RENEWAL_INSTANT, TimeConfig.DORM_ZONE));
+
     contractId = UUID.randomUUID();
     tenantUserId = UUID.randomUUID();
 
-    room = Room.builder().id(UUID.randomUUID()).roomNumber("P.302").build();
+    room =
+        Room.builder()
+            .id(UUID.randomUUID())
+            .roomNumber("P.302")
+            .basePrice(new BigDecimal("1800000.00"))
+            .build();
     bed =
         Bed.builder()
             .id(UUID.randomUUID())
@@ -120,11 +153,12 @@ class ContractServiceImplTest {
             .roomCodeSnapshot("P.401")
             .bedCodeSnapshot("G1")
             .startOn(LocalDate.of(2026, 9, 1))
-            .originalEndOn(LocalDate.of(2027, 9, 1))
+            .originalEndOn(LocalDate.of(2027, 8, 31))
             .originalMonthlyRent(new BigDecimal("1500000.00"))
             .depositAmount(new BigDecimal("1500000.00"))
             .status(ContractStatus.ACTIVE)
             .documents(new ArrayList<>())
+            .renewals(new ArrayList<>())
             .createdAt(Instant.now())
             .build();
 
@@ -168,17 +202,26 @@ class ContractServiceImplTest {
 
   @Test
   @DisplayName(
-      "renewContract: when valid should update endDate, attach annex document with private key, and set status ACTIVE")
-  void renewContract_whenValid_shouldUpdateEndDateAndAttachDoc() {
+      "renewContract: locks contract, captures current room basePrice, appends immutable renewal, invokes catch-up, and uploads optional annex")
+  void renewContract_whenValidWithAnnex_shouldLockRoomPriceAppendRenewalAndAttachDoc() {
     RenewContractRequest request =
-        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 9, 1)).build();
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 2, 29)).build();
     MockMultipartFile annexDoc =
         new MockMultipartFile(
             "annexDocuments", "phu-luc.pdf", "application/pdf", new byte[] {1, 2, 3});
 
-    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
-    when(contractRenewalRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-    when(contractDocumentRepository.save(any(ContractDocument.class)))
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.empty());
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(false);
+    when(contractRenewalRepository.saveAndFlush(any(ContractRenewal.class)))
+        .thenAnswer(
+            inv -> {
+              ContractRenewal r = inv.getArgument(0);
+              r.setId(UUID.randomUUID());
+              return r;
+            });
+    when(contractDocumentRepository.saveAndFlush(any(ContractDocument.class)))
         .thenAnswer(
             inv -> {
               ContractDocument d = inv.getArgument(0);
@@ -187,15 +230,41 @@ class ContractServiceImplTest {
               }
               return d;
             });
-    when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
 
     ContractDetailResponse res =
         contractService.renewContract(contractId, request, List.of(annexDoc));
 
-    assertThat(res.endDate()).isEqualTo(LocalDate.of(2028, 9, 1));
+    verify(contractRepository).findByIdForUpdate(contractId);
+    verify(contractRepository, never()).save(any());
+
+    ArgumentCaptor<ContractRenewal> renewalCaptor = ArgumentCaptor.forClass(ContractRenewal.class);
+    verify(contractRenewalRepository).saveAndFlush(renewalCaptor.capture());
+    ContractRenewal persisted = renewalCaptor.getValue();
+    assertThat(persisted.getSequenceNo()).isEqualTo(1);
+    assertThat(persisted.getSignedOn()).isEqualTo(LocalDate.of(2027, 8, 15));
+    assertThat(persisted.getPreviousEndOn()).isEqualTo(LocalDate.of(2027, 8, 31));
+    assertThat(persisted.getEffectiveFrom()).isEqualTo(LocalDate.of(2027, 9, 1));
+    assertThat(persisted.getNewEndOn()).isEqualTo(LocalDate.of(2028, 2, 29));
+    assertThat(persisted.getMonthlyRent()).isEqualByComparingTo("1800000");
+    assertThat(persisted.getMonthlyRent().scale()).isZero();
+
+    verify(invoiceIssuanceService).issueRenewalCatchUpInvoiceIfEligible(contract, persisted);
+
+    assertThat(contract.getOriginalEndOn()).isEqualTo(LocalDate.of(2027, 8, 31));
+    assertThat(contract.getOriginalMonthlyRent()).isEqualByComparingTo("1500000.00");
+
+    assertThat(res.endDate()).isEqualTo(LocalDate.of(2028, 2, 29));
+    assertThat(res.monthlyRent()).isEqualByComparingTo("1800000");
     assertThat(res.status()).isEqualTo(ContractStatus.ACTIVE);
+    assertThat(res.renewals()).hasSize(1);
+    assertThat(res.renewals().getFirst().sequenceNo()).isEqualTo(1);
+    assertThat(res.renewals().getFirst().monthlyRent()).isEqualByComparingTo("1800000");
+    assertThat(res.renewals().getFirst().effectiveFrom()).isEqualTo(LocalDate.of(2027, 9, 1));
+    assertThat(res.renewals().getFirst().newEndOn()).isEqualTo(LocalDate.of(2028, 2, 29));
+
     assertThat(contract.getDocuments()).hasSize(1);
     ContractDocument savedDoc = contract.getDocuments().getFirst();
+    assertThat(savedDoc.getRenewal()).isSameAs(persisted);
     assertThat(savedDoc.getDocumentCategory()).isEqualTo(ContractDocumentCategory.RENEWAL_ANNEX);
     assertThat(savedDoc.getStorageFileKey()).startsWith("contracts/" + contractId + "/");
     assertThat(savedDoc.getStorageFileKey()).doesNotContain("/uploads/");
@@ -209,19 +278,308 @@ class ContractServiceImplTest {
   }
 
   @Test
-  @DisplayName(
-      "renewContract: when newEndDate is before current endDate should throw INVALID_CONTRACT_DATES")
-  void renewContract_whenNewEndDateBeforeCurrent_shouldThrow() {
+  @DisplayName("renewContract: succeeds without annexDocuments when null or empty")
+  void renewContract_whenNoAnnexDocuments_shouldSucceedWithoutStorageCalls() {
     RenewContractRequest request =
-        RenewContractRequest.builder().newEndDate(LocalDate.of(2026, 8, 1)).build();
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
 
-    when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.empty());
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(false);
+    when(contractRenewalRepository.saveAndFlush(any(ContractRenewal.class)))
+        .thenAnswer(
+            inv -> {
+              ContractRenewal r = inv.getArgument(0);
+              r.setId(UUID.randomUUID());
+              return r;
+            });
+
+    ContractDetailResponse resNull = contractService.renewContract(contractId, request, null);
+    assertThat(resNull.endDate()).isEqualTo(LocalDate.of(2028, 8, 31));
+    assertThat(resNull.documents()).isEmpty();
+    assertThat(resNull.renewals()).hasSize(1);
+    verifyNoInteractions(privateObjectStorage, contractDocumentRepository);
+  }
+
+  @Test
+  @DisplayName("renewContract: cleans up uploaded annex object if a subsequent upload fails")
+  void renewContract_whenAnnexUploadFails_shouldCleanupAndRethrow() {
+    RenewContractRequest request =
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
+    MockMultipartFile file1 =
+        new MockMultipartFile("annexDocuments", "p1.pdf", "application/pdf", new byte[] {1, 2});
+    MockMultipartFile file2 =
+        new MockMultipartFile("annexDocuments", "p2.png", "image/png", new byte[] {3, 4});
+
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.empty());
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(false);
+    when(contractRenewalRepository.saveAndFlush(any(ContractRenewal.class)))
+        .thenAnswer(
+            inv -> {
+              ContractRenewal r = inv.getArgument(0);
+              r.setId(UUID.randomUUID());
+              return r;
+            });
+    when(contractDocumentRepository.saveAndFlush(any(ContractDocument.class)))
+        .thenAnswer(
+            inv -> {
+              ContractDocument d = inv.getArgument(0);
+              d.setId(UUID.randomUUID());
+              return d;
+            });
+
+    doNothing()
+        .when(privateObjectStorage)
+        .putObject(any(), eq("application/pdf"), any(InputStream.class), anyLong());
+    doThrow(new BaseAppException(SystemErrorCode.EXTERNAL_SERVICE_ERROR))
+        .when(privateObjectStorage)
+        .putObject(any(), eq("image/png"), any(InputStream.class), anyLong());
+
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, List.of(file1, file2)))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == SystemErrorCode.EXTERNAL_SERVICE_ERROR);
+
+    ArgumentCaptor<String> putKeyCaptor = ArgumentCaptor.forClass(String.class);
+    verify(privateObjectStorage)
+        .putObject(putKeyCaptor.capture(), eq("application/pdf"), any(InputStream.class), eq(2L));
+    verify(privateObjectStorage).deleteObject(putKeyCaptor.getValue());
+  }
+
+  @Test
+  @DisplayName(
+      "renewContract: sequential 2nd renewal chains from 1st renewal, locks updated room price, and leaves 1st renewal untouched")
+  void renewContract_secondSequentialRenewal_shouldChainAndUseUpdatedRoomPrice() {
+    ContractRenewal firstRenewal =
+        ContractRenewal.builder()
+            .id(UUID.randomUUID())
+            .contract(contract)
+            .sequenceNo(1)
+            .signedOn(LocalDate.of(2027, 8, 10))
+            .previousEndOn(LocalDate.of(2027, 8, 31))
+            .effectiveFrom(LocalDate.of(2027, 9, 1))
+            .newEndOn(LocalDate.of(2028, 2, 29))
+            .monthlyRent(new BigDecimal("1800000"))
+            .build();
+    contract.getRenewals().add(firstRenewal);
+    room.setBasePrice(new BigDecimal("2000000"));
+
+    ContractServiceImpl laterService =
+        createServiceWithClock(
+            Clock.fixed(Instant.parse("2028-02-26T03:00:00Z"), TimeConfig.DORM_ZONE));
+
+    RenewContractRequest request =
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.of(firstRenewal));
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(false);
+    when(contractRenewalRepository.saveAndFlush(any(ContractRenewal.class)))
+        .thenAnswer(
+            inv -> {
+              ContractRenewal r = inv.getArgument(0);
+              r.setId(UUID.randomUUID());
+              return r;
+            });
+
+    ContractDetailResponse res = laterService.renewContract(contractId, request, List.of());
+
+    assertThat(res.endDate()).isEqualTo(LocalDate.of(2028, 8, 31));
+    assertThat(res.monthlyRent()).isEqualByComparingTo("2000000");
+    assertThat(res.renewals()).hasSize(2);
+    assertThat(res.renewals().get(0).sequenceNo()).isEqualTo(1);
+    assertThat(res.renewals().get(0).monthlyRent()).isEqualByComparingTo("1800000");
+    assertThat(res.renewals().get(1).sequenceNo()).isEqualTo(2);
+    assertThat(res.renewals().get(1).signedOn()).isEqualTo(LocalDate.of(2028, 2, 26));
+    assertThat(res.renewals().get(1).previousEndOn()).isEqualTo(LocalDate.of(2028, 2, 29));
+    assertThat(res.renewals().get(1).effectiveFrom()).isEqualTo(LocalDate.of(2028, 3, 1));
+    assertThat(res.renewals().get(1).newEndOn()).isEqualTo(LocalDate.of(2028, 8, 31));
+    assertThat(res.renewals().get(1).monthlyRent()).isEqualByComparingTo("2000000");
+    assertThat(firstRenewal.getMonthlyRent()).isEqualByComparingTo("1800000");
+    assertThat(contract.getOriginalMonthlyRent()).isEqualByComparingTo("1500000.00");
+  }
+
+  @Test
+  @DisplayName("renewContract: rejects missing, liquidated, inactive tenant, non-occupied bed, or archived/missing room")
+  void renewContract_preconditionRejections() {
+    RenewContractRequest request =
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
+
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_NOT_FOUND);
+
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    contract.setStatus(ContractStatus.LIQUIDATED);
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.CONTRACT_ALREADY_TERMINATED);
+
+    contract.setStatus(ContractStatus.ACTIVE);
+    tenant.setResidentStatus(ResidentStatus.CHECKED_OUT);
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.TENANT_NOT_ACTIVE);
+
+    tenant.setResidentStatus(ResidentStatus.ACTIVE);
+    bed.setStatus(BedStatus.AVAILABLE);
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.BED_NOT_AVAILABLE);
+
+    bed.setStatus(BedStatus.OCCUPIED);
+    room.setArchivedAt(Instant.now());
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.ROOM_ARCHIVED);
+
+    room.setArchivedAt(null);
+    bed.setRoom(null);
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == RoomErrorCode.ROOM_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName(
+      "renewContract: enforces Asia/Ho_Chi_Minh expiry boundary (rejects 409 CONTRACT_409_EXPIRED at +07:00 midnight)")
+  void renewContract_enforcesDormZoneExpiryBoundary() {
+    RenewContractRequest request =
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
+
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.empty());
+
+    // 2027-08-31T17:00:00Z == 2027-09-01T00:00:00+07:00 (expired by 1 second in dorm zone)
+    ContractServiceImpl expiredService =
+        createServiceWithClock(Clock.fixed(Instant.parse("2027-08-31T17:00:00Z"), ZoneOffset.UTC));
+    assertThatThrownBy(() -> expiredService.renewContract(contractId, request, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == ContractErrorCode.CONTRACT_EXPIRED);
+    verify(invoiceIssuanceService, never()).hasUnsettledInvoices(any());
+    verify(contractRenewalRepository, never()).saveAndFlush(any());
+
+    // 2027-08-31T16:59:59Z == 2027-08-31T23:59:59+07:00 (still on end date -> allowed)
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(false);
+    when(contractRenewalRepository.saveAndFlush(any(ContractRenewal.class)))
+        .thenAnswer(inv -> inv.getArgument(0));
+    ContractServiceImpl lastSecondService =
+        createServiceWithClock(Clock.fixed(Instant.parse("2027-08-31T16:59:59Z"), ZoneOffset.UTC));
+
+    ContractDetailResponse response = lastSecondService.renewContract(contractId, request, null);
+    assertThat(response.renewals()).hasSize(1);
+    assertThat(response.renewals().getFirst().signedOn()).isEqualTo(LocalDate.of(2027, 8, 31));
+  }
+
+  @Test
+  @DisplayName("renewContract: rejects when tenant has unsettled invoices (409)")
+  void renewContract_whenUnsettledInvoices_shouldThrowConflict() {
+    RenewContractRequest request =
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
+
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.empty());
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(true);
 
     assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
         .isInstanceOf(BaseAppException.class)
         .matches(
             ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.TENANT_HAS_UNSETTLED_INVOICES);
+    verify(contractRenewalRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  @DisplayName(
+      "renewContract: rejects null, non-after, non-month-end (including leap-year 2028-02-28), and non-day1 continuity dates")
+  void renewContract_whenInvalidDates_shouldThrowInvalidContractDates() {
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.empty());
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(false);
+
+    for (RenewContractRequest badRequest :
+        List.of(
+            new RenewContractRequest(null),
+            new RenewContractRequest(LocalDate.of(2027, 7, 31)),
+            new RenewContractRequest(LocalDate.of(2027, 8, 31)),
+            new RenewContractRequest(LocalDate.of(2027, 9, 15)),
+            new RenewContractRequest(LocalDate.of(2028, 2, 28)))) {
+      assertThatThrownBy(() -> contractService.renewContract(contractId, badRequest, null))
+          .isInstanceOf(BaseAppException.class)
+          .matches(
+              ex ->
+                  ((BaseAppException) ex).getErrorCode()
+                      == ContractErrorCode.INVALID_CONTRACT_DATES);
+    }
+    assertThatThrownBy(() -> contractService.renewContract(contractId, null, null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
                 ((BaseAppException) ex).getErrorCode() == ContractErrorCode.INVALID_CONTRACT_DATES);
+
+    // Non-month-end currentEndDate breaks effectiveFrom day-01 continuity
+    contract.setOriginalEndOn(LocalDate.of(2027, 8, 15));
+    assertThatThrownBy(
+            () ->
+                contractService.renewContract(
+                    contractId, new RenewContractRequest(LocalDate.of(2027, 9, 30)), null))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode() == ContractErrorCode.INVALID_CONTRACT_DATES);
+    verify(contractRenewalRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  @DisplayName(
+      "renewContract: translates concurrent unique constraint races to 409 CONTRACT_RENEWAL_CONFLICT and rethrows non-unique violations")
+  void renewContract_uniqueConstraintRace_shouldTranslateToConflict() {
+    RenewContractRequest request =
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
+    when(contractRepository.findByIdForUpdate(contractId)).thenReturn(Optional.of(contract));
+    when(contractRenewalRepository.findFirstByContractIdOrderBySequenceNoDesc(contractId))
+        .thenReturn(Optional.empty());
+    when(invoiceIssuanceService.hasUnsettledInvoices(tenant.getId())).thenReturn(false);
+
+    for (String constraint :
+        List.of("uq_contract_renewals_sequence", "uq_contract_renewals_effective")) {
+      DataIntegrityViolationException uniqueRace =
+          new DataIntegrityViolationException(
+              "duplicate",
+              new ConstraintViolationException(
+                  "dup", new SQLException("duplicate key", "23505"), constraint));
+      when(contractRenewalRepository.saveAndFlush(any(ContractRenewal.class)))
+          .thenThrow(uniqueRace);
+
+      assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
+          .isInstanceOf(BaseAppException.class)
+          .matches(
+              ex ->
+                  ((BaseAppException) ex).getErrorCode()
+                      == ContractErrorCode.CONTRACT_RENEWAL_CONFLICT);
+    }
+
+    DataIntegrityViolationException checkViolation =
+        new DataIntegrityViolationException(
+            "check failure",
+            new ConstraintViolationException(
+                "check", new SQLException("check failed", "23514"), "ck_contract_renewals_dates"));
+    when(contractRenewalRepository.saveAndFlush(any(ContractRenewal.class)))
+        .thenThrow(checkViolation);
+
+    assertThatThrownBy(() -> contractService.renewContract(contractId, request, null))
+        .isSameAs(checkViolation);
   }
 
   @Test

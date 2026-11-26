@@ -32,6 +32,7 @@ import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.enums.VehicleType;
 import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
@@ -298,10 +299,41 @@ class ResidentLifecycleE2ETest {
         new MockMultipartFile(
             "annexDocuments", "phu_luc_gia_han.pdf", "application/pdf", new byte[] {40, 50});
 
+    // Blocked while first invoice is still DEBT (BR-04 §6, FR-12)
+    assertThatThrownBy(
+            () -> contractService.renewContract(contractId, renewReq, List.of(annexDoc)))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == ContractErrorCode.TENANT_HAS_UNSETTLED_INVOICES);
+
+    firstInvoice.setStatus(InvoiceStatus.PAID);
+    invoiceRepository.saveAndFlush(firstInvoice);
+
+    testRoom.setBasePrice(new BigDecimal("1800000.00"));
+    roomRepository.saveAndFlush(testRoom);
+    testClock.setClock(Clock.fixed(Instant.parse("2027-08-15T02:00:00Z"), TimeConfig.DORM_ZONE));
+
     ContractDetailResponse renewedContract =
         contractService.renewContract(contractId, renewReq, List.of(annexDoc));
     assertThat(renewedContract.endDate()).isEqualTo(LocalDate.of(2028, 8, 31));
+    assertThat(renewedContract.monthlyRent()).isEqualByComparingTo("1800000");
     assertThat(renewedContract.status()).isEqualTo(ContractStatus.ACTIVE);
+    assertThat(renewedContract.renewals()).hasSize(1);
+    assertThat(renewedContract.renewals().getFirst().sequenceNo()).isEqualTo(1);
+    assertThat(renewedContract.renewals().getFirst().previousEndOn())
+        .isEqualTo(LocalDate.of(2027, 8, 31));
+    assertThat(renewedContract.renewals().getFirst().effectiveFrom())
+        .isEqualTo(LocalDate.of(2027, 9, 1));
+    assertThat(renewedContract.renewals().getFirst().newEndOn())
+        .isEqualTo(LocalDate.of(2028, 8, 31));
+    assertThat(renewedContract.renewals().getFirst().monthlyRent()).isEqualByComparingTo("1800000");
+    assertThat(renewedContract.documents()).hasSize(2);
+
+    Contract afterRenewDbContract = contractRepository.findById(contractId).orElseThrow();
+    assertThat(afterRenewDbContract.getOriginalMonthlyRent()).isEqualByComparingTo("1500000");
+    assertThat(afterRenewDbContract.getOriginalEndOn()).isEqualTo(LocalDate.of(2027, 8, 31));
 
     // -------------------------------------------------------------------------
     // Step 6: Checkout 4-in-1 Transaction (FR-07, FR-13, BR-04)

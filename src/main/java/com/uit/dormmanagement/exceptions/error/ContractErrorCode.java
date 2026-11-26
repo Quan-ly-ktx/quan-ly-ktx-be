@@ -49,6 +49,12 @@ public enum ContractErrorCode implements AppErrorCode {
       "CONTRACT_409_ROOM_ARCHIVED",
       "Phòng đang ở trạng thái lưu trữ, không thể tiếp nhận khách mới",
       HttpStatus.CONFLICT),
+  CONTRACT_EXPIRED(
+      "CONTRACT_409_EXPIRED", "Hợp đồng đã quá hạn, không thể gia hạn", HttpStatus.CONFLICT),
+  CONTRACT_RENEWAL_CONFLICT(
+      "CONTRACT_409_RENEWAL_CONFLICT",
+      "Xung đột đồng thời khi gia hạn hợp đồng, vui lòng thử lại",
+      HttpStatus.CONFLICT),
   DOCUMENT_NOT_FOUND(
       "CONTRACT_404_DOCUMENT", "Không tìm thấy tài liệu hợp đồng tương ứng", HttpStatus.NOT_FOUND),
   DOCUMENT_FILE_SIZE_EXCEEDED(
