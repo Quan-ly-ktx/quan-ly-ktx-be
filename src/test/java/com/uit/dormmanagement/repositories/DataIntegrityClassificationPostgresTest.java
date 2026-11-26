@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import com.uit.dormmanagement.exceptions.AppErrorCode;
 import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
+import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
@@ -88,6 +89,7 @@ class DataIntegrityClassificationPostgresTest {
     UUID r1 = UUID.randomUUID();
     UUID r2 = UUID.randomUUID();
     UUID b1 = UUID.randomUUID();
+    UUID b2 = UUID.randomUUID();
     UUID v1 = UUID.randomUUID();
 
     jdbcTemplate.update(
@@ -131,7 +133,7 @@ class DataIntegrityClassificationPostgresTest {
         "INSERT INTO room_code_registry(code, room_id, is_current, used_in_business) VALUES ('P.701', ?, true, false)",
         r1);
     for (int i = 1; i <= 4; i++) {
-      UUID bid = (i == 1) ? b1 : UUID.randomUUID();
+      UUID bid = (i == 1) ? b1 : (i == 2 ? b2 : UUID.randomUUID());
       jdbcTemplate.update(
           "INSERT INTO beds(id, room_id, bed_code, slot_key, status) VALUES (?, ?, ?, ?, 'AVAILABLE')",
           bid,
@@ -204,13 +206,14 @@ class DataIntegrityClassificationPostgresTest {
     assertThat(DataIntegrityViolationClassifier.classifyGlobal(dupChangeReq))
         .contains(VehicleErrorCode.VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS);
 
-    // 5. Unmapped unique index uq_contracts_active_bed -> 409 WEB_409
+    // 5. Mapped active contract constraints (uq_contracts_active_bed / uq_contracts_active_tenant)
+    // and unmapped unique violation (contracts_contract_code_key -> WEB_409)
     jdbcTemplate.update(
         "INSERT INTO contracts(contract_code, tenant_id, bed_id, room_code_snapshot, bed_code_snapshot, start_on, original_end_on, original_monthly_rent, deposit_amount, status) "
             + "VALUES ('HD-PG-1', ?, ?, 'P.701', 'G01', '2026-09-01', '2027-02-28', 1500000, 1500000, 'ACTIVE')",
         t1,
         b1);
-    DataIntegrityViolationException unmappedUnique =
+    DataIntegrityViolationException activeBedConflict =
         captureViolation(
             () ->
                 jdbcTemplate.update(
@@ -218,6 +221,28 @@ class DataIntegrityClassificationPostgresTest {
                         + "VALUES ('HD-PG-2', ?, ?, 'P.701', 'G01', '2026-09-01', '2027-02-28', 1500000, 1500000, 'ACTIVE')",
                     t2,
                     b1));
+    assertThat(DataIntegrityViolationClassifier.classifyGlobal(activeBedConflict))
+        .contains(ContractErrorCode.BED_ALREADY_RENTED);
+
+    DataIntegrityViolationException activeTenantConflict =
+        captureViolation(
+            () ->
+                jdbcTemplate.update(
+                    "INSERT INTO contracts(contract_code, tenant_id, bed_id, room_code_snapshot, bed_code_snapshot, start_on, original_end_on, original_monthly_rent, deposit_amount, status) "
+                        + "VALUES ('HD-PG-3', ?, ?, 'P.701', 'G02', '2026-09-01', '2027-02-28', 1500000, 1500000, 'ACTIVE')",
+                    t1,
+                    b2));
+    assertThat(DataIntegrityViolationClassifier.classifyGlobal(activeTenantConflict))
+        .contains(ContractErrorCode.TENANT_ALREADY_HAS_ACTIVE_CONTRACT);
+
+    DataIntegrityViolationException unmappedUnique =
+        captureViolation(
+            () ->
+                jdbcTemplate.update(
+                    "INSERT INTO contracts(contract_code, tenant_id, bed_id, room_code_snapshot, bed_code_snapshot, start_on, original_end_on, original_monthly_rent, deposit_amount, status) "
+                        + "VALUES ('HD-PG-1', ?, ?, 'P.701', 'G02', '2026-09-01', '2027-02-28', 1500000, 1500000, 'ACTIVE')",
+                    t2,
+                    b2));
     assertThat(DataIntegrityViolationClassifier.classifyGlobal(unmappedUnique))
         .contains(WebErrorCode.CONFLICT);
 

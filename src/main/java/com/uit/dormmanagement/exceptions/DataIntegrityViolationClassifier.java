@@ -1,6 +1,7 @@
 package com.uit.dormmanagement.exceptions;
 
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
+import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
@@ -32,16 +33,20 @@ public final class DataIntegrityViolationClassifier {
       Pattern.compile("constraint\\s+\"([^\"]+)\"", Pattern.CASE_INSENSITIVE);
 
   private static final Map<String, AppErrorCode> GLOBAL_UNIQUE_CONSTRAINT_MAP =
-      Map.of(
-          "tenants_id_card_number_key", TenantErrorCode.ID_CARD_NUMBER_DUPLICATED,
-          "uq_users_email_canonical", AuthErrorCode.DUPLICATE_EMAIL,
-          "uq_rooms_number_canonical", RoomErrorCode.ROOM_NUMBER_DUPLICATED,
-          "room_code_registry_pkey", RoomErrorCode.ROOM_NUMBER_DUPLICATED,
-          "uq_beds_slot_key_canonical", RoomErrorCode.ROOM_NUMBER_DUPLICATED,
-          "uq_vehicles_issued_card_code", VehicleErrorCode.CARD_CODE_DUPLICATED,
-          "uq_vehicles_tenant_active_quota", VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED,
-          "uq_vehicle_change_requests_pending_tenant",
-              VehicleErrorCode.VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS);
+      Map.ofEntries(
+          Map.entry("tenants_id_card_number_key", TenantErrorCode.ID_CARD_NUMBER_DUPLICATED),
+          Map.entry("uq_users_email_canonical", AuthErrorCode.DUPLICATE_EMAIL),
+          Map.entry("uq_rooms_number_canonical", RoomErrorCode.ROOM_NUMBER_DUPLICATED),
+          Map.entry("room_code_registry_pkey", RoomErrorCode.ROOM_NUMBER_DUPLICATED),
+          Map.entry("uq_beds_slot_key_canonical", RoomErrorCode.ROOM_NUMBER_DUPLICATED),
+          Map.entry("uq_contracts_active_bed", ContractErrorCode.BED_ALREADY_RENTED),
+          Map.entry(
+              "uq_contracts_active_tenant", ContractErrorCode.TENANT_ALREADY_HAS_ACTIVE_CONTRACT),
+          Map.entry("uq_vehicles_issued_card_code", VehicleErrorCode.CARD_CODE_DUPLICATED),
+          Map.entry("uq_vehicles_tenant_active_quota", VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED),
+          Map.entry(
+              "uq_vehicle_change_requests_pending_tenant",
+              VehicleErrorCode.VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS));
 
   private DataIntegrityViolationClassifier() {}
 

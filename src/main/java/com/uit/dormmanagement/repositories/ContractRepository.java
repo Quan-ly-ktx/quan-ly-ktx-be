@@ -30,6 +30,10 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
 
   Optional<Contract> findByTenantIdAndStatus(UUID tenantId, ContractStatus status);
 
+  boolean existsByBedIdAndStatus(UUID bedId, ContractStatus status);
+
+  boolean existsByTenantIdAndStatus(UUID tenantId, ContractStatus status);
+
   boolean existsByBedIdAndStatusIn(UUID bedId, Collection<ContractStatus> statuses);
 
   boolean existsByBed_Room_IdAndStatusIn(UUID roomId, Collection<ContractStatus> statuses);
@@ -41,8 +45,7 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
   List<Contract> findByBedIdInAndStatusIn(
       Collection<UUID> bedIds, Collection<ContractStatus> statuses);
 
-  Optional<Contract> findFirstByBedIdAndStatusIn(
-      UUID bedId, Collection<ContractStatus> statuses);
+  Optional<Contract> findFirstByBedIdAndStatusIn(UUID bedId, Collection<ContractStatus> statuses);
 
   Optional<Contract> findFirstByTenantIdAndStatusIn(
       UUID tenantId, Collection<ContractStatus> statuses);

@@ -3,6 +3,7 @@ package com.uit.dormmanagement.e2e;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.uit.dormmanagement.configs.TimeConfig;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.request.onboarding.OnboardingRequest;
 import com.uit.dormmanagement.dtos.request.vehicle.CreateVehicleAdminRequest;
@@ -14,6 +15,7 @@ import com.uit.dormmanagement.dtos.response.onboarding.OnboardingResponse;
 import com.uit.dormmanagement.dtos.response.vehicle.VehicleResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
+import com.uit.dormmanagement.entities.Invoice;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.RoomCodeRegistry;
 import com.uit.dormmanagement.entities.Tenant;
@@ -23,6 +25,7 @@ import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
+import com.uit.dormmanagement.enums.InvoiceStatus;
 import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
@@ -32,6 +35,7 @@ import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
 import com.uit.dormmanagement.repositories.BedRepository;
 import com.uit.dormmanagement.repositories.ContractRepository;
+import com.uit.dormmanagement.repositories.InvoiceRepository;
 import com.uit.dormmanagement.repositories.RoomCodeRegistryRepository;
 import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
@@ -41,21 +45,67 @@ import com.uit.dormmanagement.services.ContractService;
 import com.uit.dormmanagement.services.OnboardingService;
 import com.uit.dormmanagement.services.VehicleService;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
+@Import(ResidentLifecycleE2ETest.TestClockConfig.class)
 @Transactional
 class ResidentLifecycleE2ETest {
 
+  @TestConfiguration
+  static class TestClockConfig {
+    @Bean
+    @Primary
+    MutableTestClock testClock() {
+      return new MutableTestClock();
+    }
+  }
+
+  static class MutableTestClock extends Clock {
+    private volatile Clock delegate = Clock.system(TimeConfig.DORM_ZONE);
+
+    void setClock(Clock clock) {
+      this.delegate = clock;
+    }
+
+    void reset() {
+      this.delegate = Clock.system(TimeConfig.DORM_ZONE);
+    }
+
+    @Override
+    public ZoneId getZone() {
+      return delegate.getZone();
+    }
+
+    @Override
+    public Clock withZone(ZoneId zone) {
+      return delegate.withZone(zone);
+    }
+
+    @Override
+    public Instant instant() {
+      return delegate.instant();
+    }
+  }
+
+  @Autowired private MutableTestClock testClock;
   @Autowired private OnboardingService onboardingService;
   @Autowired private VehicleService vehicleService;
   @Autowired private ContractService contractService;
@@ -65,6 +115,7 @@ class ResidentLifecycleE2ETest {
   @Autowired private BedRepository bedRepository;
   @Autowired private TenantRepository tenantRepository;
   @Autowired private ContractRepository contractRepository;
+  @Autowired private InvoiceRepository invoiceRepository;
   @Autowired private VehicleRepository vehicleRepository;
   @Autowired private UserRepository userRepository;
 
@@ -73,6 +124,7 @@ class ResidentLifecycleE2ETest {
 
   @BeforeEach
   void setUp() {
+    testClock.reset();
     testRoom =
         roomRepository.save(
             Room.builder()
@@ -100,13 +152,20 @@ class ResidentLifecycleE2ETest {
     testBed = bedRepository.saveAll(beds).getFirst();
   }
 
+  @AfterEach
+  void resetClock() {
+    testClock.reset();
+  }
+
   @Test
   @DisplayName(
       "E2E Full Resident Lifecycle: Onboarding -> Register Vehicle -> Issue Card -> Quota Block -> Renew -> Checkout -> Re-assign Card")
   void testCompleteResidentLifecycle() {
     // -------------------------------------------------------------------------
-    // Step 1: Direct Onboarding 1-step (FR-09)
+    // Step 1: Direct Onboarding 1-step (FR-09, day 01 Asia/Ho_Chi_Minh)
     // -------------------------------------------------------------------------
+    testClock.setClock(Clock.fixed(Instant.parse("2026-09-01T02:00:00Z"), TimeConfig.DORM_ZONE));
+
     OnboardingRequest onboardReq =
         OnboardingRequest.builder()
             .fullName("Nguyễn Văn An")
@@ -117,13 +176,21 @@ class ResidentLifecycleE2ETest {
             .permanentAddress("123 Cách Mạng Tháng 8, TP.HCM")
             .bedId(testBed.getId())
             .startDate(LocalDate.of(2026, 9, 1))
-            .endDate(LocalDate.of(2027, 9, 1))
+            .endDate(LocalDate.of(2027, 8, 31))
             .depositAmount(new BigDecimal("1500000.00"))
             .build();
 
     OnboardingResponse onboardRes = onboardingService.onboardTenant(onboardReq);
 
     assertThat(onboardRes).isNotNull();
+    assertThat(onboardRes.account().username()).isEqualTo("079203999991");
+    assertThat(onboardRes.account().initialPassword()).isNotBlank().isNotEqualTo("Password123@");
+    assertThat(onboardRes.firstInvoice()).isNotNull();
+    assertThat(onboardRes.firstInvoice().billingPeriod()).isEqualTo(LocalDate.of(2026, 9, 1));
+    assertThat(onboardRes.firstInvoice().dueOn()).isEqualTo(LocalDate.of(2026, 9, 5));
+    assertThat(onboardRes.firstInvoice().status()).isEqualTo(InvoiceStatus.DEBT);
+    assertThat(onboardRes.firstInvoice().amount()).isEqualByComparingTo("1500000");
+
     UUID tenantId = onboardRes.tenant().id();
     UUID contractId = onboardRes.contract().id();
     UUID userId = onboardRes.tenant().userId();
@@ -135,6 +202,11 @@ class ResidentLifecycleE2ETest {
     Room updatedRoom = roomRepository.findById(testRoom.getId()).orElseThrow();
     assertThat(bedRepository.countByRoomIdAndStatus(testRoom.getId(), BedStatus.OCCUPIED))
         .isEqualTo(1);
+    assertThat(roomCodeRegistryRepository.existsByRoom_IdAndUsedInBusinessTrue(testRoom.getId()))
+        .isTrue();
+
+    Invoice firstInvoice = invoiceRepository.findById(onboardRes.firstInvoice().id()).orElseThrow();
+    assertThat(firstInvoice.getStatus()).isEqualTo(InvoiceStatus.DEBT);
 
     User createdUser = userRepository.findById(userId).orElseThrow();
     assertThat(createdUser.getRole()).isEqualTo(UserRole.TENANT);
@@ -221,14 +293,14 @@ class ResidentLifecycleE2ETest {
         .doesNotContain("/uploads/");
 
     RenewContractRequest renewReq =
-        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 9, 1)).build();
+        RenewContractRequest.builder().newEndDate(LocalDate.of(2028, 8, 31)).build();
     MockMultipartFile annexDoc =
         new MockMultipartFile(
             "annexDocuments", "phu_luc_gia_han.pdf", "application/pdf", new byte[] {40, 50});
 
     ContractDetailResponse renewedContract =
         contractService.renewContract(contractId, renewReq, List.of(annexDoc));
-    assertThat(renewedContract.endDate()).isEqualTo(LocalDate.of(2028, 9, 1));
+    assertThat(renewedContract.endDate()).isEqualTo(LocalDate.of(2028, 8, 31));
     assertThat(renewedContract.status()).isEqualTo(ContractStatus.ACTIVE);
 
     // -------------------------------------------------------------------------
@@ -257,8 +329,10 @@ class ResidentLifecycleE2ETest {
     assertThat(dbVehicle.getStatus()).isEqualTo(VehicleStatus.REVOKED);
 
     // -------------------------------------------------------------------------
-    // Step 7: Physical Card & Bed Reissuing to New Tenant (BR-10 & V7 Migration)
+    // Step 7: Physical Card & Bed Reissuing to New Tenant (BR-10 & Day-01 FR-09)
     // -------------------------------------------------------------------------
+    testClock.setClock(Clock.fixed(Instant.parse("2027-09-01T02:00:00Z"), TimeConfig.DORM_ZONE));
+
     OnboardingRequest newTenantReq =
         OnboardingRequest.builder()
             .fullName("Trần Thị Bình")
@@ -268,13 +342,15 @@ class ResidentLifecycleE2ETest {
             .email("binh.tran.e2e@example.com")
             .permanentAddress("456 Hai Bà Trưng, TP.HCM")
             .bedId(testBed.getId())
-            .startDate(LocalDate.of(2027, 9, 2))
-            .endDate(LocalDate.of(2028, 9, 2))
+            .startDate(LocalDate.of(2027, 9, 1))
+            .endDate(LocalDate.of(2028, 8, 31))
             .depositAmount(new BigDecimal("1500000.00"))
             .build();
 
     OnboardingResponse newOnboardRes = onboardingService.onboardTenant(newTenantReq);
     assertThat(newOnboardRes).isNotNull();
+    assertThat(newOnboardRes.firstInvoice()).isNotNull();
+    assertThat(newOnboardRes.firstInvoice().billingPeriod()).isEqualTo(LocalDate.of(2027, 9, 1));
 
     // Re-assign the exact same physical RFID card "THE-E2E-001" to new tenant's vehicle
     CreateVehicleAdminRequest newVehicleReq =

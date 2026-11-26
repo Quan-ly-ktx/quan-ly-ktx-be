@@ -9,6 +9,7 @@ import ch.qos.logback.core.read.ListAppender;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.base.ErrorResponse;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
+import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
@@ -49,6 +50,9 @@ class AppExceptionHandlerDataIntegrityTest {
         Arguments.of("uq_rooms_number_canonical", RoomErrorCode.ROOM_NUMBER_DUPLICATED),
         Arguments.of("room_code_registry_pkey", RoomErrorCode.ROOM_NUMBER_DUPLICATED),
         Arguments.of("uq_beds_slot_key_canonical", RoomErrorCode.ROOM_NUMBER_DUPLICATED),
+        Arguments.of("uq_contracts_active_bed", ContractErrorCode.BED_ALREADY_RENTED),
+        Arguments.of(
+            "uq_contracts_active_tenant", ContractErrorCode.TENANT_ALREADY_HAS_ACTIVE_CONTRACT),
         Arguments.of("uq_vehicles_issued_card_code", VehicleErrorCode.CARD_CODE_DUPLICATED),
         Arguments.of("uq_vehicles_tenant_active_quota", VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED),
         Arguments.of(
@@ -80,7 +84,8 @@ class AppExceptionHandlerDataIntegrityTest {
   void unmappedUniqueViolation_shouldReturn409Conflict() {
     SQLException sqlEx =
         new SQLException(
-            "duplicate key value violates unique constraint \"uq_contracts_active_bed\"", "23505");
+            "duplicate key value violates unique constraint \"uq_invoices_contract_period\"",
+            "23505");
     DataIntegrityViolationException dive =
         new DataIntegrityViolationException("could not execute statement", sqlEx);
 

@@ -54,6 +54,28 @@ class DomainErrorCodeTest {
     assertThat(ContractErrorCode.GENDER_MISMATCH.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(ContractErrorCode.INVALID_CONTRACT_DATES.getHttpStatus())
         .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ContractErrorCode.ONBOARDING_ONLY_ON_DAY_ONE.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ContractErrorCode.ONBOARDING_ONLY_ON_DAY_ONE.getErrorCode())
+        .isEqualTo("CONTRACT_400_DAY_ONE_ONLY");
+    assertThat(ContractErrorCode.INVALID_DEPOSIT_AMOUNT.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ContractErrorCode.INVALID_DEPOSIT_AMOUNT.getErrorCode())
+        .isEqualTo("CONTRACT_400_DEPOSIT");
+    assertThat(ContractErrorCode.BED_ALREADY_RENTED.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(ContractErrorCode.BED_ALREADY_RENTED.getErrorCode())
+        .isEqualTo("CONTRACT_409_BED_OCCUPIED");
+    assertThat(ContractErrorCode.TENANT_ALREADY_HAS_ACTIVE_CONTRACT.getHttpStatus())
+        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(ContractErrorCode.TENANT_ALREADY_HAS_ACTIVE_CONTRACT.getErrorCode())
+        .isEqualTo("CONTRACT_409_TENANT_ACTIVE");
+    assertThat(ContractErrorCode.TENANT_HAS_UNSETTLED_INVOICES.getHttpStatus())
+        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(ContractErrorCode.TENANT_HAS_UNSETTLED_INVOICES.getErrorCode())
+        .isEqualTo("CONTRACT_409_UNSETTLED_DEBT");
+    assertThat(ContractErrorCode.ROOM_ARCHIVED.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(ContractErrorCode.ROOM_ARCHIVED.getErrorCode())
+        .isEqualTo("CONTRACT_409_ROOM_ARCHIVED");
     assertThat(ContractErrorCode.DOCUMENT_NOT_FOUND.getHttpStatus())
         .isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(ContractErrorCode.DOCUMENT_FILE_SIZE_EXCEEDED.getHttpStatus())

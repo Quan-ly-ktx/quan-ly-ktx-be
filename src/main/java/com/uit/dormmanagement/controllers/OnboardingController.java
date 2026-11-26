@@ -29,8 +29,9 @@ public class OnboardingController extends AbstractBaseController {
   @Operation(
       summary = "Direct onboarding",
       description =
-          "Direct onboarding 1-step transaction: create tenant, user, contract, and assign bed"
-              + " (FR-09)")
+          "Day-01 direct onboarding atomic transaction: create/reuse tenant and user, create"
+              + " contract, assign bed, protect room code, and issue first-month invoice"
+              + " (FR-09, FR-15)")
   @PreAuthorize("hasRole('MANAGER')")
   @PostMapping
   public ResponseEntity<SingleResponse<OnboardingResponse>> onboardTenant(

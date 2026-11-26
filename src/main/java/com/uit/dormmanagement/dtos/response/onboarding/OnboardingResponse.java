@@ -6,4 +6,7 @@ import lombok.Builder;
 
 @Builder
 public record OnboardingResponse(
-    TenantDetailResponse tenant, ContractDetailResponse contract, GeneratedAccountInfo account) {}
+    TenantDetailResponse tenant,
+    ContractDetailResponse contract,
+    GeneratedAccountInfo account,
+    OnboardingInvoiceSummary firstInvoice) {}
