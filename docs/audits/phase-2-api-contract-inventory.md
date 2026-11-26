@@ -4,11 +4,12 @@
 - **Repository Branch:** `feat/orca-phase3-final` (hardened from baseline `18e1d6e`)
 - **Execution Date:** November 26, 2026
 - **Stack:** Java 25 | Spring Boot `4.1.2` | PostgreSQL 16/17 + Flyway | Redis 8 | OpenAPI `/v3/api-docs` & Scalar `/scalar` (`/docs`)
-- **Implementation Mode:** Phase 2 Hardening (`F-03`, `F-05`, `F-08`, `F-09`, `F-02` regression verified; `F-01`, `F-04`, `F-06`, `F-07` explicitly `DEFERRED / ACCEPTED RISK`) + Phase 3A OCI S3 Storage & Streaming (`2b391e3`) + Phase 3A MINOR Fixes (Task `3A-Fix`)
+- **Implementation Mode:** Phase 2 Hardening (`F-03`, `F-05`, `F-08`, `F-09`, `F-02` regression verified; `F-01`, `F-04`, `F-06`, `F-07` explicitly `DEFERRED / ACCEPTED RISK`) + Phase 3A OCI S3 Storage & Streaming (`2b391e3`, `eda3732`) + Phase 3B Onboarding & Contracts (`3B-1`..`3B-6` — see [phase-3-api-contract-inventory.md](phase-3-api-contract-inventory.md))
 - **Verification Status:**
   - Phase 2 Hardening (`f479fe6`): **388 / 388** Maven tests passed (`0` Failures, `0` Errors, `0` Skipped)
   - Phase 3A (`2b391e3`): **398** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`)
-  - Phase 3A MINOR Fixes (`Task 3A-Fix`): **413** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`)
+  - Phase 3A MINOR Fixes (`eda3732`, Task `3A-Fix`): **413** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`)
+  - Phase 3B Final (`Task 3B-6`): **489** offline tests passed (`Tests run: 490, Failures: 0, Errors: 0, Skipped: 1` live smoke test `OciS3LiveSmokeTest`) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`) — full Phase 3 contract details in [phase-3-api-contract-inventory.md](phase-3-api-contract-inventory.md)
 
 ---
 
@@ -153,10 +154,11 @@ Note: **`PUT /api/v1/admin/vehicles/{id}` does not exist** (removed in F-02). `V
 ## 3. Verification & Test Suite Summary
 
 ### Test Execution Metrics
-- **Compile:** `./mvnw -DskipTests compile` → `BUILD SUCCESS` (`209` main source files, Java 25, Spring Boot `4.1.2`).
+- **Compile:** `./mvnw -DskipTests compile` → `BUILD SUCCESS` (`215` main source files, Java 25, Spring Boot `4.1.2`).
 - **Phase 2 Hardening (`f479fe6`):** **388 / 388** Maven tests passed (`0` Failures, `0` Errors, `0` Skipped).
 - **Phase 3A (`2b391e3`):** **398** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`).
-- **Phase 3A MINOR Fixes (`Task 3A-Fix`, current commit):** **413** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test `OciS3LiveSmokeTest`) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`).
+- **Phase 3A MINOR Fixes (`eda3732`, Task `3A-Fix`):** **413** offline tests passed (`0` Failures, `0` Errors, `1` Skipped live smoke test `OciS3LiveSmokeTest`) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`).
+- **Phase 3B Final (`Task 3B-6`, current commit):** **489** offline tests passed (`Tests run: 490, Failures: 0, Errors: 0, Skipped: 1` live smoke test `OciS3LiveSmokeTest`) + **1 / 1** OCI live smoke test passed (`OCI_SMOKE_TEST_ENABLED=true ./mvnw test -Dtest=OciS3LiveSmokeTest`). Full Phase 3 endpoint/error/prototype inventory and Phase 3B suite breakdown are documented in [phase-3-api-contract-inventory.md](phase-3-api-contract-inventory.md).
 - **Build Status:** `BUILD SUCCESS`.
 
 ### Key Verification Suites Executed
@@ -165,19 +167,21 @@ Note: **`PUT /api/v1/admin/vehicles/{id}` does not exist** (removed in F-02). `V
    - `Phase1APostgresMigrationTest` (`14` tests) — Table constraints and triggers verification.
    - `VehicleLifecyclePostgresTest` (`4` tests) — Partial unique indexes and atomic vehicle replacement.
    - `DataIntegrityClassificationPostgresTest` (`1` integration test covering `uq_users_email_canonical`, `tenants_id_card_number_key`, `uq_rooms_number_canonical`, `room_code_registry_pkey`, `uq_vehicles_issued_card_code`, `uq_vehicles_tenant_active_quota`, `uq_vehicle_change_requests_pending_tenant`, unmapped `23505`, `23514`, `23502`, `23503`, `22001`).
-   - `AppExceptionHandlerDataIntegrityTest` (`18` tests) — Unit classification matrix for `409` vs `400`.
+   - `AppExceptionHandlerDataIntegrityTest` (`22` tests) — Unit classification matrix for `409` vs `400`.
+   - Phase 3B PostgreSQL suites (`OnboardingPostgresTest` `5`, `ContractRenewalPostgresTest` `7`, `ContractCheckoutPostgresTest` `3`, `InvoiceIssuancePostgresTest` `3`) — see [phase-3-api-contract-inventory.md](phase-3-api-contract-inventory.md).
 2. **Spring Security, Logging & RBAC Integration:**
    - `AuthenticationSecurityIntegrationTest` (`8` tests) — Filter chain, Redis session invalidation, rate-limiting locks, role checks.
    - `RoomBedSecurityIntegrationTest` (`4` tests) — Room/Bed authorization boundaries.
    - `TenantProfileSecurityIntegrationTest` (`10` tests) — Actor-specific profile editing and blank-identity rejection.
    - `VehicleSecurityIntegrationTest` (`9` tests) — Anonymous 401, RBAC 403, cross-tenant 404, `GET`/`HEAD` evidence streaming, `/uploads/**` denial.
-   - `ContractDocumentSecurityIntegrationTest` (`8` tests) — Manager & owning `ACTIVE`/`CHECKED_OUT` tenant `GET`/`HEAD` document streaming, cross-tenant/cross-contract fail-closed 404, `/uploads/**` denial, commit/rollback object cleanup.
-   - `LogMaskingUtilsTest` (`4` tests), `LoginAttemptServiceTest` (`8` tests), `CustomUserDetailsServiceTest` (`1` test), `EmailServiceImplTest` (`1` test), `OtpServiceTest` (`7` tests), `OnboardingServiceImplTest` (`10` tests), `AuthServiceTest` (`17` tests), `UserServiceTest` (`11` tests) — Sensitive log masking (`ListAppender`) & auth unit coverage.
+   - `ContractDocumentSecurityIntegrationTest` (`10` tests) — Manager & owning `ACTIVE`/`CHECKED_OUT` tenant `GET`/`HEAD` document streaming, tenant history/detail isolation, cross-tenant/cross-contract fail-closed 404, `/uploads/**` denial, commit/rollback object cleanup.
+   - `OnboardingSecurityIntegrationTest` (`4` tests) — Anonymous `401`, non-`MANAGER` `403`, `MANAGER` `201` + `firstInvoice`.
+   - `LogMaskingUtilsTest` (`4` tests), `LoginAttemptServiceTest` (`8` tests), `CustomUserDetailsServiceTest` (`1` test), `EmailServiceImplTest` (`1` test), `OtpServiceTest` (`7` tests), `OnboardingServiceImplTest` (`15` tests), `AuthServiceTest` (`17` tests), `UserServiceTest` (`11` tests) — Sensitive log masking (`ListAppender`) & auth unit coverage.
 3. **Domain Unit / MVC / Storage / OpenAPI & E2E Acceptance:**
-   - `OpenApiContractVerificationTest` (`1` test) — Live `/v3/api-docs` route & HTTP method contract verification including absence of `PUT /api/v1/admin/vehicles/{id}` and verification that streaming endpoints expose no `httpMethod` parameter.
+   - `OpenApiContractVerificationTest` (`1` test) — Live `/v3/api-docs` route & HTTP method contract verification across all Phase 2 and Phase 3 endpoints, including absence of `PUT /api/v1/admin/vehicles/{id}` and verification that streaming endpoints expose no `httpMethod` parameter.
    - `S3PrivateObjectStorageTest` (`20` tests), `StreamingResponseUtilsTest` (`5` tests), `PrivateVehicleEvidenceStorageTest` (`3` tests), `StorageConfigTest` (`4` tests), and live `OciS3LiveSmokeTest` (`1` test when `OCI_SMOKE_TEST_ENABLED=true`).
-   - `TenantServiceImplTest` (`13` tests), `TenantControllerTest` (`8` tests), `TenantProfileControllerTest` (`3` tests), `TenantContractVehicleDtoValidationTest` (`16` tests), `RoomServiceTest` (`15` tests), `RoomControllerTest` (`11` tests), `ContractServiceImplTest` (`13` tests), `ContractControllerTest` (`10` tests), `VehicleServiceImplTest` (`14` tests), `VehicleControllerTest` (`12` tests), `VehicleChangeRequestServiceTest` (`6` tests), `VehicleChangeRequestControllerTest` (`6` tests), `DomainErrorCodeTest` (`4` tests).
-   - `Phase2CoreModulesE2ETest` (`4` tests) & `ResidentLifecycleE2ETest` (`1` test).
+   - `TenantServiceImplTest` (`13` tests), `TenantControllerTest` (`8` tests), `TenantProfileControllerTest` (`3` tests), `TenantContractVehicleDtoValidationTest` (`17` tests), `RoomServiceTest` (`15` tests), `RoomControllerTest` (`11` tests), `ContractServiceImplTest` (`28` tests), `ContractControllerTest` (`19` tests), `OnboardingControllerTest` (`11` tests), `InvoiceIssuanceServiceImplTest` (`10` tests), `ContractStatusSchedulerTest` (`2` tests), `VehicleServiceImplTest` (`14` tests), `VehicleControllerTest` (`12` tests), `VehicleChangeRequestServiceTest` (`6` tests), `VehicleChangeRequestControllerTest` (`6` tests), `DomainErrorCodeTest` (`4` tests).
+   - `Phase2CoreModulesE2ETest` (`4` tests) & `ResidentLifecycleE2ETest` (`1` test covering the full SRS v3.4.1 Phase 3 resident lifecycle end to end).
 
 ---
 
@@ -199,4 +203,4 @@ Implemented on branch `feat/orca-phase3-final` without modifying `V1__clean_base
 
 ## 5. Branch Status Notice
 
-All Phase 2 Hardening (`f479fe6`), Phase 3A storage integration (`2b391e3`), and Phase 3A MINOR fixes (Task `3A-Fix`) are committed locally on branch `feat/orca-phase3-final` (on top of `18e1d6e`). No merge, push, or deployment has been performed.
+All Phase 2 Hardening (`f479fe6`), Phase 3A storage integration (`2b391e3`, `eda3732`), and Phase 3B Onboarding & Contracts (`3B-1`..`3B-6`, see [phase-3-api-contract-inventory.md](phase-3-api-contract-inventory.md)) are committed locally on branch `feat/orca-phase3-final` (on top of `18e1d6e`). No merge, push, or deployment has been performed.

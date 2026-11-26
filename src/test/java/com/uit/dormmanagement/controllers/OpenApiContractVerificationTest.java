@@ -33,8 +33,8 @@ class OpenApiContractVerificationTest {
 
   @Test
   @DisplayName(
-      "GET /v3/api-docs exposes Phase 2 endpoints accurately and omits PUT /api/v1/admin/vehicles/{id}")
-  void openApiDocs_matchesLivePhase2Contract() throws Exception {
+      "GET /v3/api-docs exposes Phase 2 and Phase 3 endpoints accurately and omits PUT /api/v1/admin/vehicles/{id}")
+  void openApiDocs_matchesLivePhase2AndPhase3Contract() throws Exception {
     MvcResult result = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn();
 
     JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -105,7 +105,23 @@ class OpenApiContractVerificationTest {
     assertThat(paths.has("/api/v1/admin/vehicle-change-requests/{requestId}/evidence/{side}"))
         .isTrue();
 
-    // Contract Document Backend Streaming (Phase 3A)
+    // Onboarding & Contracts (Phase 3A + Phase 3B)
+    assertThat(paths.has("/api/v1/admin/onboarding")).isTrue();
+    assertThat(paths.get("/api/v1/admin/onboarding").has("post")).isTrue();
+
+    assertThat(paths.has("/api/v1/admin/contracts")).isTrue();
+    assertThat(paths.get("/api/v1/admin/contracts").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/admin/contracts/{id}")).isTrue();
+    assertThat(paths.get("/api/v1/admin/contracts/{id}").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/admin/contracts/{id}/renew")).isTrue();
+    assertThat(paths.get("/api/v1/admin/contracts/{id}/renew").has("post")).isTrue();
+    assertThat(paths.has("/api/v1/admin/contracts/{id}/terminate")).isTrue();
+    assertThat(paths.get("/api/v1/admin/contracts/{id}/terminate").has("post")).isTrue();
+    assertThat(paths.has("/api/v1/admin/contracts/{id}/documents")).isTrue();
+    assertThat(paths.get("/api/v1/admin/contracts/{id}/documents").has("post")).isTrue();
+    assertThat(paths.has("/api/v1/admin/contracts/{id}/documents/{documentId}")).isTrue();
+    assertThat(paths.get("/api/v1/admin/contracts/{id}/documents/{documentId}").has("delete"))
+        .isTrue();
     assertThat(paths.has("/api/v1/admin/contracts/{contractId}/documents/{documentId}/content"))
         .isTrue();
     assertThat(
@@ -113,6 +129,13 @@ class OpenApiContractVerificationTest {
                 .get("/api/v1/admin/contracts/{contractId}/documents/{documentId}/content")
                 .has("get"))
         .isTrue();
+
+    assertThat(paths.has("/api/v1/tenant/contracts/me")).isTrue();
+    assertThat(paths.get("/api/v1/tenant/contracts/me").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/tenant/contracts")).isTrue();
+    assertThat(paths.get("/api/v1/tenant/contracts").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/tenant/contracts/{id}")).isTrue();
+    assertThat(paths.get("/api/v1/tenant/contracts/{id}").has("get")).isTrue();
     assertThat(paths.has("/api/v1/tenant/contracts/{contractId}/documents/{documentId}/content"))
         .isTrue();
     assertThat(
