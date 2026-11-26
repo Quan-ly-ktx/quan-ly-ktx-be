@@ -7,6 +7,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.uit.dormmanagement.dtos.request.onboarding.OnboardingRequest;
 import com.uit.dormmanagement.dtos.response.onboarding.OnboardingResponse;
 import com.uit.dormmanagement.entities.Bed;
@@ -18,7 +22,6 @@ import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
-import com.uit.dormmanagement.enums.RoomType;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
@@ -32,6 +35,7 @@ import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.impl.OnboardingServiceImpl;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +46,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
@@ -399,5 +404,55 @@ class OnboardingServiceImplTest {
 
     assertThat(onboardingService.onboardTenant(validRequest)).isNotNull();
     verify(userRepository).save(any(User.class));
+  }
+
+  @Test
+  @DisplayName("onboardTenant logs should mask CCCD for both new and re-onboarded tenants")
+  void onboardTenant_logsShouldMaskCccd() {
+    String rawCccd = validRequest.idCardNumber();
+
+    when(bedRepository.findById(bedId)).thenReturn(Optional.of(availableMaleBed));
+    when(tenantRepository.findByIdCardNumber(rawCccd)).thenReturn(Optional.empty());
+    when(tenantRepository.existsByIdCardNumber(rawCccd)).thenReturn(false);
+    when(userRepository.existsByEmail("nguyenvana@gmail.com")).thenReturn(false);
+    when(passwordEncoder.encode("Password123@")).thenReturn("hashed_password_123");
+    when(tenantRepository.findNextTenantCodeSequence()).thenReturn(1L);
+    when(contractRepository.findNextContractCodeSequence(2026)).thenReturn(1L);
+    when(userRepository.save(any(User.class)))
+        .thenAnswer(
+            invocation -> {
+              User u = invocation.getArgument(0);
+              u.setId(UUID.randomUUID());
+              return u;
+            });
+    when(tenantRepository.save(any(Tenant.class)))
+        .thenAnswer(
+            invocation -> {
+              Tenant t = invocation.getArgument(0);
+              t.setId(UUID.randomUUID());
+              return t;
+            });
+    when(contractRepository.save(any(Contract.class)))
+        .thenAnswer(invocation -> invocation.getArgument(0));
+    when(bedRepository.save(any(Bed.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    Logger logger = (Logger) LoggerFactory.getLogger(OnboardingServiceImpl.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.INFO);
+
+    try {
+      onboardingService.onboardTenant(validRequest);
+
+      List<String> messages =
+          appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("***234"));
+      assertThat(messages).noneMatch(msg -> msg.contains(rawCccd));
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(previousLevel);
+    }
   }
 }

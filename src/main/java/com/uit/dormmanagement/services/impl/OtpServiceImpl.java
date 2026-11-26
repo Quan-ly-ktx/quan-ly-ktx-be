@@ -4,6 +4,7 @@ import com.uit.dormmanagement.constants.RedisKeyConstants;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.services.OtpService;
+import com.uit.dormmanagement.utils.LogMaskingUtils;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -42,7 +43,7 @@ public class OtpServiceImpl implements OtpService {
     redisTemplate.opsForValue().set(cooldownKey, COOLDOWN_VALUE, OTP_COOLDOWN_TTL);
     redisTemplate.delete(attemptsKey);
 
-    log.debug("Generated and stored OTP for email: {}", email);
+    log.debug("Generated and stored OTP for email: {}", LogMaskingUtils.maskEmail(email));
     return otp;
   }
 
@@ -52,12 +53,13 @@ public class OtpServiceImpl implements OtpService {
       return false;
     }
 
+    String maskedEmail = LogMaskingUtils.maskEmail(email);
     String attemptsKey = RedisKeyConstants.otpAttemptsKey(email);
     String currentAttemptsStr = redisTemplate.opsForValue().get(attemptsKey);
     int currentAttempts = currentAttemptsStr != null ? Integer.parseInt(currentAttemptsStr) : 0;
 
     if (currentAttempts >= MAX_OTP_ATTEMPTS) {
-      log.warn("Exceeded maximum OTP attempts for email: {}", email);
+      log.warn("Exceeded maximum OTP attempts for email: {}", maskedEmail);
       throw new BaseAppException(AuthErrorCode.OTP_MAX_ATTEMPTS_EXCEEDED);
     }
 
@@ -70,7 +72,7 @@ public class OtpServiceImpl implements OtpService {
             otp.trim().getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
       redisTemplate.delete(otpKey);
       redisTemplate.delete(attemptsKey);
-      log.debug("Successfully verified and deleted OTP for email: {}", email);
+      log.debug("Successfully verified and deleted OTP for email: {}", maskedEmail);
       return true;
     }
 
@@ -80,7 +82,7 @@ public class OtpServiceImpl implements OtpService {
     }
     log.debug(
         "Failed OTP verification for email: {}, attempt: {}/{}",
-        email,
+        maskedEmail,
         newAttempts,
         MAX_OTP_ATTEMPTS);
     return false;
@@ -106,7 +108,9 @@ public class OtpServiceImpl implements OtpService {
     String token = UUID.randomUUID().toString();
     String key = RedisKeyConstants.passwordResetTokenKey(email);
     redisTemplate.opsForValue().set(key, token, PASSWORD_RESET_TOKEN_TTL);
-    log.debug("Generated and stored password reset token for email: {}", email);
+    log.debug(
+        "Generated and stored password reset token for email: {}",
+        LogMaskingUtils.maskEmail(email));
     return token;
   }
 
@@ -122,7 +126,9 @@ public class OtpServiceImpl implements OtpService {
             storedToken.getBytes(java.nio.charset.StandardCharsets.UTF_8),
             token.trim().getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
       redisTemplate.delete(key);
-      log.debug("Successfully verified and deleted password reset token for email: {}", email);
+      log.debug(
+          "Successfully verified and deleted password reset token for email: {}",
+          LogMaskingUtils.maskEmail(email));
       return true;
     }
     return false;

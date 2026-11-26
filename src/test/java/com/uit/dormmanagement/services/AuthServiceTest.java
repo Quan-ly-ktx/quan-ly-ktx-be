@@ -10,6 +10,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.uit.dormmanagement.dtos.request.auth.ChangePasswordRequest;
 import com.uit.dormmanagement.dtos.request.auth.LoginRequest;
 import com.uit.dormmanagement.dtos.request.auth.PasswordRecoveryRequest;
@@ -19,8 +23,8 @@ import com.uit.dormmanagement.dtos.request.auth.VerifyRecoveryOtpRequest;
 import com.uit.dormmanagement.dtos.response.auth.AuthResponse;
 import com.uit.dormmanagement.dtos.response.auth.PasswordRecoveryRequestedResponse;
 import com.uit.dormmanagement.dtos.response.auth.VerifyResetPasswordOtpResponse;
-import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Tenant;
+import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.UserRole;
@@ -34,6 +38,7 @@ import com.uit.dormmanagement.security.JwtService;
 import com.uit.dormmanagement.security.TokenPayload;
 import com.uit.dormmanagement.services.impl.AuthServiceImpl;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +48,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
@@ -87,7 +93,8 @@ class AuthServiceTest {
     when(userRepository.findByEmail("manager@dorm.vn")).thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("Password@123", testUser.getPasswordHash())).thenReturn(true);
     when(userTokenInvalidationService.getOrCreateGeneration(userId)).thenReturn("gen-123");
-    when(jwtService.generateAccessToken(eq(testUser), anyString(), eq("gen-123"))).thenReturn("mock-access-token");
+    when(jwtService.generateAccessToken(eq(testUser), anyString(), eq("gen-123")))
+        .thenReturn("mock-access-token");
     when(jwtService.generateRefreshToken(eq(testUser), anyString(), eq("gen-123")))
         .thenReturn("mock-refresh-token");
     when(jwtService.getAccessTokenExpirationSeconds()).thenReturn(86400L);
@@ -101,8 +108,7 @@ class AuthServiceTest {
     assertThat(response.user().email()).isEqualTo("manager@dorm.vn");
 
     verify(loginAttemptService).resetAttempts("manager@dorm.vn");
-    verify(tokenRevocationService)
-        .recordRefreshToken(eq(userId), anyString(), eq(604800L));
+    verify(tokenRevocationService).recordRefreshToken(eq(userId), anyString(), eq(604800L));
   }
 
   @Test
@@ -129,13 +135,14 @@ class AuthServiceTest {
     when(tenantRepository.findByIdCardNumber("079203001187")).thenReturn(Optional.of(tenant));
     when(passwordEncoder.matches("Password@123", "tenant-hash")).thenReturn(true);
     when(userTokenInvalidationService.getOrCreateGeneration(userId)).thenReturn("gen-123");
-    when(jwtService.generateAccessToken(eq(tenantUser), anyString(), eq("gen-123"))).thenReturn("access");
-    when(jwtService.generateRefreshToken(eq(tenantUser), anyString(), eq("gen-123"))).thenReturn("refresh");
+    when(jwtService.generateAccessToken(eq(tenantUser), anyString(), eq("gen-123")))
+        .thenReturn("access");
+    when(jwtService.generateRefreshToken(eq(tenantUser), anyString(), eq("gen-123")))
+        .thenReturn("refresh");
     when(jwtService.getAccessTokenExpirationSeconds()).thenReturn(86400L);
     when(jwtService.getRefreshTokenExpirationSeconds()).thenReturn(604800L);
 
-    AuthResponse response =
-        authService.login(new LoginRequest("079203001187", "Password@123"));
+    AuthResponse response = authService.login(new LoginRequest("079203001187", "Password@123"));
 
     assertThat(response.user().email()).isEqualTo("tenant@example.test");
     verify(loginAttemptService).resetAttempts("079203001187");
@@ -172,11 +179,11 @@ class AuthServiceTest {
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(BaseAppException.class)
         .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_TEMPORARILY_LOCKED);
-
   }
 
   @Test
-  @DisplayName("login should return generic INVALID_CREDENTIALS when user status is LOCKED to avoid enumeration")
+  @DisplayName(
+      "login should return generic INVALID_CREDENTIALS when user status is LOCKED to avoid enumeration")
   void permanentlyLockedLoginUsesGenericCredentialsError() {
     LoginRequest request = new LoginRequest("manager@dorm.vn", "Password@123");
     testUser.setStatus(UserStatus.LOCKED);
@@ -192,7 +199,8 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("login should throw ACCOUNT_TEMPORARILY_LOCKED when 6th failure locks the identifier")
+  @DisplayName(
+      "login should throw ACCOUNT_TEMPORARILY_LOCKED when 6th failure locks the identifier")
   void sixthFailureDuringLoginThrowsAccountTemporarilyLocked() {
     LoginRequest request = new LoginRequest("manager@dorm.vn", "WrongPassword");
 
@@ -249,7 +257,8 @@ class AuthServiceTest {
     when(tokenRevocationService.isRefreshTokenValid(userId, jti)).thenReturn(true);
     when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
     when(userTokenInvalidationService.getOrCreateGeneration(userId)).thenReturn(gen);
-    when(jwtService.generateAccessToken(eq(testUser), anyString(), eq(gen))).thenReturn("new-access-token");
+    when(jwtService.generateAccessToken(eq(testUser), anyString(), eq(gen)))
+        .thenReturn("new-access-token");
     when(jwtService.generateRefreshToken(eq(testUser), anyString(), eq(gen)))
         .thenReturn("new-refresh-token");
     when(jwtService.getAccessTokenExpirationSeconds()).thenReturn(86400L);
@@ -261,8 +270,7 @@ class AuthServiceTest {
     assertThat(response.refreshToken()).isEqualTo("new-refresh-token");
 
     verify(tokenRevocationService).revokeRefreshToken(userId, jti);
-    verify(tokenRevocationService)
-        .recordRefreshToken(eq(userId), anyString(), eq(604800L));
+    verify(tokenRevocationService).recordRefreshToken(eq(userId), anyString(), eq(604800L));
   }
 
   @Test
@@ -297,7 +305,8 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("logout should reject when refresh token belongs to a different user without modifying either token")
+  @DisplayName(
+      "logout should reject when refresh token belongs to a different user without modifying either token")
   void logoutShouldRejectDifferentUserRefreshTokenWithoutModifyingEitherToken() {
     String authHeader = "Bearer access-token-abc";
     RefreshTokenRequest request = new RefreshTokenRequest("refresh-token-xyz");
@@ -339,7 +348,8 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("logout should blacklist access token and revoke refresh token when both are valid and owned by user")
+  @DisplayName(
+      "logout should blacklist access token and revoke refresh token when both are valid and owned by user")
   void logoutShouldSucceedWhenBothTokensAreValidAndOwnedByUser() {
     String authHeader = "Bearer access-token-abc";
     RefreshTokenRequest request = new RefreshTokenRequest("refresh-token-xyz");
@@ -460,5 +470,40 @@ class AuthServiceTest {
     authService.resetPassword(request);
 
     verify(passwordRecoveryService).reset("reset-token", "NewPass@123", "NewPass@123");
+  }
+
+  @Test
+  @DisplayName("login logs should mask raw CCCD and full email")
+  void loginLogs_shouldMaskRawCccdAndEmail() {
+    String rawCccd = "079203001187";
+    String rawEmail = "unknown.staff@dorm.vn";
+
+    Logger logger = (Logger) LoggerFactory.getLogger(AuthServiceImpl.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.WARN);
+
+    try {
+      when(loginAttemptService.isLocked(rawCccd)).thenReturn(false);
+      when(userRepository.findByEmail(rawCccd)).thenReturn(Optional.empty());
+      when(tenantRepository.findByIdCardNumber(rawCccd)).thenReturn(Optional.empty());
+      assertThatThrownBy(() -> authService.login(new LoginRequest(rawCccd, "Password@123")))
+          .isInstanceOf(BaseAppException.class);
+
+      when(loginAttemptService.isLocked(rawEmail)).thenReturn(true);
+      assertThatThrownBy(() -> authService.login(new LoginRequest(rawEmail, "Password@123")))
+          .isInstanceOf(BaseAppException.class);
+
+      List<String> messages =
+          appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("***187"));
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("u***@dorm.vn"));
+      assertThat(messages).noneMatch(msg -> msg.contains(rawCccd) || msg.contains(rawEmail));
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(previousLevel);
+    }
   }
 }

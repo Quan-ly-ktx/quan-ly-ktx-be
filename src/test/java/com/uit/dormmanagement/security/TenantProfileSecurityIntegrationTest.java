@@ -1,13 +1,14 @@
 package com.uit.dormmanagement.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest;
 import com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest;
 import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
@@ -21,7 +22,6 @@ import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
 import com.uit.dormmanagement.support.RedisTestContainerSupport;
-import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,8 +30,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -142,8 +142,12 @@ class TenantProfileSecurityIntegrationTest {
   @DisplayName("Anonymous requesting admin tenant endpoints should return 401")
   void anonymous_requestingAdminTenants_shouldReturn401() throws Exception {
     mockMvc.perform(get("/api/v1/admin/tenants")).andExpect(status().isUnauthorized());
-    mockMvc.perform(get("/api/v1/admin/tenants/" + activeTenant.getId())).andExpect(status().isUnauthorized());
-    mockMvc.perform(post("/api/v1/admin/tenants/" + activeTenant.getId() + "/reset-password")).andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(get("/api/v1/admin/tenants/" + activeTenant.getId()))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(post("/api/v1/admin/tenants/" + activeTenant.getId() + "/reset-password"))
+        .andExpect(status().isUnauthorized());
   }
 
   @Test
@@ -154,7 +158,9 @@ class TenantProfileSecurityIntegrationTest {
         .perform(get("/api/v1/admin/tenants").header("Authorization", "Bearer " + token))
         .andExpect(status().isForbidden());
     mockMvc
-        .perform(post("/api/v1/admin/tenants/" + activeTenant.getId() + "/reset-password").header("Authorization", "Bearer " + token))
+        .perform(
+            post("/api/v1/admin/tenants/" + activeTenant.getId() + "/reset-password")
+                .header("Authorization", "Bearer " + token))
         .andExpect(status().isForbidden());
   }
 
@@ -175,7 +181,9 @@ class TenantProfileSecurityIntegrationTest {
         .perform(get("/api/v1/admin/tenants").header("Authorization", "Bearer " + token))
         .andExpect(status().isOk());
     mockMvc
-        .perform(get("/api/v1/admin/tenants/" + activeTenant.getId()).header("Authorization", "Bearer " + token))
+        .perform(
+            get("/api/v1/admin/tenants/" + activeTenant.getId())
+                .header("Authorization", "Bearer " + token))
         .andExpect(status().isOk());
   }
 
@@ -241,5 +249,116 @@ class TenantProfileSecurityIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))
         .andExpect(status().isOk());
+  }
+
+  @Test
+  @DisplayName(
+      "Manager PUT tenant retains omitted identity fields and rejects supplied blanks with 400")
+  void managerUpdateTenant_omittedIdentityRetainedAndSuppliedBlankRejected() throws Exception {
+    String managerToken = tokenFor(managerUser);
+
+    String omittedPayload =
+        """
+        {
+          "fullName": "Active Tenant Renamed",
+          "phone": "0911222444",
+          "permanentAddress": "999 Nguyen Trai",
+          "dateOfBirth": null,
+          "emergencyContactName": "",
+          "emergencyContactPhone": ""
+        }
+        """;
+
+    mockMvc
+        .perform(
+            put("/api/v1/admin/tenants/" + activeTenant.getId())
+                .header("Authorization", "Bearer " + managerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(omittedPayload))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.idCardNumber").value("079203888888"))
+        .andExpect(jsonPath("$.data.email").value("tenant_profile_sec@example.com"))
+        .andExpect(jsonPath("$.data.fullName").value("Active Tenant Renamed"));
+
+    String blankEmailPayload =
+        """
+        {
+          "fullName": "Active Tenant Renamed",
+          "email": "   ",
+          "phone": "0911222444",
+          "permanentAddress": "999 Nguyen Trai"
+        }
+        """;
+
+    mockMvc
+        .perform(
+            put("/api/v1/admin/tenants/" + activeTenant.getId())
+                .header("Authorization", "Bearer " + managerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(blankEmailPayload))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.errorCode").value("WEB_400_VAL"));
+
+    String blankCccdPayload =
+        """
+        {
+          "fullName": "Active Tenant Renamed",
+          "idCardNumber": "",
+          "phone": "0911222444",
+          "permanentAddress": "999 Nguyen Trai"
+        }
+        """;
+
+    mockMvc
+        .perform(
+            put("/api/v1/admin/tenants/" + activeTenant.getId())
+                .header("Authorization", "Bearer " + managerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(blankCccdPayload))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.errorCode").value("WEB_400_VAL"));
+
+    Tenant reloaded = tenantRepository.findById(activeTenant.getId()).orElseThrow();
+    assertThat(reloaded.getIdCardNumber()).isEqualTo("079203888888");
+    assertThat(reloaded.getUser().getEmail()).isEqualTo("tenant_profile_sec@example.com");
+  }
+
+  @Test
+  @DisplayName(
+      "Tenant PATCH profile rejects blank phone/address with 400 and clears blank emergency contact")
+  void tenantPatchProfile_blankRequiredRejectedAndBlankEmergencyCleared() throws Exception {
+    String tenantToken = tokenFor(tenantUser);
+
+    mockMvc
+        .perform(
+            patch("/api/v1/tenant/profile")
+                .header("Authorization", "Bearer " + tenantToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"phone\":\"   \"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.errorCode").value("WEB_400_VAL"));
+
+    mockMvc
+        .perform(
+            patch("/api/v1/tenant/profile")
+                .header("Authorization", "Bearer " + tenantToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"permanentAddress\":\"\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.errorCode").value("WEB_400_VAL"));
+
+    activeTenant.setEmergencyContactName("Old Name");
+    activeTenant.setEmergencyContactPhone("0909000111");
+    tenantRepository.saveAndFlush(activeTenant);
+
+    mockMvc
+        .perform(
+            patch("/api/v1/tenant/profile")
+                .header("Authorization", "Bearer " + tenantToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"emergencyContactName\":\"   \",\"emergencyContactPhone\":\"\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.tenantProfile.emergencyContactName").doesNotExist())
+        .andExpect(jsonPath("$.data.tenantProfile.emergencyContactPhone").doesNotExist());
   }
 }

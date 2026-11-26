@@ -1,6 +1,7 @@
 package com.uit.dormmanagement.services.impl;
 
 import com.uit.dormmanagement.services.EmailService;
+import com.uit.dormmanagement.utils.LogMaskingUtils;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import java.io.UnsupportedEncodingException;
@@ -30,7 +31,8 @@ public class EmailServiceImpl implements EmailService {
   @Override
   @Async
   public void sendForgotPasswordOtp(String toEmail, String fullName, String otp) {
-    log.info("Sending forgot password OTP email to recipient: {}", toEmail);
+    log.info(
+        "Sending forgot password OTP email to recipient: {}", LogMaskingUtils.maskEmail(toEmail));
     String subject = "KTX Hub - Yêu cầu khôi phục mật khẩu";
     String title = "Mã xác thực khôi phục mật khẩu";
     String messageBody =
@@ -41,8 +43,9 @@ public class EmailServiceImpl implements EmailService {
   }
 
   private void sendHtmlEmail(String toEmail, String subject, String htmlContent) {
+    String maskedEmail = LogMaskingUtils.maskEmail(toEmail);
     if (mailSender == null) {
-      log.warn("JavaMailSender is not configured. Email to {} was not sent", toEmail);
+      log.warn("JavaMailSender is not configured. Email to {} was not sent", maskedEmail);
       return;
     }
     try {
@@ -61,9 +64,9 @@ public class EmailServiceImpl implements EmailService {
       helper.setText(htmlContent, true);
 
       mailSender.send(mimeMessage);
-      log.info("Successfully sent email to: {}", toEmail);
+      log.info("Successfully sent email to: {}", maskedEmail);
     } catch (MessagingException | RuntimeException e) {
-      log.error("Failed to send email to: {}. Error: {}", toEmail, e.getMessage(), e);
+      log.error("Failed to send email to: {}. Error: {}", maskedEmail, e.getMessage(), e);
     }
   }
 

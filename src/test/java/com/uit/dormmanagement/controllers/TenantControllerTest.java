@@ -172,7 +172,8 @@ class TenantControllerTest {
             .currentRoomNumber("P.302")
             .build();
 
-    when(tenantService.updateTenantAsManager(any(), eq(tenantId), any())).thenReturn(updatedResponse);
+    when(tenantService.updateTenantAsManager(any(), eq(tenantId), any()))
+        .thenReturn(updatedResponse);
 
     mockMvc
         .perform(
@@ -205,10 +206,75 @@ class TenantControllerTest {
   }
 
   @Test
-  @DisplayName("POST /api/v1/admin/tenants/{id}/reset-password: when success should return 200 and one-time password")
+  @DisplayName(
+      "PUT /api/v1/admin/tenants/{id}: supplied blank idCardNumber or email should return 400 VALIDATION_FAILED")
+  void updateTenant_whenSuppliedBlankIdentityFields_shouldReturn400() throws Exception {
+    ManagerUpdateTenantRequest blankEmailReq =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .email("")
+            .phone("0912345678")
+            .permanentAddress("123 Lê Lợi")
+            .build();
+
+    mockMvc
+        .perform(
+            put("/api/v1/admin/tenants/{id}", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(blankEmailReq)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.httpStatus").value(400))
+        .andExpect(jsonPath("$.errorCode").value("WEB_400_VAL"));
+
+    ManagerUpdateTenantRequest whitespaceCccdReq =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .idCardNumber("   ")
+            .phone("0912345678")
+            .permanentAddress("123 Lê Lợi")
+            .build();
+
+    mockMvc
+        .perform(
+            put("/api/v1/admin/tenants/{id}", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(whitespaceCccdReq)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.httpStatus").value(400))
+        .andExpect(jsonPath("$.errorCode").value("WEB_400_VAL"));
+  }
+
+  @Test
+  @DisplayName(
+      "PUT /api/v1/admin/tenants/{id}: omitted optional identity fields should succeed and retain existing values")
+  void updateTenant_whenOmittedIdentityFields_shouldReturn200() throws Exception {
+    when(tenantService.updateTenantAsManager(any(), eq(tenantId), any())).thenReturn(sampleDetail);
+
+    String jsonPayload =
+        """
+        {
+          "fullName": "Nguyễn Hoàng Nam",
+          "phone": "0912345678",
+          "permanentAddress": "456 Hai Bà Trưng, TP.HCM"
+        }
+        """;
+
+    mockMvc
+        .perform(
+            put("/api/v1/admin/tenants/{id}", tenantId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(jsonPayload))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.httpStatus").value(200));
+  }
+
+  @Test
+  @DisplayName(
+      "POST /api/v1/admin/tenants/{id}/reset-password: when success should return 200 and one-time password")
   void resetTenantPassword_whenSuccess_shouldReturn200() throws Exception {
     OneTimePasswordResponse passwordResponse = new OneTimePasswordResponse("GeneratedP@ss1");
-    when(tenantService.resetTenantPasswordAsManager(any(), eq(tenantId))).thenReturn(passwordResponse);
+    when(tenantService.resetTenantPasswordAsManager(any(), eq(tenantId)))
+        .thenReturn(passwordResponse);
 
     mockMvc
         .perform(post("/api/v1/admin/tenants/{id}/reset-password", tenantId))

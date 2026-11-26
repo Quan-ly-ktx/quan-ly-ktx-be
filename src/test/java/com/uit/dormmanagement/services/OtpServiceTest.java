@@ -6,16 +6,22 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.uit.dormmanagement.constants.RedisKeyConstants;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.services.impl.OtpServiceImpl;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -121,5 +127,44 @@ class OtpServiceTest {
     boolean valid = otpService.verifyPasswordResetToken(email, token);
     assertThat(valid).isTrue();
     verify(redisTemplate).delete(eq(key));
+  }
+
+  @Test
+  @DisplayName("logs should mask email and never emit raw email or OTP")
+  void logsShouldMaskEmailAndOmitOtp() {
+    when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+    String rawEmail = "tenant.secret@dorm.vn";
+
+    Logger logger = (Logger) LoggerFactory.getLogger(OtpServiceImpl.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.DEBUG);
+
+    try {
+      String otp = otpService.generateAndStoreOtp(rawEmail);
+
+      String otpKey = RedisKeyConstants.otpKey(rawEmail);
+      String attemptsKey = RedisKeyConstants.otpAttemptsKey(rawEmail);
+      when(valueOperations.get(attemptsKey)).thenReturn("0");
+      when(valueOperations.get(otpKey)).thenReturn(otp);
+      otpService.verifyOtp(rawEmail, "000000");
+      otpService.verifyOtp(rawEmail, otp);
+
+      String token = otpService.generateAndStorePasswordResetToken(rawEmail);
+      when(valueOperations.get(RedisKeyConstants.passwordResetTokenKey(rawEmail)))
+          .thenReturn(token);
+      otpService.verifyPasswordResetToken(rawEmail, token);
+
+      List<String> messages =
+          appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("t***@dorm.vn"));
+      assertThat(messages)
+          .noneMatch(msg -> msg.contains(rawEmail) || msg.contains(otp) || msg.contains(token));
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(previousLevel);
+    }
   }
 }

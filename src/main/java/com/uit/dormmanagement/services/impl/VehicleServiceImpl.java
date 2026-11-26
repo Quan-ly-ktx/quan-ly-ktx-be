@@ -11,6 +11,7 @@ import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.VehicleChangeRequestStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
@@ -21,7 +22,6 @@ import com.uit.dormmanagement.services.VehicleEvidenceStorage;
 import com.uit.dormmanagement.services.VehicleRegistrationValidator;
 import com.uit.dormmanagement.services.VehicleService;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -118,8 +118,12 @@ public class VehicleServiceImpl implements VehicleService {
     } catch (Exception e) {
       if (frontKey != null) vehicleEvidenceStorage.delete(frontKey);
       if (backKey != null) vehicleEvidenceStorage.delete(backKey);
-      if (e instanceof DataIntegrityViolationException) {
-        throw new BaseAppException(VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED);
+      if (e instanceof DataIntegrityViolationException dive) {
+        if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+            dive, "uq_vehicles_tenant_active_quota")) {
+          throw new BaseAppException(VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED);
+        }
+        throw dive;
       }
       if (e instanceof BaseAppException) {
         throw (BaseAppException) e;
@@ -153,7 +157,8 @@ public class VehicleServiceImpl implements VehicleService {
       throw new BaseAppException(TenantErrorCode.TENANT_NOT_ACTIVE);
     }
 
-    String cleanCardCode = request.cardCode() != null ? request.cardCode().trim().toUpperCase() : null;
+    String cleanCardCode =
+        request.cardCode() != null ? request.cardCode().trim().toUpperCase() : null;
     if (cleanCardCode == null || cleanCardCode.isBlank()) {
       throw new BaseAppException(VehicleErrorCode.CARD_CODE_DUPLICATED);
     }
@@ -166,7 +171,16 @@ public class VehicleServiceImpl implements VehicleService {
     vehicle.setCardCode(cleanCardCode);
     vehicle.setIssuedAt(Instant.now());
 
-    Vehicle saved = vehicleRepository.saveAndFlush(vehicle);
+    Vehicle saved;
+    try {
+      saved = vehicleRepository.saveAndFlush(vehicle);
+    } catch (DataIntegrityViolationException e) {
+      if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+          e, "uq_vehicles_issued_card_code")) {
+        throw new BaseAppException(VehicleErrorCode.CARD_CODE_DUPLICATED);
+      }
+      throw e;
+    }
     log.info("Issued card {} to vehicle {}", cleanCardCode, saved.getId());
     return toResponse(saved);
   }
@@ -343,8 +357,12 @@ public class VehicleServiceImpl implements VehicleService {
     } catch (Exception e) {
       if (frontKey != null) vehicleEvidenceStorage.delete(frontKey);
       if (backKey != null) vehicleEvidenceStorage.delete(backKey);
-      if (e instanceof DataIntegrityViolationException) {
-        throw new BaseAppException(VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED);
+      if (e instanceof DataIntegrityViolationException dive) {
+        if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+            dive, "uq_vehicles_tenant_active_quota")) {
+          throw new BaseAppException(VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED);
+        }
+        throw dive;
       }
       if (e instanceof BaseAppException) {
         throw (BaseAppException) e;
@@ -390,9 +408,7 @@ public class VehicleServiceImpl implements VehicleService {
         .replacedVehicleId(
             vehicle.getReplacedVehicle() != null ? vehicle.getReplacedVehicle().getId() : null)
         .replacedByVehicleId(
-            vehicle.getReplacedByVehicle() != null
-                ? vehicle.getReplacedByVehicle().getId()
-                : null)
+            vehicle.getReplacedByVehicle() != null ? vehicle.getReplacedByVehicle().getId() : null)
         .createdAt(vehicle.getCreatedAt())
         .build();
   }

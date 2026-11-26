@@ -27,6 +27,7 @@ import com.uit.dormmanagement.services.OtpService;
 import com.uit.dormmanagement.services.PasswordRecoveryService;
 import com.uit.dormmanagement.services.TokenRevocationService;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
+import com.uit.dormmanagement.utils.LogMaskingUtils;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -63,7 +64,7 @@ public class AuthServiceImpl implements AuthService {
     if (loginAttemptService.isLocked(identifier)) {
       log.warn(
           "Login attempt blocked: identifier [{}] is temporarily locked",
-          maskIdentifier(identifier));
+          LogMaskingUtils.maskIdentifier(identifier));
       throw new BaseAppException(AuthErrorCode.ACCOUNT_TEMPORARILY_LOCKED);
     }
 
@@ -73,7 +74,8 @@ public class AuthServiceImpl implements AuthService {
       if (loginAttemptService.isLocked(identifier)) {
         throw new BaseAppException(AuthErrorCode.ACCOUNT_TEMPORARILY_LOCKED);
       }
-      log.warn("Login failed: identifier [{}] not found", maskIdentifier(identifier));
+      log.warn(
+          "Login failed: identifier [{}] not found", LogMaskingUtils.maskIdentifier(identifier));
       throw new BaseAppException(AuthErrorCode.INVALID_CREDENTIALS);
     }
 
@@ -93,7 +95,9 @@ public class AuthServiceImpl implements AuthService {
       if (loginAttemptService.isLocked(identifier)) {
         throw new BaseAppException(AuthErrorCode.ACCOUNT_TEMPORARILY_LOCKED);
       }
-      log.warn("Login failed: invalid password for identifier [{}]", maskIdentifier(identifier));
+      log.warn(
+          "Login failed: invalid password for identifier [{}]",
+          LogMaskingUtils.maskIdentifier(identifier));
       throw new BaseAppException(AuthErrorCode.INVALID_CREDENTIALS);
     }
 
@@ -214,7 +218,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     if (!StringUtils.hasText(refreshPayload.sessionGeneration())
-        || !userTokenInvalidationService.isCurrentGeneration(userId, refreshPayload.sessionGeneration())) {
+        || !userTokenInvalidationService.isCurrentGeneration(
+            userId, refreshPayload.sessionGeneration())) {
       log.warn("Logout rejected: refresh token has stale or missing session generation");
       throw new BaseAppException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
@@ -228,7 +233,8 @@ public class AuthServiceImpl implements AuthService {
     long remainingMs = jwtService.getRemainingExpirationMs(accessToken);
     tokenRevocationService.blacklistAccessToken(accessPayload.jti(), remainingMs);
     tokenRevocationService.revokeRefreshToken(userId, refreshPayload.jti());
-    log.info("Successfully logged out user: {}, revoked refresh jti: {}", userId, refreshPayload.jti());
+    log.info(
+        "Successfully logged out user: {}, revoked refresh jti: {}", userId, refreshPayload.jti());
   }
 
   @Override
@@ -294,7 +300,8 @@ public class AuthServiceImpl implements AuthService {
 
   @Override
   public void resetPassword(ResetPasswordRequest request) {
-    passwordRecoveryService.reset(request.resetToken(), request.newPassword(), request.confirmPassword());
+    passwordRecoveryService.reset(
+        request.resetToken(), request.newPassword(), request.confirmPassword());
   }
 
   private AuthResponse generateAuthResponse(User user) {
@@ -343,12 +350,5 @@ public class AuthServiceImpl implements AuthService {
               .map(tenant -> tenant.getFullName())
               .orElse(user.getEmail());
     };
-  }
-
-  private String maskIdentifier(String identifier) {
-    if (identifier == null || identifier.length() <= 3) {
-      return "***";
-    }
-    return "***" + identifier.substring(identifier.length() - 3);
   }
 }

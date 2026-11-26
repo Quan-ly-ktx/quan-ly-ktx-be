@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
+import com.uit.dormmanagement.exceptions.error.WebErrorCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,8 @@ class DomainErrorCodeTest {
     assertThat(ContractErrorCode.GENDER_MISMATCH.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
     assertThat(VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED.getHttpStatus())
         .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(WebErrorCode.CONFLICT.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(WebErrorCode.CONFLICT.getErrorCode()).isEqualTo("WEB_409");
   }
 
   @Test
@@ -77,8 +80,7 @@ class DomainErrorCodeTest {
         .isEqualTo(HttpStatus.CONFLICT);
     assertThat(VehicleErrorCode.VEHICLE_ALREADY_ACTIVE.getHttpStatus())
         .isEqualTo(HttpStatus.CONFLICT);
-    assertThat(VehicleErrorCode.VEHICLE_NOT_PENDING.getHttpStatus())
-        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(VehicleErrorCode.VEHICLE_NOT_PENDING.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
 
     for (VehicleErrorCode code : VehicleErrorCode.values()) {
       assertThat(code.getErrorCode()).isNotBlank().startsWith("VEHICLE_");

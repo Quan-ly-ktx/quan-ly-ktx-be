@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,10 +26,12 @@ import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.VehicleChangeRequestRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.impl.VehicleServiceImpl;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,6 +39,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -123,7 +127,8 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("registerVehicle: when tenant already has active vehicle should throw VEHICLE_QUOTA_EXCEEDED")
+  @DisplayName(
+      "registerVehicle: when tenant already has active vehicle should throw VEHICLE_QUOTA_EXCEEDED")
   void registerVehicle_whenQuotaExceeded_shouldThrow() {
     TenantRegisterVehicleRequest request =
         TenantRegisterVehicleRequest.builder()
@@ -139,8 +144,7 @@ class VehicleServiceImplTest {
         new MockMultipartFile("backImage", "back.jpg", "image/jpeg", new byte[] {3, 4});
 
     when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any()))
-        .thenReturn(1L);
+    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any())).thenReturn(1L);
 
     assertThatThrownBy(() -> vehicleService.registerVehicle(userId, request, front, back))
         .isInstanceOf(BaseAppException.class)
@@ -166,13 +170,18 @@ class VehicleServiceImplTest {
         new MockMultipartFile("backImage", "back.jpg", "image/jpeg", new byte[] {3, 4});
 
     when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any()))
-        .thenReturn(0L);
+    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any())).thenReturn(0L);
 
     VehicleRegistrationValidator.ValidatedVehicleRegistration validated =
         new VehicleRegistrationValidator.ValidatedVehicleRegistration(
             VehicleType.SCOOTER, "59-X3 999.99", "Honda", "Đỏ", front, back);
-    when(vehicleRegistrationValidator.validate(eq(VehicleType.SCOOTER), eq("59-X3 999.99"), eq("Honda"), eq("Đỏ"), eq(front), eq(back)))
+    when(vehicleRegistrationValidator.validate(
+            eq(VehicleType.SCOOTER),
+            eq("59-X3 999.99"),
+            eq("Honda"),
+            eq("Đỏ"),
+            eq(front),
+            eq(back)))
         .thenReturn(validated);
 
     when(vehicleEvidenceStorage.store(any(UUID.class), eq("front"), eq(front)))
@@ -197,8 +206,7 @@ class VehicleServiceImplTest {
 
     IssueCardRequest req = IssueCardRequest.builder().cardCode("THE-0187").build();
     when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
-    when(vehicleRepository.existsByCardCodeAndStatus(
-            "THE-0187", VehicleStatus.ISSUED))
+    when(vehicleRepository.existsByCardCodeAndStatus("THE-0187", VehicleStatus.ISSUED))
         .thenReturn(false);
     when(vehicleRepository.saveAndFlush(any(Vehicle.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -209,13 +217,13 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("issueCard: when cardCode already in use by active vehicle should throw CARD_CODE_DUPLICATED")
+  @DisplayName(
+      "issueCard: when cardCode already in use by active vehicle should throw CARD_CODE_DUPLICATED")
   void issueCard_whenCardCodeDuplicated_shouldThrow() {
     vehicle.setStatus(VehicleStatus.PENDING_CARD);
     IssueCardRequest req = IssueCardRequest.builder().cardCode("THE-0187").build();
     when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
-    when(vehicleRepository.existsByCardCodeAndStatus(
-            "THE-0187", VehicleStatus.ISSUED))
+    when(vehicleRepository.existsByCardCodeAndStatus("THE-0187", VehicleStatus.ISSUED))
         .thenReturn(true);
 
     assertThatThrownBy(() -> vehicleService.issueCard(managerUserId, vehicleId, req))
@@ -241,7 +249,8 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("revokeCard: should transition vehicle status to REVOKED when no pending change request")
+  @DisplayName(
+      "revokeCard: should transition vehicle status to REVOKED when no pending change request")
   void revokeCard_shouldSetStatusRevoked() {
     when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
     when(vehicleChangeRequestRepository.existsByCurrentVehicleIdAndStatus(
@@ -257,7 +266,8 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("revokeCard: when pending change request exists should throw VEHICLE_HAS_PENDING_CHANGE_REQUEST")
+  @DisplayName(
+      "revokeCard: when pending change request exists should throw VEHICLE_HAS_PENDING_CHANGE_REQUEST")
   void revokeCard_whenPendingChangeRequest_shouldThrow() {
     when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
     when(vehicleChangeRequestRepository.existsByCurrentVehicleIdAndStatus(
@@ -302,11 +312,125 @@ class VehicleServiceImplTest {
   @DisplayName("getVehicleHistory: should return all vehicles for tenant ordered by createdAt")
   void getVehicleHistory_shouldReturnHistory() {
     when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.findByTenantIdOrderByCreatedAtDesc(tenantId)).thenReturn(List.of(vehicle));
+    when(vehicleRepository.findByTenantIdOrderByCreatedAtDesc(tenantId))
+        .thenReturn(List.of(vehicle));
 
     List<VehicleResponse> history = vehicleService.getVehicleHistory(userId);
 
     assertThat(history).hasSize(1);
     assertThat(history.getFirst().id()).isEqualTo(vehicleId);
+  }
+
+  @Test
+  @DisplayName(
+      "issueCard maps uq_vehicles_issued_card_code race to CARD_CODE_DUPLICATED and rethrows CHECK")
+  void issueCard_constraintRaceClassification() {
+    vehicle.setStatus(VehicleStatus.PENDING_CARD);
+    vehicle.setCardCode(null);
+    IssueCardRequest req = IssueCardRequest.builder().cardCode("THE-0187").build();
+
+    when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
+    when(vehicleRepository.existsByCardCodeAndStatus("THE-0187", VehicleStatus.ISSUED))
+        .thenReturn(false);
+
+    when(vehicleRepository.saveAndFlush(any(Vehicle.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "dup",
+                new ConstraintViolationException(
+                    "dup", new SQLException("dup", "23505"), "uq_vehicles_issued_card_code")));
+
+    assertThatThrownBy(() -> vehicleService.issueCard(managerUserId, vehicleId, req))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex -> ((BaseAppException) ex).getErrorCode() == VehicleErrorCode.CARD_CODE_DUPLICATED);
+
+    vehicle.setStatus(VehicleStatus.PENDING_CARD);
+    vehicle.setCardCode(null);
+    when(vehicleRepository.saveAndFlush(any(Vehicle.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "check",
+                new ConstraintViolationException(
+                    "check",
+                    new SQLException("check", "23514"),
+                    "ck_vehicles_card_code_presence")));
+
+    assertThatThrownBy(() -> vehicleService.issueCard(managerUserId, vehicleId, req))
+        .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  @DisplayName(
+      "registerVehicle rollback cleans up stored evidence and classifies quota race vs CHECK failure")
+  void registerVehicle_rollbackCleanupAndConstraintClassification() {
+    TenantRegisterVehicleRequest request =
+        TenantRegisterVehicleRequest.builder()
+            .vehicleType(VehicleType.SCOOTER)
+            .licensePlate("59-X3 999.99")
+            .brand("Honda")
+            .color("Đỏ")
+            .build();
+    MockMultipartFile front =
+        new MockMultipartFile("frontImage", "front.jpg", "image/jpeg", new byte[] {1, 2});
+    MockMultipartFile back =
+        new MockMultipartFile("backImage", "back.jpg", "image/jpeg", new byte[] {3, 4});
+
+    when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
+    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any())).thenReturn(0L);
+    when(vehicleRegistrationValidator.validate(any(), any(), any(), any(), any(), any()))
+        .thenReturn(
+            new VehicleRegistrationValidator.ValidatedVehicleRegistration(
+                VehicleType.SCOOTER, "59-X3 999.99", "Honda", "Đỏ", front, back));
+
+    // F-02 partial-upload failure: back store fails after front store succeeds -> front deleted
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("front"), eq(front)))
+        .thenReturn("vehicles/id/front-partial.jpg");
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("back"), eq(back)))
+        .thenThrow(new IllegalStateException("disk full"));
+
+    assertThatThrownBy(() -> vehicleService.registerVehicle(userId, request, front, back))
+        .isInstanceOf(IllegalStateException.class);
+    verify(vehicleEvidenceStorage).delete("vehicles/id/front-partial.jpg");
+    verify(vehicleEvidenceStorage, never()).delete(null);
+
+    // Quota race -> cleans up both keys and throws VEHICLE_QUOTA_EXCEEDED
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("front"), eq(front)))
+        .thenReturn("vehicles/id/front-race.jpg");
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("back"), eq(back)))
+        .thenReturn("vehicles/id/back-race.jpg");
+    when(vehicleRepository.saveAndFlush(any(Vehicle.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "dup",
+                new ConstraintViolationException(
+                    "dup", new SQLException("dup", "23505"), "uq_vehicles_tenant_active_quota")));
+
+    assertThatThrownBy(() -> vehicleService.registerVehicle(userId, request, front, back))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode() == VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED);
+    verify(vehicleEvidenceStorage).delete("vehicles/id/front-race.jpg");
+    verify(vehicleEvidenceStorage).delete("vehicles/id/back-race.jpg");
+
+    // CHECK 23514 -> cleans up both keys and rethrows DataIntegrityViolationException (400)
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("front"), eq(front)))
+        .thenReturn("vehicles/id/front-chk.jpg");
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("back"), eq(back)))
+        .thenReturn("vehicles/id/back-chk.jpg");
+    when(vehicleRepository.saveAndFlush(any(Vehicle.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "check",
+                new ConstraintViolationException(
+                    "check",
+                    new SQLException("check", "23514"),
+                    "ck_vehicles_motor_registration")));
+
+    assertThatThrownBy(() -> vehicleService.registerVehicle(userId, request, front, back))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    verify(vehicleEvidenceStorage).delete("vehicles/id/front-chk.jpg");
+    verify(vehicleEvidenceStorage).delete("vehicles/id/back-chk.jpg");
   }
 }

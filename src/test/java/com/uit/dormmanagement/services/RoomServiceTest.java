@@ -12,10 +12,10 @@ import com.uit.dormmanagement.dtos.request.room.RoomAmenityRequest;
 import com.uit.dormmanagement.dtos.request.room.UpdateRoomRequest;
 import com.uit.dormmanagement.dtos.response.room.ArchivedRoomSummaryResponse;
 import com.uit.dormmanagement.dtos.response.room.RoomDetailResponse;
-import com.uit.dormmanagement.dtos.response.room.RoomSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Room;
+import com.uit.dormmanagement.entities.RoomCodeRegistry;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractStatus;
@@ -31,12 +31,13 @@ import com.uit.dormmanagement.repositories.RoomCodeRegistryRepository;
 import com.uit.dormmanagement.repositories.RoomRepository;
 import com.uit.dormmanagement.services.impl.RoomServiceImpl;
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -45,6 +46,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -92,7 +94,7 @@ class RoomServiceTest {
             List.of());
 
     when(roomRepository.existsByRoomNumber("P.302")).thenReturn(false);
-    when(roomRepository.save(any(Room.class)))
+    when(roomRepository.saveAndFlush(any(Room.class)))
         .thenAnswer(
             inv -> {
               Room r = inv.getArgument(0);
@@ -110,7 +112,7 @@ class RoomServiceTest {
 
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<Bed>> bedsCaptor = ArgumentCaptor.forClass(List.class);
-    verify(bedRepository).saveAll(bedsCaptor.capture());
+    verify(bedRepository).saveAllAndFlush(bedsCaptor.capture());
 
     List<Bed> generatedBeds = bedsCaptor.getValue();
     assertThat(generatedBeds).hasSize(4);
@@ -136,7 +138,7 @@ class RoomServiceTest {
             List.of(new RoomAmenityRequest(invalidAmenityId, 2)));
 
     when(roomRepository.existsByRoomNumber("P.302")).thenReturn(false);
-    when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(roomRepository.saveAndFlush(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
     when(amenityRepository.findAllById(any())).thenReturn(List.of());
 
     assertThatThrownBy(() -> roomService.createRoom(request))
@@ -148,9 +150,11 @@ class RoomServiceTest {
   }
 
   @Test
-  @DisplayName("updateRoom should allow genderPolicy change when occupiedBeds is 0 and no active contract")
+  @DisplayName(
+      "updateRoom should allow genderPolicy change when occupiedBeds is 0 and no active contract")
   void updateRoom_whenNoOccupants_shouldAllowGenderPolicyChange() {
-    Bed bed1 = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed bed1 =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed1));
     when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(false);
@@ -169,7 +173,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("updateRoom should reject genderPolicy change when occupiedBeds > 0")
   void updateRoom_whenOccupied_shouldRejectGenderPolicyChange() {
-    Bed occupiedBed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.OCCUPIED).build();
+    Bed occupiedBed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.OCCUPIED).build();
     when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(occupiedBed));
 
@@ -187,7 +192,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("updateRoom should reject rename when room has active contract")
   void updateRoom_whenActiveContract_shouldRejectRename() {
-    Bed availableBed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed availableBed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(availableBed));
     when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(true);
@@ -226,27 +232,28 @@ class RoomServiceTest {
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
     when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(false);
     when(roomCodeRegistryRepository.findById("P.303")).thenReturn(Optional.empty());
-    when(roomCodeRegistryRepository.findByRoom_IdAndCurrentTrue(roomId)).thenReturn(Optional.of(oldCode));
+    when(roomCodeRegistryRepository.findByRoom_IdAndCurrentTrue(roomId))
+        .thenReturn(Optional.of(oldCode));
     when(bedRepository.findByRoomIdOrderByBedCodeAsc(roomId)).thenReturn(List.of(bed));
+    when(roomRepository.saveAndFlush(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
     when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
 
     roomService.updateRoom(
-        roomId,
-        new UpdateRoomRequest(
-            "P.303", GenderPolicy.MALE, new BigDecimal("1500000"), null));
+        roomId, new UpdateRoomRequest("P.303", GenderPolicy.MALE, new BigDecimal("1500000"), null));
 
     assertThat(testRoom.getRoomNumber()).isEqualTo("P.303");
     assertThat(oldCode.isCurrent()).isFalse();
     assertThat(oldCode.isUsedInBusiness()).isTrue();
     assertThat(bed.getSlotKey()).isEqualTo("P.303-G01");
     verify(roomCodeRegistryRepository).saveAndFlush(oldCode);
-    verify(bedRepository).saveAll(List.of(bed));
+    verify(bedRepository).saveAllAndFlush(List.of(bed));
   }
 
   @Test
   @DisplayName("deleteRoom should archive room when vacant and no active contracts")
   void deleteRoom_whenVacant_shouldArchive() {
-    Bed bed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed bed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
     when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(false);
@@ -277,7 +284,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("deleteIncorrectRoom should reject when room has protected history")
   void deleteIncorrectRoom_whenProtectedHistory_shouldThrow() {
-    Bed bed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed bed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdUnfilteredForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
     when(roomHistoryGuard.hasProtectedHistory(eq(roomId), any())).thenReturn(true);
@@ -293,7 +301,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("deleteIncorrectRoom should delete unused room cleanly")
   void deleteIncorrectRoom_whenUnused_shouldDeleteCleanly() {
-    Bed bed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed bed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdUnfilteredForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
     when(roomHistoryGuard.hasProtectedHistory(eq(roomId), any())).thenReturn(false);
@@ -326,7 +335,8 @@ class RoomServiceTest {
   }
 
   @Test
-  @DisplayName("getRoomDetails should include occupant CCCD when bed is occupied with active contract")
+  @DisplayName(
+      "getRoomDetails should include occupant CCCD when bed is occupied with active contract")
   void getRoomDetails_shouldIncludeOccupantCccd() {
     Tenant tenant =
         Tenant.builder()
@@ -363,5 +373,143 @@ class RoomServiceTest {
     assertThat(detail.beds().get(0).occupant()).isNotNull();
     assertThat(detail.beds().get(0).occupant().idCardNumber()).isEqualTo("079203001187");
     assertThat(detail.beds().get(0).occupant().fullName()).isEqualTo("Nguyễn Văn A");
+  }
+
+  @Test
+  @DisplayName(
+      "createRoom maps protected registry code to ROOM_CODE_PROTECTED and unique races to ROOM_NUMBER_DUPLICATED")
+  void createRoom_constraintClassification() {
+    CreateRoomRequest request =
+        new CreateRoomRequest(
+            "P.302",
+            3,
+            RoomType.FOUR_BEDS,
+            GenderPolicy.MALE,
+            new BigDecimal("1500000.00"),
+            List.of());
+
+    when(roomRepository.existsByRoomNumber("P.302")).thenReturn(false);
+    when(roomCodeRegistryRepository.findById("P.302"))
+        .thenReturn(
+            Optional.of(
+                RoomCodeRegistry.builder()
+                    .code("P.302")
+                    .current(false)
+                    .usedInBusiness(true)
+                    .build()));
+
+    assertThatThrownBy(() -> roomService.createRoom(request))
+        .isInstanceOf(BaseAppException.class)
+        .satisfies(
+            ex ->
+                assertThat(((BaseAppException) ex).getErrorCode())
+                    .isEqualTo(RoomErrorCode.ROOM_CODE_PROTECTED));
+
+    when(roomCodeRegistryRepository.findById("P.302")).thenReturn(Optional.empty());
+    when(roomRepository.saveAndFlush(any(Room.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "dup",
+                new ConstraintViolationException(
+                    "dup", new SQLException("dup", "23505"), "uq_rooms_number_canonical")));
+
+    assertThatThrownBy(() -> roomService.createRoom(request))
+        .isInstanceOf(BaseAppException.class)
+        .satisfies(
+            ex ->
+                assertThat(((BaseAppException) ex).getErrorCode())
+                    .isEqualTo(RoomErrorCode.ROOM_NUMBER_DUPLICATED));
+
+    // CHECK 23514 must propagate
+    when(roomRepository.saveAndFlush(any(Room.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "check",
+                new ConstraintViolationException(
+                    "check", new SQLException("check", "23514"), "ck_rooms_base_price")));
+
+    assertThatThrownBy(() -> roomService.createRoom(request))
+        .isInstanceOf(DataIntegrityViolationException.class);
+  }
+
+  @Test
+  @DisplayName("updateRoom rename maps slot/registry/room unique race to ROOM_NUMBER_DUPLICATED")
+  void updateRoom_renameRace_shouldThrowRoomNumberDuplicated() {
+    Bed bed =
+        Bed.builder()
+            .id(UUID.randomUUID())
+            .room(testRoom)
+            .bedCode("G01")
+            .slotKey("P.302-G01")
+            .status(BedStatus.AVAILABLE)
+            .build();
+    RoomCodeRegistry oldCode =
+        RoomCodeRegistry.builder()
+            .code("P.302")
+            .room(testRoom)
+            .current(true)
+            .usedInBusiness(false)
+            .build();
+
+    when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
+    when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
+    when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(false);
+    when(roomCodeRegistryRepository.findById("P.303")).thenReturn(Optional.empty());
+    when(roomCodeRegistryRepository.findByRoom_IdAndCurrentTrue(roomId))
+        .thenReturn(Optional.of(oldCode));
+    when(roomCodeRegistryRepository.saveAndFlush(any(RoomCodeRegistry.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "dup",
+                new ConstraintViolationException(
+                    "dup", new SQLException("dup", "23505"), "room_code_registry_pkey")));
+
+    assertThatThrownBy(
+            () ->
+                roomService.updateRoom(
+                    roomId,
+                    new UpdateRoomRequest(
+                        "P.303", GenderPolicy.MALE, new BigDecimal("1500000"), null)))
+        .isInstanceOf(BaseAppException.class)
+        .satisfies(
+            ex ->
+                assertThat(((BaseAppException) ex).getErrorCode())
+                    .isEqualTo(RoomErrorCode.ROOM_NUMBER_DUPLICATED));
+  }
+
+  @Test
+  @DisplayName("deleteIncorrectRoom maps FK 23503 race to ROOM_HAS_HISTORY while rethrowing non-FK")
+  void deleteIncorrectRoom_fkRace_shouldThrowRoomHasHistory() {
+    Bed bed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    when(roomRepository.findByIdUnfilteredForUpdate(roomId)).thenReturn(Optional.of(testRoom));
+    when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
+    when(roomHistoryGuard.hasProtectedHistory(eq(roomId), any())).thenReturn(false);
+
+    org.mockito.Mockito.doThrow(
+            new DataIntegrityViolationException(
+                "fk",
+                new ConstraintViolationException(
+                    "fk", new SQLException("fk", "23503"), "fk_contracts_bed")))
+        .when(roomRepository)
+        .flush();
+
+    assertThatThrownBy(() -> roomService.deleteIncorrectRoom(roomId))
+        .isInstanceOf(BaseAppException.class)
+        .satisfies(
+            ex ->
+                assertThat(((BaseAppException) ex).getErrorCode())
+                    .isEqualTo(RoomErrorCode.ROOM_HAS_HISTORY));
+
+    org.mockito.Mockito.doThrow(
+            new DataIntegrityViolationException(
+                "check",
+                new ConstraintViolationException(
+                    "check", new SQLException("check", "23514"), "ck_something")))
+        .when(roomRepository)
+        .flush();
+
+    assertThatThrownBy(() -> roomService.deleteIncorrectRoom(roomId))
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 }

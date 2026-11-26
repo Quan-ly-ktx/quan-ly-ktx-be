@@ -4,6 +4,7 @@ import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
+import com.uit.dormmanagement.utils.LogMaskingUtils;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,8 @@ public class CustomUserDetailsService implements UserDetailsService {
   @Override
   @Transactional(readOnly = true)
   public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
-    log.debug("Loading user by identifier: {}", identifier);
+    String maskedIdentifier = LogMaskingUtils.maskIdentifier(identifier);
+    log.debug("Loading user by identifier: {}", maskedIdentifier);
     if (identifier == null || identifier.isBlank()) {
       throw new UsernameNotFoundException("Identifier cannot be null or empty");
     }
@@ -44,7 +46,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         .orElseThrow(
             () ->
                 new UsernameNotFoundException(
-                    "Không tìm thấy người dùng với định danh: " + identifier));
+                    "Không tìm thấy người dùng với định danh: " + maskedIdentifier));
   }
 
   @Transactional(readOnly = true)

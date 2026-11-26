@@ -24,8 +24,8 @@ import com.uit.dormmanagement.repositories.ContractRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.OnboardingService;
+import com.uit.dormmanagement.utils.LogMaskingUtils;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -82,7 +82,6 @@ public class OnboardingServiceImpl implements OnboardingService {
 
     bed.setStatus(BedStatus.OCCUPIED);
     bedRepository.save(bed);
-
 
     ContractDetailResponse contractResponse = toContractDetailResponse(contract, tenant, bed, room);
     TenantDetailResponse tenantResponse =
@@ -164,7 +163,7 @@ public class OnboardingServiceImpl implements OnboardingService {
         "Re-onboarded tenant: id={}, tenantCode={}, idCard={}",
         saved.getId(),
         saved.getTenantCode(),
-        saved.getIdCardNumber());
+        LogMaskingUtils.maskIdCard(saved.getIdCardNumber()));
     return saved;
   }
 
@@ -214,7 +213,7 @@ public class OnboardingServiceImpl implements OnboardingService {
         "Created new tenant: id={}, tenantCode={}, idCard={}",
         saved.getId(),
         tenantCode,
-        idCardNumber);
+        LogMaskingUtils.maskIdCard(idCardNumber));
     return saved;
   }
 

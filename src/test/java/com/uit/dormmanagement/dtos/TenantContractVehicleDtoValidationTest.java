@@ -214,13 +214,14 @@ class TenantContractVehicleDtoValidationTest {
             .emergencyContactName("Bố A")
             .emergencyContactPhone("0987654321")
             .build();
-    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest>> violations =
-        validator.validate(req);
+    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest>>
+        violations = validator.validate(req);
     assertThat(violations).isEmpty();
   }
 
   @Test
-  @DisplayName("ManagerUpdateTenantRequest should fail when fullName is blank or idCardNumber has wrong format")
+  @DisplayName(
+      "ManagerUpdateTenantRequest should fail when fullName is blank or idCardNumber has wrong format")
   void managerUpdateTenantRequest_whenInvalid_shouldFailValidation() {
     com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest req =
         com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest.builder()
@@ -229,8 +230,8 @@ class TenantContractVehicleDtoValidationTest {
             .phone("0912345678")
             .permanentAddress("123 Hà Nội")
             .build();
-    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest>> violations =
-        validator.validate(req);
+    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest>>
+        violations = validator.validate(req);
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("fullName"));
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("idCardNumber"));
   }
@@ -243,8 +244,8 @@ class TenantContractVehicleDtoValidationTest {
             .phone("0912345678")
             .permanentAddress("456 Đà Nẵng")
             .build();
-    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest>> violations =
-        validator.validate(req);
+    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest>>
+        violations = validator.validate(req);
     assertThat(violations).isEmpty();
     assertThat(req.hasAtLeastOneField()).isTrue();
   }
@@ -256,8 +257,69 @@ class TenantContractVehicleDtoValidationTest {
         com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest.builder()
             .phone("123")
             .build();
-    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest>> violations =
-        validator.validate(req);
+    Set<ConstraintViolation<com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest>>
+        violations = validator.validate(req);
     assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("phone"));
+  }
+
+  @Test
+  @DisplayName(
+      "ManagerUpdateTenantRequest retains null optional identity fields and rejects supplied blanks")
+  void managerUpdateTenantRequest_optionalIdentityBlankVsNull() {
+    var nullIdentityReq =
+        com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Văn A")
+            .idCardNumber(null)
+            .email(null)
+            .phone("0912345678")
+            .permanentAddress("123 Hà Nội")
+            .emergencyContactName("   ")
+            .emergencyContactPhone("   ")
+            .build();
+    assertThat(validator.validate(nullIdentityReq)).isEmpty();
+
+    var blankIdentityReq =
+        com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Văn A")
+            .idCardNumber("   ")
+            .email("")
+            .phone("0912345678")
+            .permanentAddress("123 Hà Nội")
+            .build();
+    var blankViolations = validator.validate(blankIdentityReq);
+    assertThat(blankViolations)
+        .anyMatch(v -> v.getPropertyPath().toString().equals("idCardNumber"));
+    assertThat(blankViolations).anyMatch(v -> v.getPropertyPath().toString().equals("email"));
+
+    var whitespaceEmailReq =
+        com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Văn A")
+            .email("   ")
+            .phone("0912345678")
+            .permanentAddress("123 Hà Nội")
+            .build();
+    assertThat(validator.validate(whitespaceEmailReq))
+        .anyMatch(v -> v.getPropertyPath().toString().equals("email"));
+  }
+
+  @Test
+  @DisplayName(
+      "TenantContactUpdateRequest rejects blank phone/address and permits blank emergency fields")
+  void tenantContactUpdateRequest_blankValidation() {
+    var blankRequiredReq =
+        com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest.builder()
+            .phone("")
+            .permanentAddress("   ")
+            .build();
+    var violations = validator.validate(blankRequiredReq);
+    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("phone"));
+    assertThat(violations).anyMatch(v -> v.getPropertyPath().toString().equals("permanentAddress"));
+
+    var blankOptionalClearReq =
+        com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest.builder()
+            .emergencyContactName("")
+            .emergencyContactPhone("   ")
+            .build();
+    assertThat(validator.validate(blankOptionalClearReq)).isEmpty();
   }
 }

@@ -134,3 +134,21 @@ Resolve F-01, F-02 and F-03, then add focused regression checks for their failur
 ## 14. Final readiness verdict
 
 `CHANGES_REQUIRED`. The build and 339 tests pass, and most task implementations are present, but two confirmed behavioral defects and a materially false API contract prevent acceptance. The review is complete for the local working tree; no commit or push was made.
+
+---
+
+## 15. Phase 2 Hardening Disposition (2026-11-26)
+
+Disposition recorded during Phase 2 Hardening on branch `feat/orca-phase3-final` (from baseline `18e1d6e`):
+
+| Finding ID | Disposition | Summary & Evidence |
+|---|---|---|
+| **F-02** | **Resolved (regression verified)** | `PUT /api/v1/admin/vehicles/{id}` remains absent in `AdminVehicleController` and OpenAPI `/v3/api-docs`; evidence upload rollback/cleanup verified in `VehicleServiceImplTest`, `VehicleChangeRequestServiceTest`, `VehicleControllerTest`, `LocalVehicleEvidenceStorageTest`, and `OpenApiContractVerificationTest`. |
+| **F-03** | **Fixed in Phase 2 Hardening** | Synchronized `docs/audits/phase-2-api-contract-inventory.md`, `docs/audits/phase-2-api-prototype-compatibility-audit.md`, `AGENT.md`, and `docs/ARCHITECTURE.md` with live Phase 2 controllers, DTOs, `*ErrorCode` enums, `V1__clean_baseline.sql`, and `/v3/api-docs` / Scalar (verified by `OpenApiContractVerificationTest`). |
+| **F-05** | **Fixed in Phase 2 Hardening** | Added shared `LogMaskingUtils` and sanitized identifier/email/CCCD/phone logging in `LoginAttemptServiceImpl`, `CustomUserDetailsService`, `EmailServiceImpl`, `OtpServiceImpl`, `OnboardingServiceImpl`, `AuthServiceImpl`, `UserServiceImpl`, and `AppExceptionHandler`. Verified with Logback `ListAppender` regression tests. |
+| **F-08** | **Fixed in Phase 2 Hardening** | Rejected supplied blank `idCardNumber` / `email` (`""` or whitespace) with HTTP `400` (`WEB_400_VAL`) in `ManagerUpdateTenantRequest` and `TenantServiceImpl.updateTenantAsManager`, while omitted/`null` identity fields retain current values and optional contact clearing (`dateOfBirth`, `emergencyContactName`, `emergencyContactPhone`) remains unchanged. Verified `TenantContactUpdateRequest` and `updateOwnContact` reject blank `phone`/`permanentAddress` (`400`) and clear blank emergency fields. |
+| **F-09** | **Fixed in Phase 2 Hardening** | Added `DataIntegrityViolationClassifier` and `WebErrorCode.CONFLICT` (`WEB_409`), mapped known unique constraint/index races at service `saveAndFlush` boundaries and `AppExceptionHandler` to exact domain `409` codes, mapped unmapped `23505` to `409 WEB_409`, and preserved HTTP `400` (`WEB_400`) for NOT NULL (`23502`), CHECK (`23514`), generic FK (`23503`), data truncation (`22xxx`), and unclassified integrity violations. Verified with unit, service-race, and PostgreSQL Testcontainers tests. |
+| **F-01** | **DEFERRED / ACCEPTED RISK** | Old-email password recovery race vs. Manager email correction. Known limitation accepted by owner; **NOT** implemented in Phase 2 Hardening. |
+| **F-04** | **DEFERRED / ACCEPTED RISK** | Non-atomic Redis login counter/TTL/lock in `LoginAttemptServiceImpl`. Known limitation accepted by owner; **NOT** implemented in Phase 2 Hardening. |
+| **F-06** | **DEFERRED / ACCEPTED RISK** | Non-atomic Redis session generation creation in `UserTokenInvalidationServiceImpl`. Known limitation accepted by owner; **NOT** implemented in Phase 2 Hardening. |
+| **F-07** | **DEFERRED / ACCEPTED RISK** | Undelivered OTP challenge retained on email send failure in `PasswordRecoveryServiceImpl`. Known limitation accepted by owner; **NOT** implemented in Phase 2 Hardening. |

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,9 +26,11 @@ import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.VehicleChangeRequestRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.impl.VehicleChangeRequestServiceImpl;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
@@ -116,7 +120,8 @@ class VehicleChangeRequestServiceTest {
     MockMultipartFile back = new MockMultipartFile("back", "b.jpg", "image/jpeg", new byte[] {2});
 
     when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.findByIdForUpdate(currentVehicleId)).thenReturn(Optional.of(currentVehicle));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
     when(vehicleChangeRequestRepository.existsByTenantIdAndStatus(
             tenant.getId(), VehicleChangeRequestStatus.PENDING))
         .thenReturn(false);
@@ -135,7 +140,8 @@ class VehicleChangeRequestServiceTest {
     assertThat(res.status()).isEqualTo(VehicleChangeRequestStatus.PENDING);
     assertThat(res.currentVehicleId()).isEqualTo(currentVehicleId);
     assertThat(res.proposedLicensePlate()).isEqualTo("59-X2 222.22");
-    assertThat(currentVehicle.getStatus()).isEqualTo(VehicleStatus.ISSUED); // current vehicle untouched
+    assertThat(currentVehicle.getStatus())
+        .isEqualTo(VehicleStatus.ISSUED); // current vehicle untouched
   }
 
   @Test
@@ -145,7 +151,8 @@ class VehicleChangeRequestServiceTest {
         CreateVehicleChangeRequest.builder().currentVehicleId(currentVehicleId).build();
 
     when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.findByIdForUpdate(currentVehicleId)).thenReturn(Optional.of(currentVehicle));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
     when(vehicleChangeRequestRepository.existsByTenantIdAndStatus(
             tenant.getId(), VehicleChangeRequestStatus.PENDING))
         .thenReturn(true);
@@ -162,9 +169,12 @@ class VehicleChangeRequestServiceTest {
   @DisplayName("approve: should atomically replace old vehicle with successor using same card code")
   void approve_shouldReplaceAtomically() {
     StaffProfile staff = StaffProfile.builder().id(UUID.randomUUID()).build();
-    when(vehicleChangeRequestRepository.findCurrentVehicleIdById(requestId)).thenReturn(Optional.of(currentVehicleId));
-    when(vehicleRepository.findByIdForUpdate(currentVehicleId)).thenReturn(Optional.of(currentVehicle));
-    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId)).thenReturn(Optional.of(request));
+    when(vehicleChangeRequestRepository.findCurrentVehicleIdById(requestId))
+        .thenReturn(Optional.of(currentVehicleId));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
+    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId))
+        .thenReturn(Optional.of(request));
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(staff));
     when(vehicleRepository.saveAndFlush(any(Vehicle.class))).thenAnswer(inv -> inv.getArgument(0));
     when(vehicleChangeRequestRepository.saveAndFlush(any(VehicleChangeRequest.class)))
@@ -187,9 +197,12 @@ class VehicleChangeRequestServiceTest {
   @DisplayName("approve: when request is already approved should throw NOT_PENDING")
   void approve_whenAlreadyProcessed_shouldThrow() {
     request.setStatus(VehicleChangeRequestStatus.APPROVED);
-    when(vehicleChangeRequestRepository.findCurrentVehicleIdById(requestId)).thenReturn(Optional.of(currentVehicleId));
-    when(vehicleRepository.findByIdForUpdate(currentVehicleId)).thenReturn(Optional.of(currentVehicle));
-    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId)).thenReturn(Optional.of(request));
+    when(vehicleChangeRequestRepository.findCurrentVehicleIdById(requestId))
+        .thenReturn(Optional.of(currentVehicleId));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
+    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId))
+        .thenReturn(Optional.of(request));
 
     assertThatThrownBy(() -> service.approve(managerUserId, requestId))
         .isInstanceOf(BaseAppException.class)
@@ -203,7 +216,8 @@ class VehicleChangeRequestServiceTest {
   @DisplayName("reject: should reject request with reason and leave current vehicle untouched")
   void reject_shouldRejectRequest() {
     StaffProfile staff = StaffProfile.builder().id(UUID.randomUUID()).build();
-    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId)).thenReturn(Optional.of(request));
+    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId))
+        .thenReturn(Optional.of(request));
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(staff));
     when(vehicleChangeRequestRepository.save(any(VehicleChangeRequest.class)))
         .thenAnswer(inv -> inv.getArgument(0));
@@ -214,5 +228,84 @@ class VehicleChangeRequestServiceTest {
     assertThat(res.rejectionReason()).isEqualTo("Hồ sơ không khớp");
     assertThat(res.processedByStaffId()).isEqualTo(staff.getId());
     assertThat(currentVehicle.getStatus()).isEqualTo(VehicleStatus.ISSUED); // unchanged!
+  }
+
+  @Test
+  @DisplayName(
+      "create: cleans up uploaded evidence on partial failure and classifies pending race vs CHECK")
+  void create_rollbackCleanupAndConstraintClassification() {
+    CreateVehicleChangeRequest dto =
+        CreateVehicleChangeRequest.builder()
+            .currentVehicleId(currentVehicleId)
+            .proposedVehicleType(VehicleType.MANUAL_MOTORCYCLE)
+            .proposedLicensePlate("59-X2 222.22")
+            .proposedBrand("Yamaha")
+            .proposedColor("Xanh")
+            .build();
+    MockMultipartFile front = new MockMultipartFile("front", "f.jpg", "image/jpeg", new byte[] {1});
+    MockMultipartFile back = new MockMultipartFile("back", "b.jpg", "image/jpeg", new byte[] {2});
+
+    when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
+    when(vehicleChangeRequestRepository.existsByTenantIdAndStatus(
+            tenant.getId(), VehicleChangeRequestStatus.PENDING))
+        .thenReturn(false);
+    when(vehicleRegistrationValidator.validate(any(), any(), any(), any(), any(), any()))
+        .thenReturn(
+            new VehicleRegistrationValidator.ValidatedVehicleRegistration(
+                VehicleType.MANUAL_MOTORCYCLE, "59-X2 222.22", "Yamaha", "Xanh", front, back));
+
+    // Partial upload failure cleans up front
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("front"), eq(front)))
+        .thenReturn("vehicles/req/front-partial.jpg");
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("back"), eq(back)))
+        .thenThrow(new IllegalStateException("storage failed"));
+    assertThatThrownBy(() -> service.create(tenantUserId, dto, front, back))
+        .isInstanceOf(IllegalStateException.class);
+    verify(vehicleEvidenceStorage).delete("vehicles/req/front-partial.jpg");
+    verify(vehicleEvidenceStorage, never()).delete(null);
+
+    // Pending change request race -> VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS + file cleanup
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("front"), eq(front)))
+        .thenReturn("vehicles/req/front-race.jpg");
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("back"), eq(back)))
+        .thenReturn("vehicles/req/back-race.jpg");
+    when(vehicleChangeRequestRepository.saveAndFlush(any(VehicleChangeRequest.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "dup",
+                new ConstraintViolationException(
+                    "dup",
+                    new SQLException("dup", "23505"),
+                    "uq_vehicle_change_requests_pending_tenant")));
+
+    assertThatThrownBy(() -> service.create(tenantUserId, dto, front, back))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            e ->
+                ((BaseAppException) e).getErrorCode()
+                    == VehicleErrorCode.VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS);
+    verify(vehicleEvidenceStorage).delete("vehicles/req/front-race.jpg");
+    verify(vehicleEvidenceStorage).delete("vehicles/req/back-race.jpg");
+
+    // CHECK 23514 -> rethrows DataIntegrityViolationException + file cleanup
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("front"), eq(front)))
+        .thenReturn("vehicles/req/front-chk.jpg");
+    when(vehicleEvidenceStorage.store(any(UUID.class), eq("back"), eq(back)))
+        .thenReturn("vehicles/req/back-chk.jpg");
+    when(vehicleChangeRequestRepository.saveAndFlush(any(VehicleChangeRequest.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "check",
+                new ConstraintViolationException(
+                    "check",
+                    new SQLException("check", "23514"),
+                    "ck_vehicle_change_requests_proposed_motor")));
+
+    assertThatThrownBy(() -> service.create(tenantUserId, dto, front, back))
+        .isInstanceOf(DataIntegrityViolationException.class);
+    verify(vehicleEvidenceStorage).delete("vehicles/req/front-chk.jpg");
+    verify(vehicleEvidenceStorage).delete("vehicles/req/back-chk.jpg");
   }
 }

@@ -170,13 +170,26 @@ public class AppExceptionHandler {
     return buildFromAppErrorCode(WebErrorCode.NOT_FOUND, request.getRequestURI(), e.getMessage());
   }
 
-  // 5. Database Constraint Conflict
+  // 5. Database Constraint Conflict / Integrity Violation
   @ExceptionHandler(DataIntegrityViolationException.class)
   public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
       DataIntegrityViolationException e, HttpServletRequest request) {
-    log.error("Database conflict at {}: {}", request.getRequestURI(), e.getMessage());
-    return buildFromAppErrorCode(
-        WebErrorCode.BAD_REQUEST, request.getRequestURI(), "Data integrity violation or conflict");
+    DataIntegrityViolationClassifier.ViolationInfo info =
+        DataIntegrityViolationClassifier.extract(e);
+    log.warn(
+        "Data integrity violation at {} (sqlState={}, constraint={})",
+        request.getRequestURI(),
+        info.sqlState(),
+        info.constraintName());
+
+    return DataIntegrityViolationClassifier.classifyGlobal(e)
+        .map(errorCode -> buildFromAppErrorCode(errorCode, request.getRequestURI()))
+        .orElseGet(
+            () ->
+                buildFromAppErrorCode(
+                    WebErrorCode.BAD_REQUEST,
+                    request.getRequestURI(),
+                    "Data integrity violation or conflict"));
   }
 
   // 6. Security Exceptions (Authentication & Authorization)
