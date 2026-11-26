@@ -3,6 +3,7 @@ package com.uit.dormmanagement.repositories;
 import com.uit.dormmanagement.entities.Invoice;
 import com.uit.dormmanagement.enums.InvoiceStatus;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,4 +25,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
   List<Invoice> findByBillingPeriodAndStatus(LocalDate billingPeriod, InvoiceStatus status);
 
   Optional<Invoice> findByContractIdAndBillingPeriod(UUID contractId, LocalDate billingPeriod);
+
+  boolean existsByContractTenantIdAndStatusIn(UUID tenantId, Collection<InvoiceStatus> statuses);
 }
