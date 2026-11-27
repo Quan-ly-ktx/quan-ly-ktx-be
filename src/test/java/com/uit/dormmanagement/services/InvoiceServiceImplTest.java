@@ -20,29 +20,35 @@ import com.uit.dormmanagement.dtos.response.invoice.VietQrInfoResponse;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Invoice;
 import com.uit.dormmanagement.entities.PaymentTransaction;
+import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.InvoiceStatus;
+import com.uit.dormmanagement.enums.PaymentMethod;
 import com.uit.dormmanagement.enums.ResidentStatus;
+import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.ObjectStorageNotFoundException;
 import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.repositories.InvoiceRepository;
 import com.uit.dormmanagement.repositories.PaymentTransactionRepository;
+import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.services.impl.InvoiceServiceImpl;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -52,6 +58,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -73,6 +80,7 @@ class InvoiceServiceImplTest {
   @Mock private InvoiceRepository invoiceRepository;
   @Mock private PaymentTransactionRepository paymentTransactionRepository;
   @Mock private TenantRepository tenantRepository;
+  @Mock private StaffProfileRepository staffProfileRepository;
   @Mock private PrivateObjectStorage privateObjectStorage;
   @Mock private VietQrPayloadService vietQrPayloadService;
 
@@ -82,10 +90,14 @@ class InvoiceServiceImplTest {
   private UUID tenantId;
   private UUID contractId;
   private UUID invoiceId;
+  private UUID managerUserId;
+  private UUID managerStaffId;
   private User user;
   private Tenant tenant;
   private Contract contract;
   private Invoice invoice;
+  private User managerUser;
+  private StaffProfile managerStaff;
 
   @BeforeEach
   void setUp() {
@@ -95,8 +107,23 @@ class InvoiceServiceImplTest {
     tenantId = UUID.randomUUID();
     contractId = UUID.randomUUID();
     invoiceId = UUID.randomUUID();
+    managerUserId = UUID.randomUUID();
+    managerStaffId = UUID.randomUUID();
 
     user = User.builder().id(tenantUserId).email("tenant.proof@uit.edu.vn").build();
+    managerUser =
+        User.builder()
+            .id(managerUserId)
+            .email("manager.billing@uit.edu.vn")
+            .role(UserRole.MANAGER)
+            .build();
+    managerStaff =
+        StaffProfile.builder()
+            .id(managerStaffId)
+            .user(managerUser)
+            .fullName("Tran Quan Ly")
+            .phone("0909000111")
+            .build();
     tenant =
         Tenant.builder()
             .id(tenantId)
@@ -147,6 +174,7 @@ class InvoiceServiceImplTest {
         invoiceRepository,
         paymentTransactionRepository,
         tenantRepository,
+        staffProfileRepository,
         privateObjectStorage,
         vietQrPayloadService,
         clock);
@@ -625,5 +653,344 @@ class InvoiceServiceImplTest {
     assertThatThrownBy(() -> invoiceService.loadProofContentForTenant(tenantUserId, invoiceId))
         .isInstanceOf(BaseAppException.class)
         .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_PROOF_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName(
+      "confirmCashPayment: transitions DEBT -> PAID, creates CASH PaymentTransaction with PT- prefix, clears overdue & VietQR")
+  void confirmCashPayment_happyPath_marksPaidAndCreatesCashTransaction() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(invoiceRepository.findByIdForUpdate(invoiceId)).thenReturn(Optional.of(invoice));
+    when(paymentTransactionRepository.findByInvoiceId(invoiceId)).thenReturn(Optional.empty());
+    when(invoiceRepository.saveAndFlush(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(paymentTransactionRepository.saveAndFlush(any(PaymentTransaction.class)))
+        .thenAnswer(
+            inv -> {
+              PaymentTransaction tx = inv.getArgument(0);
+              tx.setId(UUID.randomUUID());
+              tx.setConfirmedAt(FIXED_NOW);
+              return tx;
+            });
+
+    InvoiceDetailResponse response = invoiceService.confirmCashPayment(managerUserId, invoiceId);
+
+    assertThat(response.status()).isEqualTo(InvoiceStatus.PAID);
+    assertThat(response.overdue()).isFalse();
+    assertThat(response.overdueDays()).isZero();
+    assertThat(response.vietQr()).isNull();
+    assertThat(response.proofAvailable()).isFalse();
+    assertThat(response.proof()).isNull();
+    assertThat(response.payment()).isNotNull();
+    assertThat(response.payment().id()).isNotNull();
+    assertThat(response.payment().receiptCode()).isEqualTo("PT-INV-202610-HD-2026-0099");
+    assertThat(response.payment().amount()).isEqualByComparingTo("1500000");
+    assertThat(response.payment().paymentMethod()).isEqualTo(PaymentMethod.CASH);
+    assertThat(response.payment().confirmedByStaffId()).isEqualTo(managerStaffId);
+    assertThat(response.payment().confirmedByStaffName()).isEqualTo("Tran Quan Ly");
+    assertThat(response.payment().confirmedAt()).isEqualTo(FIXED_NOW);
+
+    ArgumentCaptor<PaymentTransaction> txCaptor = ArgumentCaptor.forClass(PaymentTransaction.class);
+    verify(paymentTransactionRepository).saveAndFlush(txCaptor.capture());
+    PaymentTransaction savedTx = txCaptor.getValue();
+    assertThat(savedTx.getInvoice()).isSameAs(invoice);
+    assertThat(savedTx.getReceiptCode()).isEqualTo("PT-INV-202610-HD-2026-0099");
+    assertThat(savedTx.getAmount()).isEqualByComparingTo("1500000");
+    assertThat(savedTx.getPaymentMethod()).isEqualTo(PaymentMethod.CASH);
+    assertThat(savedTx.getConfirmedByStaff()).isSameAs(managerStaff);
+    verifyNoInteractions(privateObjectStorage, vietQrPayloadService);
+  }
+
+  @Test
+  @DisplayName(
+      "confirmCashPayment: rejects null userId, missing StaffProfile, or non-MANAGER role with 403 INVOICE_403_STAFF_PROFILE")
+  void confirmCashPayment_rejectsInvalidManagerActor() {
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(null, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED);
+
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED);
+
+    UUID techUserId = UUID.randomUUID();
+    StaffProfile techStaff =
+        StaffProfile.builder()
+            .id(UUID.randomUUID())
+            .user(User.builder().id(techUserId).role(UserRole.TECHNICIAN).build())
+            .fullName("Le Ky Thuat")
+            .phone("0908000222")
+            .build();
+    when(staffProfileRepository.findByUserId(techUserId)).thenReturn(Optional.of(techStaff));
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(techUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED);
+
+    verifyNoInteractions(invoiceRepository, paymentTransactionRepository);
+  }
+
+  @Test
+  @DisplayName(
+      "confirmCashPayment: rejects missing invoice (404), PENDING_CONFIRMATION (409 NOT_DEBT), and PAID/existing tx (409 ALREADY_PAID)")
+  void confirmCashPayment_rejectsMissingAndInvalidStates() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(managerUserId, null))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_FOUND);
+
+    when(invoiceRepository.findByIdForUpdate(invoiceId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_FOUND);
+
+    when(invoiceRepository.findByIdForUpdate(invoiceId)).thenReturn(Optional.of(invoice));
+    when(paymentTransactionRepository.findByInvoiceId(invoiceId)).thenReturn(Optional.empty());
+
+    invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+    invoice.setProofFileKey("invoices/" + invoiceId + "/proof/bill.png");
+    invoice.setProofSubmittedAt(FIXED_NOW);
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_DEBT);
+
+    invoice.setStatus(InvoiceStatus.PAID);
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_ALREADY_PAID);
+
+    invoice.setStatus(InvoiceStatus.DEBT);
+    when(paymentTransactionRepository.findByInvoiceId(invoiceId))
+        .thenReturn(Optional.of(PaymentTransaction.builder().id(UUID.randomUUID()).build()));
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_ALREADY_PAID);
+
+    verify(invoiceRepository, never()).saveAndFlush(any());
+    verify(paymentTransactionRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  @DisplayName(
+      "confirmCashPayment: translates unique constraint race to 409 ALREADY_PAID and rethrows other integrity violations")
+  void confirmCashPayment_handlesUniqueConstraintRace() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(invoiceRepository.findByIdForUpdate(invoiceId)).thenReturn(Optional.of(invoice));
+    when(paymentTransactionRepository.findByInvoiceId(invoiceId)).thenReturn(Optional.empty());
+    when(invoiceRepository.saveAndFlush(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    for (String constraint :
+        List.of("payment_transactions_invoice_id_key", "payment_transactions_receipt_code_key")) {
+      invoice.setStatus(InvoiceStatus.DEBT);
+      when(paymentTransactionRepository.saveAndFlush(any(PaymentTransaction.class)))
+          .thenThrow(uniqueConstraintViolation(constraint));
+
+      assertThatThrownBy(() -> invoiceService.confirmCashPayment(managerUserId, invoiceId))
+          .isInstanceOf(BaseAppException.class)
+          .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_ALREADY_PAID);
+    }
+
+    invoice.setStatus(InvoiceStatus.DEBT);
+    DataIntegrityViolationException checkFailure =
+        new DataIntegrityViolationException(
+            "check",
+            new ConstraintViolationException(
+                "check", new SQLException("check failed", "23514"), "ck_payment_amount"));
+    when(paymentTransactionRepository.saveAndFlush(any(PaymentTransaction.class)))
+        .thenThrow(checkFailure);
+
+    assertThatThrownBy(() -> invoiceService.confirmCashPayment(managerUserId, invoiceId))
+        .isSameAs(checkFailure);
+  }
+
+  @Test
+  @DisplayName(
+      "confirmTransferPayment: transitions PENDING_CONFIRMATION -> PAID, creates VIETQR_TRANSFER tx, preserves proof and admin URL")
+  void confirmTransferPayment_happyPath_marksPaidCreatesTransferTxAndPreservesProof() {
+    String proofKey = "invoices/" + invoiceId + "/proof/transfer.png";
+    Instant submittedAt = Instant.parse("2026-10-08T09:00:00Z");
+    invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+    invoice.setProofFileKey(proofKey);
+    invoice.setProofSubmittedAt(submittedAt);
+
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(invoiceRepository.findByIdForUpdate(invoiceId)).thenReturn(Optional.of(invoice));
+    when(paymentTransactionRepository.findByInvoiceId(invoiceId)).thenReturn(Optional.empty());
+    when(invoiceRepository.saveAndFlush(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(paymentTransactionRepository.saveAndFlush(any(PaymentTransaction.class)))
+        .thenAnswer(
+            inv -> {
+              PaymentTransaction tx = inv.getArgument(0);
+              tx.setId(UUID.randomUUID());
+              tx.setConfirmedAt(FIXED_NOW);
+              return tx;
+            });
+
+    InvoiceDetailResponse response =
+        invoiceService.confirmTransferPayment(managerUserId, invoiceId);
+
+    assertThat(response.status()).isEqualTo(InvoiceStatus.PAID);
+    assertThat(response.overdue()).isFalse();
+    assertThat(response.overdueDays()).isZero();
+    assertThat(response.vietQr()).isNull();
+    assertThat(response.proofAvailable()).isTrue();
+    assertThat(response.proofSubmittedAt()).isEqualTo(submittedAt);
+    assertThat(response.proof()).isNotNull();
+    assertThat(response.proof().available()).isTrue();
+    assertThat(response.proof().submittedAt()).isEqualTo(submittedAt);
+    assertThat(response.proof().contentUrl())
+        .isEqualTo("/api/v1/admin/invoices/" + invoiceId + "/proof/content");
+    assertThat(response.payment()).isNotNull();
+    assertThat(response.payment().id()).isNotNull();
+    assertThat(response.payment().receiptCode()).isEqualTo("PT-INV-202610-HD-2026-0099");
+    assertThat(response.payment().amount()).isEqualByComparingTo("1500000");
+    assertThat(response.payment().paymentMethod()).isEqualTo(PaymentMethod.VIETQR_TRANSFER);
+    assertThat(response.payment().confirmedByStaffId()).isEqualTo(managerStaffId);
+    assertThat(response.payment().confirmedByStaffName()).isEqualTo("Tran Quan Ly");
+    assertThat(response.payment().confirmedAt()).isEqualTo(FIXED_NOW);
+
+    assertThat(invoice.getProofFileKey()).isEqualTo(proofKey);
+    assertThat(invoice.getProofSubmittedAt()).isEqualTo(submittedAt);
+
+    ArgumentCaptor<PaymentTransaction> txCaptor = ArgumentCaptor.forClass(PaymentTransaction.class);
+    verify(paymentTransactionRepository).saveAndFlush(txCaptor.capture());
+    PaymentTransaction savedTx = txCaptor.getValue();
+    assertThat(savedTx.getPaymentMethod()).isEqualTo(PaymentMethod.VIETQR_TRANSFER);
+    assertThat(savedTx.getReceiptCode()).isEqualTo("PT-INV-202610-HD-2026-0099");
+    assertThat(savedTx.getAmount()).isEqualByComparingTo("1500000");
+    assertThat(savedTx.getConfirmedByStaff()).isSameAs(managerStaff);
+    verifyNoInteractions(privateObjectStorage, vietQrPayloadService);
+  }
+
+  @Test
+  @DisplayName(
+      "confirmTransferPayment: rejects null userId, missing StaffProfile, or non-MANAGER role with 403 INVOICE_403_STAFF_PROFILE")
+  void confirmTransferPayment_rejectsInvalidManagerActor() {
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(null, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED);
+
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED);
+
+    UUID techUserId = UUID.randomUUID();
+    StaffProfile techStaff =
+        StaffProfile.builder()
+            .id(UUID.randomUUID())
+            .user(User.builder().id(techUserId).role(UserRole.TECHNICIAN).build())
+            .fullName("Le Ky Thuat")
+            .phone("0908000222")
+            .build();
+    when(staffProfileRepository.findByUserId(techUserId)).thenReturn(Optional.of(techStaff));
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(techUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED);
+
+    verifyNoInteractions(invoiceRepository, paymentTransactionRepository);
+  }
+
+  @Test
+  @DisplayName(
+      "confirmTransferPayment: rejects missing invoice (404), DEBT or blank proof (409 NOT_PENDING), and PAID/existing tx (409 ALREADY_PAID)")
+  void confirmTransferPayment_rejectsMissingInvalidStatesAndMissingProof() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, null))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_FOUND);
+
+    when(invoiceRepository.findByIdForUpdate(invoiceId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_FOUND);
+
+    when(invoiceRepository.findByIdForUpdate(invoiceId)).thenReturn(Optional.of(invoice));
+    when(paymentTransactionRepository.findByInvoiceId(invoiceId)).thenReturn(Optional.empty());
+
+    // DEBT -> 409 INVOICE_409_NOT_PENDING
+    invoice.setStatus(InvoiceStatus.DEBT);
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue(
+            "errorCode", InvoiceErrorCode.INVOICE_NOT_PENDING_CONFIRMATION);
+
+    // PENDING_CONFIRMATION with null proofFileKey -> 409 INVOICE_409_NOT_PENDING
+    invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+    invoice.setProofFileKey(null);
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue(
+            "errorCode", InvoiceErrorCode.INVOICE_NOT_PENDING_CONFIRMATION);
+
+    // PENDING_CONFIRMATION with blank proofFileKey -> 409 INVOICE_409_NOT_PENDING
+    invoice.setProofFileKey("   ");
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue(
+            "errorCode", InvoiceErrorCode.INVOICE_NOT_PENDING_CONFIRMATION);
+
+    // PAID status -> 409 INVOICE_409_ALREADY_PAID
+    invoice.setStatus(InvoiceStatus.PAID);
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_ALREADY_PAID);
+
+    // Existing PaymentTransaction row -> 409 INVOICE_409_ALREADY_PAID
+    invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+    invoice.setProofFileKey("invoices/" + invoiceId + "/proof/bill.png");
+    when(paymentTransactionRepository.findByInvoiceId(invoiceId))
+        .thenReturn(Optional.of(PaymentTransaction.builder().id(UUID.randomUUID()).build()));
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_ALREADY_PAID);
+
+    verify(invoiceRepository, never()).saveAndFlush(any());
+    verify(paymentTransactionRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  @DisplayName(
+      "confirmTransferPayment: translates unique constraint race to 409 ALREADY_PAID and rethrows other integrity violations")
+  void confirmTransferPayment_handlesUniqueConstraintRace() {
+    invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+    invoice.setProofFileKey("invoices/" + invoiceId + "/proof/transfer.png");
+    invoice.setProofSubmittedAt(FIXED_NOW);
+
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(invoiceRepository.findByIdForUpdate(invoiceId)).thenReturn(Optional.of(invoice));
+    when(paymentTransactionRepository.findByInvoiceId(invoiceId)).thenReturn(Optional.empty());
+    when(invoiceRepository.saveAndFlush(any(Invoice.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    for (String constraint :
+        List.of("payment_transactions_invoice_id_key", "payment_transactions_receipt_code_key")) {
+      invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+      when(paymentTransactionRepository.saveAndFlush(any(PaymentTransaction.class)))
+          .thenThrow(uniqueConstraintViolation(constraint));
+
+      assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+          .isInstanceOf(BaseAppException.class)
+          .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_ALREADY_PAID);
+    }
+
+    invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+    DataIntegrityViolationException checkFailure =
+        new DataIntegrityViolationException(
+            "check",
+            new ConstraintViolationException(
+                "check", new SQLException("check failed", "23514"), "ck_payment_amount"));
+    when(paymentTransactionRepository.saveAndFlush(any(PaymentTransaction.class)))
+        .thenThrow(checkFailure);
+
+    assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
+        .isSameAs(checkFailure);
+  }
+
+  private static DataIntegrityViolationException uniqueConstraintViolation(String constraintName) {
+    return new DataIntegrityViolationException(
+        "duplicate",
+        new ConstraintViolationException(
+            "duplicate", new SQLException("duplicate key value", "23505"), constraintName));
   }
 }

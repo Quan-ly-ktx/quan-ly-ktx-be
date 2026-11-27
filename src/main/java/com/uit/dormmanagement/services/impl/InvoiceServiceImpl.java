@@ -13,12 +13,16 @@ import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.InvoiceStatus;
+import com.uit.dormmanagement.enums.PaymentMethod;
+import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.ObjectStorageNotFoundException;
 import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.exceptions.error.SystemErrorCode;
 import com.uit.dormmanagement.repositories.InvoiceRepository;
 import com.uit.dormmanagement.repositories.PaymentTransactionRepository;
+import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.services.InvoiceService;
 import com.uit.dormmanagement.services.PrivateObjectStorage;
@@ -38,6 +42,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -67,6 +72,7 @@ public class InvoiceServiceImpl implements InvoiceService {
   private final InvoiceRepository invoiceRepository;
   private final PaymentTransactionRepository paymentTransactionRepository;
   private final TenantRepository tenantRepository;
+  private final StaffProfileRepository staffProfileRepository;
   private final PrivateObjectStorage privateObjectStorage;
   private final VietQrPayloadService vietQrPayloadService;
   private final Clock clock;
@@ -183,6 +189,106 @@ public class InvoiceServiceImpl implements InvoiceService {
     log.info(
         "Rejected payment proof for invoice {} -> {}", saved.getInvoiceCode(), saved.getStatus());
     return toDetailResponse(saved, true);
+  }
+
+  @Override
+  @Transactional
+  public InvoiceDetailResponse confirmCashPayment(UUID managerUserId, UUID invoiceId) {
+    StaffProfile staff = resolveManagerStaff(managerUserId);
+    if (invoiceId == null) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND);
+    }
+
+    Invoice invoice =
+        invoiceRepository
+            .findByIdForUpdate(invoiceId)
+            .orElseThrow(() -> new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND));
+
+    if (invoice.getStatus() == InvoiceStatus.PAID
+        || paymentTransactionRepository.findByInvoiceId(invoiceId).isPresent()) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_ALREADY_PAID);
+    }
+    if (invoice.getStatus() != InvoiceStatus.DEBT) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_NOT_DEBT);
+    }
+
+    return completePaymentConfirmation(invoice, staff, PaymentMethod.CASH);
+  }
+
+  @Override
+  @Transactional
+  public InvoiceDetailResponse confirmTransferPayment(UUID managerUserId, UUID invoiceId) {
+    StaffProfile staff = resolveManagerStaff(managerUserId);
+    if (invoiceId == null) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND);
+    }
+
+    Invoice invoice =
+        invoiceRepository
+            .findByIdForUpdate(invoiceId)
+            .orElseThrow(() -> new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND));
+
+    if (invoice.getStatus() == InvoiceStatus.PAID
+        || paymentTransactionRepository.findByInvoiceId(invoiceId).isPresent()) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_ALREADY_PAID);
+    }
+    if (invoice.getStatus() != InvoiceStatus.PENDING_CONFIRMATION
+        || invoice.getProofFileKey() == null
+        || invoice.getProofFileKey().isBlank()) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_NOT_PENDING_CONFIRMATION);
+    }
+
+    return completePaymentConfirmation(invoice, staff, PaymentMethod.VIETQR_TRANSFER);
+  }
+
+  private StaffProfile resolveManagerStaff(UUID managerUserId) {
+    if (managerUserId == null) {
+      throw new BaseAppException(InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED);
+    }
+    StaffProfile staff =
+        staffProfileRepository
+            .findByUserId(managerUserId)
+            .orElseThrow(
+                () -> new BaseAppException(InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED));
+    if (staff.getUser() != null && staff.getUser().getRole() != UserRole.MANAGER) {
+      throw new BaseAppException(InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED);
+    }
+    return staff;
+  }
+
+  private InvoiceDetailResponse completePaymentConfirmation(
+      Invoice invoice, StaffProfile staff, PaymentMethod paymentMethod) {
+    invoice.setStatus(InvoiceStatus.PAID);
+    Invoice savedInvoice = invoiceRepository.saveAndFlush(invoice);
+
+    String receiptCode = "PT-" + savedInvoice.getInvoiceCode().trim();
+    PaymentTransaction tx =
+        PaymentTransaction.builder()
+            .invoice(savedInvoice)
+            .receiptCode(receiptCode)
+            .amount(savedInvoice.getAmount())
+            .paymentMethod(paymentMethod)
+            .confirmedByStaff(staff)
+            .build();
+
+    PaymentTransaction savedTx;
+    try {
+      savedTx = paymentTransactionRepository.saveAndFlush(tx);
+    } catch (DataIntegrityViolationException dive) {
+      if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+          dive, "payment_transactions_invoice_id_key", "payment_transactions_receipt_code_key")) {
+        throw new BaseAppException(InvoiceErrorCode.INVOICE_ALREADY_PAID);
+      }
+      throw dive;
+    }
+
+    savedInvoice.setPaymentTransaction(savedTx);
+    log.info(
+        "Confirmed {} payment for invoice {} with receipt {}",
+        paymentMethod,
+        savedInvoice.getInvoiceCode(),
+        savedTx.getReceiptCode());
+    return toDetailResponse(savedInvoice, true);
   }
 
   @Override
@@ -467,10 +573,14 @@ public class InvoiceServiceImpl implements InvoiceService {
                 .build()
             : null;
 
-    PaymentTransactionResponse payment =
-        invoice.getStatus() == InvoiceStatus.PAID
-            ? toPaymentTransactionResponse(invoice.getPaymentTransaction())
-            : null;
+    PaymentTransactionResponse payment = null;
+    if (invoice.getStatus() == InvoiceStatus.PAID) {
+      PaymentTransaction tx = invoice.getPaymentTransaction();
+      if (tx == null && invoice.getId() != null) {
+        tx = paymentTransactionRepository.findByInvoiceId(invoice.getId()).orElse(null);
+      }
+      payment = toPaymentTransactionResponse(tx);
+    }
 
     VietQrInfoResponse vietQr =
         invoice.getStatus() == InvoiceStatus.DEBT

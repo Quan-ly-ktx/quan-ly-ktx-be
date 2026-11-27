@@ -14,4 +14,8 @@ public interface InvoiceService {
   InvoiceProofContent loadProofContentForAdmin(UUID invoiceId);
 
   InvoiceProofContent loadProofContentForTenant(UUID tenantUserId, UUID invoiceId);
+
+  InvoiceDetailResponse confirmCashPayment(UUID managerUserId, UUID invoiceId);
+
+  InvoiceDetailResponse confirmTransferPayment(UUID managerUserId, UUID invoiceId);
 }
