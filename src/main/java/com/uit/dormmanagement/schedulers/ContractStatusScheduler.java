@@ -1,8 +1,10 @@
 package com.uit.dormmanagement.schedulers;
 
+import com.uit.dormmanagement.configs.TimeConfig;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.repositories.ContractRepository;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -17,13 +19,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class ContractStatusScheduler {
 
   private final ContractRepository contractRepository;
+  private final Clock clock;
 
-  @Scheduled(cron = "${app.scheduler.contract-status-cron:0 0 0 * * *}")
-  @Transactional
+  @Scheduled(cron = "${app.scheduler.contract-status-cron:0 0 0 * * *}", zone = "Asia/Ho_Chi_Minh")
+  @Transactional(readOnly = true)
   public void updateExpiringContracts() {
-    LocalDate thresholdDate = LocalDate.now().plusDays(30);
+    LocalDate today = LocalDate.now(clock.withZone(TimeConfig.DORM_ZONE));
+    LocalDate thresholdDate = today.plusDays(30);
     List<Contract> expiringContracts =
-        contractRepository.findAllByStatusAndOriginalEndOnLessThanEqual(
+        contractRepository.findAllByStatusAndEffectiveEndOnLessThanEqual(
             ContractStatus.ACTIVE, thresholdDate);
 
     if (!expiringContracts.isEmpty()) {

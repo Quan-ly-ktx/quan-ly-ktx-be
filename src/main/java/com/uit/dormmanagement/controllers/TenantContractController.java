@@ -2,15 +2,22 @@ package com.uit.dormmanagement.controllers;
 
 import com.uit.dormmanagement.dtos.response.base.SingleResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
+import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
 import com.uit.dormmanagement.security.UserPrincipal;
 import com.uit.dormmanagement.services.ContractService;
+import com.uit.dormmanagement.utils.StreamingResponseUtils;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,6 +32,18 @@ public class TenantContractController extends AbstractBaseController {
   private final ContractService contractService;
 
   @Operation(
+      summary = "Get my contract history",
+      description =
+          "Retrieve all contracts (active and liquidated) with renewals and documents for logged-in tenant")
+  @PreAuthorize("hasRole('TENANT')")
+  @GetMapping
+  public ResponseEntity<SingleResponse<List<ContractDetailResponse>>> getMyContractHistory(
+      @AuthenticationPrincipal UserPrincipal principal) {
+    List<ContractDetailResponse> response = contractService.getMyContractHistory(principal.getId());
+    return responseFactory.success(response, "Lấy lịch sử hợp đồng thành công");
+  }
+
+  @Operation(
       summary = "Get my contract",
       description = "Retrieve current active contract and documents of logged-in tenant")
   @PreAuthorize("hasRole('TENANT')")
@@ -33,5 +52,36 @@ public class TenantContractController extends AbstractBaseController {
       @AuthenticationPrincipal UserPrincipal principal) {
     ContractDetailResponse response = contractService.getMyContract(principal.getId());
     return responseFactory.success(response, "Lấy thông tin hợp đồng thành công");
+  }
+
+  @Operation(
+      summary = "Get my contract detail",
+      description = "Retrieve a specific contract owned by the logged-in tenant")
+  @PreAuthorize("hasRole('TENANT')")
+  @GetMapping("/{id}")
+  public ResponseEntity<SingleResponse<ContractDetailResponse>> getMyContractById(
+      @AuthenticationPrincipal UserPrincipal principal, @PathVariable UUID id) {
+    ContractDetailResponse response = contractService.getMyContractById(principal.getId(), id);
+    return responseFactory.success(response, "Lấy thông tin hợp đồng thành công");
+  }
+
+  @Operation(
+      summary = "Stream own contract document content",
+      description = "Stream private contract document content for owning tenant")
+  @PreAuthorize("hasRole('TENANT')")
+  @GetMapping("/{contractId}/documents/{documentId}/content")
+  public ResponseEntity<Resource> getDocumentContent(
+      @AuthenticationPrincipal UserPrincipal principal,
+      @PathVariable UUID contractId,
+      @PathVariable UUID documentId,
+      HttpMethod httpMethod) {
+    ContractDocumentContent content =
+        contractService.loadDocumentContentForTenant(principal.getId(), contractId, documentId);
+    return StreamingResponseUtils.okInline(
+        content.resource(),
+        content.contentType(),
+        content.contentLength(),
+        content.originalFilename(),
+        httpMethod);
   }
 }

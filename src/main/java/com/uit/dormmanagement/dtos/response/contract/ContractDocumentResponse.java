@@ -9,6 +9,7 @@ import lombok.Builder;
 public record ContractDocumentResponse(
     UUID id,
     UUID contractId,
+    UUID renewalId,
     String fileName,
     String fileUrl,
     String fileType,

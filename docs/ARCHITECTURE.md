@@ -1,6 +1,6 @@
 # Project Architecture — `dormitory-management` (KTX Hub / PDMS)
 
-Tài liệu thiết kế kiến trúc kỹ thuật chuẩn hóa cho hệ thống **Quản lý Ký túc xá Tư nhân & Sleepbox (KTX Hub / PDMS)**, xây dựng trên nền tảng Java 25 và Spring Boot 4.x.
+Tài liệu thiết kế kiến trúc kỹ thuật chuẩn hóa cho hệ thống **Quản lý Ký túc xá Tư nhân & Sleepbox (KTX Hub / PDMS)**, xây dựng trên nền tảng **Java 25** và **Spring Boot 4.1.2**.
 
 ---
 
@@ -17,47 +17,48 @@ dormitory-management/
 │   └── docker-compose.yml          # Dịch vụ hạ tầng cục bộ (PostgreSQL 17, Redis 8)
 ├── docs/
 │   ├── ARCHITECTURE.md             # Tài liệu thiết kế kiến trúc & ranh giới package (file này)
-│   ├── Conceptual_ERD.md           # Mô hình thực thể khái niệm (14 thực thể, quan hệ)
-│   ├── Logical-ERD.md              # Lược đồ logic chi tiết CSDL (12 bảng, kiểu dữ liệu, SQL View)
-│   ├── Response-ErrorHandling-Architecutre.md # Chuẩn hóa Envelope Response & Exception
-│   └── SRS.md                      # Đặc tả yêu cầu phần mềm v2.1 (BR-01..BR-11, FR-01..FR-27)
+│   ├── Authentication-Workflow.md  # Luồng JWT, Redis session/OTP và khôi phục mật khẩu
+│   ├── Conceptual_ERD.md           # Mô hình thực thể khái niệm (v3.5 FINAL — 18 thực thể)
+│   ├── Configuration-Profile-Architecture.md # Cấu hình profile Spring & biến môi trường
+│   ├── Logical-ERD.md              # Lược đồ logic chi tiết CSDL (v3.6 FINAL — 20 bảng PostgreSQL)
+│   ├── SRS.md                      # Đặc tả yêu cầu phần mềm v3.4.1 FINAL (BR-01..BR-11, FR-01..FR-27)
+│   └── audits/                     # Kiểm kê hợp đồng API, đánh giá code và tương thích prototype
+├── private-storage/                # Dữ liệu thử nghiệm cục bộ cũ (Phase 2; Phase 3A đã chuyển sang OCI S3 private bucket)
 ├── src/
 │   ├── main/
 │   │   ├── java/
 │   │   │   └── com/
 │   │   │       └── uit/
 │   │   │           └── dormmanagement/
-│               ├── configs/        # Cấu hình Spring Beans (Security, CORS, Jackson, Redis, Scalar/OpenAPI)
-│               ├── constants/      # Hằng số hệ thống, regex CCCD/biển số, mã lỗi
-│               ├── controllers/    # REST API endpoints, @Valid DTO, định tuyến mỏng (AbstractBaseController)
-│               ├── dtos/           # Data Transfer Objects (chuẩn hóa request / response)
-│               │   ├── request/    # DTOs nhận dữ liệu đầu vào (auth, room, tenant, contract, ...)
-│               │   └── response/   # DTOs trả về dữ liệu đầu ra
-│               │       ├── base/   # Envelope mẫu: AbstractBaseResponse, SingleResponse, SuccessResponse, PageResponse, ErrorResponse, DetailedErrorResponse
-│               │       ├── ResponseFactory.java # Component tạo Response chuẩn
-│               │       └── (auth, room, tenant, contract, invoice, payment, expense, ticket, violation, vehicle, report)
-│   │   │               ├── entities/       # JPA Entities ánh xạ 1:1 với 12 bảng PostgreSQL
-│   │   │               ├── enums/          # Domain enumerations (GenderPolicy, RoomStatus, BedStatus, ...)
-│   │   │               ├── exceptions/     # Custom domain exceptions, AppErrorCode, GlobalExceptionHandler
-│   │   │               ├── mappers/        # MapStruct mappers chuyển đổi Entity <-> DTO
-│   │   │               ├── repositories/   # Spring Data JPA interfaces (UUID làm PK, custom queries, locking)
-│   │   │               ├── schedulers/     # @Scheduled cron jobs (Phát hành HĐ ngày 25, quét HĐ hết hạn)
-│   │   │               ├── security/       # JWT filter, UserPrincipal, RBAC evaluators, SecurityUtils
+│   │   │               ├── configs/        # Cấu hình Spring Beans (OpenAPI, Redis, StorageConfig, StorageProperties)
+│   │   │               ├── constants/      # Hằng số Redis keys (RedisKeyConstants)
+│   │   │               ├── controllers/    # REST API endpoints, @Valid DTO, định tuyến mỏng (AbstractBaseController, ScalarDocsController)
+│   │   │               ├── dtos/           # Data Transfer Objects (Java record, request / response)
+│   │   │               │   ├── request/    # DTOs đầu vào (auth, room, tenant, onboarding, contract, vehicle, ...)
+│   │   │               │   └── response/   # DTOs đầu ra & ResponseFactory.java
+│   │   │               │       └── base/   # Envelope chuẩn: AbstractBaseResponse, SingleResponse, SuccessResponse, PageResponse, ErrorResponse, DetailedErrorResponse
+│   │   │               ├── entities/       # 20 JPA Entities + RoomAmenityId (khớp 1:1 V1__clean_baseline.sql)
+│   │   │               ├── enums/          # 21 Domain enumerations (GenderPolicy, RoomType, BedStatus, VehicleStatus, ...)
+│   │   │               ├── exceptions/     # BaseAppException, AppErrorCode, AppExceptionHandler, DataIntegrityViolationClassifier, error/*ErrorCode
+│   │   │               ├── mappers/        # Package mapper (dự phòng khi cần tách chuyển đổi phức tạp)
+│   │   │               ├── repositories/   # Spring Data JPA interfaces (UUID PK, composite/text key ngoại lệ)
+│   │   │               ├── schedulers/     # Package @Scheduled (chờ tác vụ hợp đồng Phase 3)
+│   │   │               ├── security/       # JWT filter, CustomUserDetailsService, UserPrincipal, SecurityConfig, EntryPoint/AccessDeniedHandler
 │   │   │               ├── services/       # Interfaces & Implementation nghiệp vụ lõi (@Transactional)
-│   │   │               ├── utils/          # Helper tĩnh (VietQR payload builder, format số tiền, date math)
+│   │   │               ├── utils/          # Helper tĩnh (LogMaskingUtils)
 │   │   │               └── DormitoryManagementApplication.java
 │   │   └── resources/
 │   │       ├── db/
-│   │       │   └── migration/              # Flyway SQL migrations (V1__init_schema.sql, V2__seed_amenities.sql)
+│   │       │   └── migration/              # Flyway SQL baseline duy nhất (V1__clean_baseline.sql)
 │   │       ├── static/
-│   │       ├── application.yaml            # Cấu hình cơ sở dùng chung
-│   │       ├── application-dev.yaml        # Cấu hình môi trường dev (PostgreSQL & Redis local)
-│   │       └── application-prod.yaml       # Cấu hình môi trường production
+│   │       ├── application.yml             # Cấu hình cơ sở dùng chung
+│   │       ├── application-dev.yml         # Cấu hình môi trường dev (PostgreSQL & Redis local)
+│   │       └── application-prod.yml        # Cấu hình môi trường production
 │   └── test/
 │       └── java/
 │           └── com/
 │               └── uit/
-│                   └── dormmanagement/     # Unit tests, Slice tests (@WebMvcTest, @DataJpaTest), Integration tests
+│                   └── dormmanagement/     # Unit tests, Slice tests, Testcontainers PostgreSQL/Redis & E2E tests
 ├── .env.example                            # Biến môi trường mẫu cho hạ tầng Docker
 ├── .gitattributes
 ├── .gitignore
@@ -75,19 +76,19 @@ dormitory-management/
 Dự án áp dụng kiến trúc phân tầng kỹ thuật nghiêm ngặt (**Technical-Layered Architecture**) dưới package `com.uit.dormmanagement`:
 
 ```text
-[Desktop Web (Manager) | Mobile Web/App (Tenant) | Mobile App (Technician)]
-                        │ (JSON DTOs qua HTTPS)
+[Desktop Web (Manager) | Mobile Web (Tenant / Technician)]
+                        │ (JSON DTOs & Multipart qua HTTPS)
                         ▼
                   controllers/    ──(Nhận @Valid Request DTO, trích xuất UserPrincipal)──►
                         │
                         ▼
-                   services/      ──(@Transactional, kiểm tra BR-01..BR-11, tính Lợi nhuận)──►
+                   services/      ──(@Transactional, kiểm tra BR-01..BR-11, lưu trữ chứng từ)──►
                         │                                          ▲
                         ▼                                          │ (sử dụng)
-                 repositories/    ◄──(ánh xạ qua mappers/)─────────┴──► entities/ & enums/
+                 repositories/    ◄────────────────────────────────┴──► entities/ & enums/
                         │
                         ▼
-        [PostgreSQL 15+ (12 Bảng CSDL) & Redis (Cache/OTP)]
+    [PostgreSQL 17 (20 Bảng CSDL) | Redis 8 (Session/OTP/Rate Limit) | OCI Object Storage (Private S3 API)]
 ```
 
 ### Quy tắc Chi tiết Từng Gói (Package Responsibilities)
@@ -100,100 +101,102 @@ Dự án áp dụng kiến trúc phân tầng kỹ thuật nghiêm ngặt (**Tec
 
 #### 2. `dtos/`:
 - Tổ chức phân tách thành 2 nhánh chính:
-  - `dtos/request/`: Chứa các Request DTOs đại diện cho dữ liệu đầu vào từ Client, nhóm theo từng domain (`auth`, `room`, `tenant`, `contract`, `invoice`, `payment`, `expense`, `ticket`, `violation`, `vehicle`, `report`).
+  - `dtos/request/`: Chứa các Request DTOs đại diện cho dữ liệu đầu vào từ Client, nhóm theo từng domain (`auth`, `room`, `tenant`, `onboarding`, `contract`, `vehicle`, ...).
   - `dtos/response/`: Chứa các Response DTOs trả về cho Client.
-    - `dtos/response/base/`: Chứa các lớp Envelope Response chuẩn hóa theo `docs/Response-ErrorHandling-Architecutre.md` (`AbstractBaseResponse`, `SingleResponse<T>`, `SuccessResponse`, `PageResponse<T>`, `ErrorResponse`, `DetailedErrorResponse`).
+    - `dtos/response/base/`: Chứa các lớp Envelope Response chuẩn hóa (`AbstractBaseResponse`, `SingleResponse<T>`, `SuccessResponse`, `PageResponse<T>`, `ErrorResponse`, `DetailedErrorResponse`).
     - `dtos/response/ResponseFactory.java`: Factory component tập trung để sinh các `ResponseEntity` chuẩn.
 - Ưu tiên sử dụng Java `record` bất biến (Immutable Data Transfer Object).
-- Khai báo đầy đủ các annotation xác thực Jakarta Validation: `@NotNull`, `@NotBlank`, `@Size`, `@Pattern`, `@Positive`, `@Email`.
+- Khai báo đầy đủ các annotation xác thực Jakarta Validation (`@NotNull`, `@NotBlank`, `@Size`, `@Pattern`, `@Positive`, `@Email`, `@PositiveOrZero`).
 #### 3. `services/`:
 - Đóng gói toàn bộ các quy tắc nghiệp vụ cốt lõi (Core Business Rules BR-01..BR-11):
-  - Kiểm tra cách ly giới tính nghiêm ngặt (`BR-02`) trước khi gán phòng hoặc đổi phòng.
-  - Quản lý trạng thái giường và mã vị trí duy nhất `slotKey` (`BR-01`).
-  - Hạch toán Lợi nhuận ròng thực tế từ các hóa đơn chi phí cơ sở (`BR-03`).
-  - Điều phối và sắp xếp thứ tự ưu tiên phiếu sự cố: Khẩn cấp > Cao > Bình thường (`BR-06`).
+  - Kiểm tra cách ly giới tính nghiêm ngặt (`BR-02`) trước khi gán giường hoặc cập nhật phòng/hồ sơ khách thuê.
+  - Quản lý trạng thái giường, `room_code_registry` (`used_in_business`) và mã vị trí duy nhất `slotKey` (`BR-01`).
+  - Xử lý đăng ký xe, cấp/thu thẻ từ, yêu cầu đổi xe (khóa bi-quan `Vehicle` $\rightarrow$ `VehicleChangeRequest`), đồng thời lưu trữ và stream ảnh cà vẹt xe (`PrivateVehicleEvidenceStorage`) và tài liệu hợp đồng qua **OCI Object Storage private bucket** (`PrivateObjectStorage` / `S3PrivateObjectStorage`, AWS SDK v2 S3 API).
+  - Phạm vi triển khai: Phase 2 bao gồm Auth/RBAC, Rooms/Beds/Amenities, Tenant Profile, Vehicles/Change Requests; Phase 3 xử lý Onboarding/Contracts; **FR-11** (chuyển phòng) đang tạm hoãn (`deferred`) và các phân hệ **4.6** (Chi phí & Lợi nhuận), **4.7** (Hóa đơn & Thu tiền), **4.8** (Sự cố, Vi phạm, Báo cáo & Thông báo) bị loại trừ khỏi phạm vi hiện tại.
 - Thao tác truy vấn dữ liệu đánh dấu `@Transactional(readOnly = true)`.
-- Thao tác thay đổi trạng thái (tạo hợp đồng, gạch nợ, thanh lý phòng) bắt buộc đánh dấu `@Transactional`.
+- Thao tác thay đổi trạng thái bắt buộc đánh dấu `@Transactional`.
 
 #### 4. `repositories/`:
-- Kế thừa `JpaRepository<Entity, UUID>` từ Spring Data JPA.
-- Áp dụng `@Lock(LockModeType.PESSIMISTIC_WRITE)` khi cần khóa dòng để xử lý tranh chấp (ví dụ: gán vị trí giường, duyệt thanh toán hóa đơn).
+- Kế thừa `JpaRepository<Entity, UUID>` cho 18 bảng dùng `UUID` khóa chính; ngoại lệ gồm `RoomAmenityRepository` (`RoomAmenityId`) và `RoomCodeRegistryRepository` (`String code`).
+- Áp dụng `@Lock(LockModeType.PESSIMISTIC_WRITE)` và `saveAndFlush` khi cần khóa dòng hoặc bắt lỗi ràng buộc DB tại ranh giới service để tránh deadlock và phản hồi đúng HTTP `409`/`400`.
 - Khắc phục triệt để vấn đề N+1 query bằng `@EntityGraph` hoặc các câu lệnh JPQL `JOIN FETCH`.
 
 #### 5. `entities/`:
-- Ánh xạ chính xác 1:1 với 12 bảng trong `docs/Logical-ERD.md`:
+- Ánh xạ chính xác 1:1 với **20 bảng** trong `docs/Logical-ERD.md` (v3.6 FINAL) và `src/main/resources/db/migration/V1__clean_baseline.sql`:
   1. `User` (`users`)
   2. `Tenant` (`tenants`)
   3. `StaffProfile` (`staff_profiles`)
   4. `Room` (`rooms`)
   5. `Bed` (`beds`)
   6. `Amenity` (`amenities`)
-  7. `RoomAmenity` (`room_amenities`)
-  8. `Contract` (`contracts`)
-  9. `Invoice` (`invoices`)
-  10. `PaymentTransaction` (`payment_transactions`)
-  11. `FacilityExpense` (`facility_expenses`)
-  12. `MaintenanceTicket` (`maintenance_tickets`)
-  13. `TicketReplacementPart` (`ticket_replacement_parts`)
-  14. `Violation` (`violations`)
-  15. `Vehicle` (`vehicles`)
-- **Khóa chính:** Toàn bộ thực thể dùng `UUID id` với `@GeneratedValue(strategy = GenerationType.UUID)` hoặc tự sinh qua CSDL.
-- **Tiền tệ:** Thuộc tính giá tiền luôn dùng `BigDecimal` trong Java và `numeric(12,2)` trong PostgreSQL.
+  7. `RoomAmenity` (`room_amenities`, composite PK `RoomAmenityId`)
+  8. `RoomCodeRegistry` (`room_code_registry`, natural PK `code`)
+  9. `Contract` (`contracts`)
+  10. `ContractRenewal` (`contract_renewals`)
+  11. `ContractDocument` (`contract_documents`)
+  12. `Invoice` (`invoices`)
+  13. `PaymentTransaction` (`payment_transactions`)
+  14. `FacilityExpense` (`facility_expenses`)
+  15. `MaintenanceTicket` (`maintenance_tickets`)
+  16. `TicketReplacementPart` (`ticket_replacement_parts`)
+  17. `Violation` (`violations`)
+  18. `Vehicle` (`vehicles`)
+  19. `VehicleChangeRequest` (`vehicle_change_requests`)
+  20. `Notification` (`notifications`)
+- **Khóa chính:** 18 bảng dùng `UUID id`; ngoại lệ `room_amenities` (`@EmbeddedId RoomAmenityId`) và `room_code_registry` (`String code`).
+- **Tiền tệ:** Thuộc tính giá tiền luôn dùng `BigDecimal` với `precision = 14, scale = 0` trong Java và `numeric(14,0)` trong PostgreSQL.
+- **Thời gian & Ngày:** Dùng `Instant` ánh xạ `timestamptz` và `LocalDate` ánh xạ `date`.
 - **Quan hệ:** Mọi liên kết `@ManyToOne` và `@OneToOne` bắt buộc dùng `fetch = FetchType.LAZY`.
-- **Soft Delete:** Áp dụng `@SQLRestriction("deleted_at IS NULL")` trên các thực thể có cờ `deleted_at`.
+- **Lưu trữ mềm / Bảo toàn lịch sử:** Bảng lịch sử dùng `ON DELETE RESTRICT` (không dùng `deleted_at`); riêng `Room` dùng `@SQLRestriction("archived_at IS NULL")` với cột `archived_at`.
 
 #### 6. `enums/`:
-- Toàn bộ giá trị hằng số Enum và ràng buộc `CHECK` trong CSDL được **chuẩn hóa 100% bằng tiếng Anh** (chỉ có giao diện người dùng hiển thị tiếng Việt tương ứng):
-  - `GenderPolicy` (`MALE`, `FEMALE`) — *UI hiển thị: Nam, Nữ*
-  - `RoomType` (`FOUR_BEDS`, `SIX_BEDS`, `EIGHT_BEDS`, `SLEEPBOX`) — *UI: 4 giường, 6 giường, 8 giường, Sleepbox*
-  - `RoomStatus` (`AVAILABLE`, `OCCUPIED`, `MAINTENANCE`) — *UI: Trống, Đang ở, Bảo trì*
-  - `BedStatus` (`AVAILABLE`, `OCCUPIED`, `MAINTENANCE`) — *UI: Sẵn sàng, Đang thuê, Bảo trì*
-  - `UserRole` (`MANAGER`, `TECHNICIAN`, `TENANT`) — *UI: Quản lý, Kỹ thuật viên, Khách thuê*
-  - `UserStatus` (`ACTIVE`, `INACTIVE`, `LOCKED`) — *UI: Hoạt động, Tạm khóa, Đã khóa*
-  - `ResidentStatus` (`ACTIVE`, `CHECKED_OUT`, `RESERVED`) — *UI: Đang ở, Đã trả phòng, Bảo lưu*
-  - `ContractStatus` (`ACTIVE`, `EXPIRING_SOON`, `TERMINATED`, `CANCELLED`) — *UI: Hiệu lực, Sắp hết hạn, Đã thanh lý, Đã hủy*
-  - `InvoiceStatus` (`PAID`, `PENDING_CONFIRMATION`, `UNPAID`) — *UI: Đã thu, Chờ xác nhận, Nợ*
-  - `InvoiceKind` (`ALL_INCLUSIVE_RENT`, `OTHER`) — *UI: Tiền phòng trọn gói, Phụ phí phát sinh*
-  - `PaymentMethod` (`VIETQR`, `CASH`, `BANK_TRANSFER`) — *UI: VietQR Napas247, Tiền mặt, Chuyển khoản*
-  - `ExpenseType` (`ELECTRICITY`, `WATER`, `INTERNET`, `OTHER`) — *UI: Điện EVN, Nước Sawaco, Internet cáp quang, Khác*
-  - `TicketCategory` (`PLUMBING`, `AIR_CONDITIONING`, `ELECTRICAL`, `FURNITURE`, `LOCKS`, `OTHER`) — *UI: Điện nước, Điều hòa, Điện, Nội thất, Khóa cửa, Khác*
-  - `TicketPriority` (`URGENT`, `HIGH`, `NORMAL`) — *UI: Khẩn cấp (Rank 0), Cao (Rank 1), Bình thường (Rank 2)*
-  - `TicketStatus` (`OPEN`, `IN_PROGRESS`, `RESOLVED`, `CANCELLED`) — *UI: Mới giao, Đang xử lý, Hoàn thành, Đã hủy*
-  - `ViolationType` (`LATE_RETURN`, `NOISE`, `HYGIENE`, `OUTSIDE_GUEST`, `SMOKING_FIRE`, `OTHER`) — *UI: Về muộn, Gây ồn, Vệ sinh, Khách ngoài, Hút thuốc/cháy nổ, Khác*
-  - `ViolationLevel` (`REMINDER`, `WARNING`, `FINE`) — *UI: Nhắc nhở, Cảnh cáo, Phạt tiền*
-  - `VehicleType` (`SCOOTER`, `MANUAL_MOTORCYCLE`, `ELECTRIC_MOTORBIKE`, `ELECTRIC_BICYCLE`, `BICYCLE`) — *UI: Xe tay ga, Xe số, Xe máy điện, Xe đạp điện, Xe đạp*
-  - `VehicleStatus` (`PENDING`, `ACTIVE`, `REVOKED`) — *UI: Chưa cấp thẻ, Đã cấp thẻ, Đã thu hồi*
+- Toàn bộ **21 hằng số Enum** và ràng buộc `CHECK` trong CSDL được chuẩn hóa 100% bằng tiếng Anh khớp chính xác với mã nguồn `enums/*.java`:
+  - `GenderPolicy` (`MALE`, `FEMALE`)
+  - `RoomType` (`FOUR_BEDS`, `SIX_BEDS`, `EIGHT_BEDS`)
+  - `BedStatus` (`AVAILABLE`, `OCCUPIED`, `MAINTENANCE`)
+  - `UserRole` (`MANAGER`, `TECHNICIAN`, `TENANT`)
+  - `UserStatus` (`ACTIVE`, `LOCKED`)
+  - `ResidentStatus` (`ACTIVE`, `CHECKED_OUT`)
+  - `ContractStatus` (`ACTIVE`, `LIQUIDATED`)
+  - `ContractDocumentCategory` (`ORIGINAL_CONTRACT`, `RENEWAL_ANNEX`, `CHECKOUT_HANDOVER`, `OTHER`)
+  - `InvoiceStatus` (`DEBT`, `PENDING_CONFIRMATION`, `PAID`)
+  - `InvoiceKind` (`ALL_INCLUSIVE_RENT`, `OTHER`)
+  - `PaymentMethod` (`CASH`, `VIETQR_TRANSFER`)
+  - `ExpenseType` (`ELECTRICITY`, `WATER`, `INTERNET`, `SALARY`, `OTHER`)
+  - `TicketCategory` (`ELECTRIC`, `WATER`, `INTERNET`, `FURNITURE`, `AMENITY`, `OTHER`)
+  - `TicketPriority` (`URGENT`, `HIGH`, `NORMAL`)
+  - `TicketStatus` (`UNASSIGNED`, `ASSIGNED`, `IN_PROGRESS`, `COMPLETED`)
+  - `ViolationType` (`LATE_RETURN`, `NOISE`, `HYGIENE`, `OUTSIDER`, `SMOKING_FIRE`, `OTHER`)
+  - `ViolationLevel` (`REMINDER`, `WARNING`, `FINE`)
+  - `VehicleType` (`SCOOTER`, `MANUAL_MOTORCYCLE`, `ELECTRIC_MOTORBIKE`, `ELECTRIC_BICYCLE`, `BICYCLE`)
+  - `VehicleStatus` (`PENDING_CARD`, `ISSUED`, `REJECTED`, `REVOKED`, `REPLACED`, `CANCELLED`)
+  - `VehicleChangeRequestStatus` (`PENDING`, `APPROVED`, `REJECTED`, `CANCELLED`)
+  - `NotificationEventType` (`INVOICE_ISSUED`, `INVOICE_DUE`, `INVOICE_OVERDUE`, `PAYMENT_CONFIRMED`, `PAYMENT_PROOF_REJECTED`, `VIOLATION_CREATED`, `VEHICLE_REGISTRATION_REJECTED`, `VEHICLE_CHANGE_APPROVED`, `VEHICLE_CHANGE_REJECTED`)
 #### 7. `mappers/`:
-- Sử dụng MapStruct hoặc Component mappers để ánh xạ giữa Entity và DTOs.
-- Tách bạch hoàn toàn lớp biểu diễn (DTO) khỏi lớp dữ liệu bền vững (Entity).
+- Giữ ranh giới chuyển đổi Entity <-> DTO tách bạch hoàn toàn khỏi tầng Repository và Controller (hiện tại DTO mapping được thực hiện tập trung tại Service hoặc thành phần trợ giúp).
 
 #### 8. `schedulers/`:
-- `MonthlyBillingScheduler`: Tự động chạy vào lúc **00:00 ngày 25 hàng tháng** để phát hành hóa đơn tiền phòng trọn gói cho toàn bộ các hợp đồng có trạng thái `Hiệu lực` (`BR-05`).
-- `ContractExpirationScheduler`: Quét các hợp đồng còn hạn dưới 30 ngày để chuyển trạng thái sang `Sắp hết hạn` và phát thông báo gia hạn (`FR-12`).
+- Package `schedulers/` hiện chưa kích hoạt tác vụ cron nào ở Phase 2 (dự phòng cho các job hợp đồng như `ContractStatusScheduler` ở Phase 3; các job hóa đơn/chi phí thuộc phân hệ 4.6–4.7 đang nằm ngoài phạm vi triển khai hiện tại).
 
 #### 9. `security/`:
-- Triển khai xác thực JWT không trạng thái (**Stateless JWT Authentication**): `JwtAuthenticationFilter`, `JwtService`.
-- Băm mật khẩu bằng thuật toán an toàn `Argon2id` hoặc `Bcrypt` (cost factor >= 12).
-- Phân quyền tinh giản theo 3 vai trò: `MANAGER`, `TECHNICIAN`, `TENANT`.
-- Tự động khóa tài khoản 15 phút nếu đăng nhập sai quá 5 lần liên tiếp.
+- Triển khai xác thực JWT không trạng thái kết hợp trạng thái phiên trên Redis (`JwtAuthenticationFilter`, `JwtService`, `CustomUserDetailsService`, `SecurityConfig`, `CustomAuthenticationEntryPoint`, `CustomAccessDeniedHandler`).
+- Quy tắc đăng nhập theo vai trò: `MANAGER` và `TECHNICIAN` đăng nhập bằng canonical email; `TENANT` đăng nhập bằng CCCD 12 chữ số (email Tenant chỉ dùng để liên hệ và nhận OTP khôi phục mật khẩu).
+- Đổi mật khẩu khi đã đăng nhập (`POST /api/v1/auth/change-password`) xác thực qua `oldPassword` và xoay `sessionGeneration` trên Redis (không dùng OTP); quên mật khẩu (`forgot-password` $\rightarrow$ `verify-forgot-password-otp` $\rightarrow$ `reset-password`) dùng OTP 6 số hiệu lực 5 phút (`recoveryRequestId`, `resetToken`) lưu trên Redis.
+- Băm mật khẩu bằng BCrypt; khóa tài khoản/tác nhân sau >5 lần đăng nhập sai trong 15 phút (`LoginAttemptServiceImpl`).
+- `SecurityConfig` chặn toàn bộ truy cập tĩnh trực tiếp vào `/uploads/**` (`denyAll()`, đã gỡ bỏ `WebMvcResourceConfig` và local storage fallback); toàn bộ ảnh cà vẹt xe và tài liệu hợp đồng được stream có kiểm tra quyền qua Backend, và mọi log xác thực/định danh đều được che nhạy cảm qua `LogMaskingUtils`.
 
 #### 10. `exceptions/`:
-- Xử lý ngoại lệ tập trung qua `GlobalExceptionHandler` (`@RestControllerAdvice`).
-- Mọi exception nghiệp vụ kế thừa từ `BaseAppException` kèm mã lỗi chuẩn `AppErrorCode`.
+- Xử lý ngoại lệ tập trung qua `AppExceptionHandler` (`@RestControllerAdvice`) phối hợp với `DataIntegrityViolationClassifier`.
+- Mọi exception nghiệp vụ ném `BaseAppException` gắn với `AppErrorCode` cụ thể trong `exceptions/error/*ErrorCode.java` (`AuthErrorCode`, `RoomErrorCode`, `TenantErrorCode`, `VehicleErrorCode`, `ContractErrorCode`, `WebErrorCode`, `SystemErrorCode`).
+- `DataIntegrityViolationClassifier` ánh xạ đúng các ràng buộc unique trong `V1__clean_baseline.sql` sang mã `409` domain tương ứng (hoặc `409 WEB_409` cho unique `23505` chưa ánh xạ), và giữ các lỗi `NOT NULL` (`23502`), `CHECK` (`23514`), FK chung (`23503`), tràn độ dài (`22xxx`), hoặc không phân loại được ở HTTP `400` (`WEB_400`).
 
 ---
 
 ## 3. Chiến lược Migration Cơ sở Dữ liệu (`db/migration/`)
 
 Hệ thống quản lý phiên bản cơ sở dữ liệu bằng **Flyway**:
-- Quy tắc đặt tên file: `V{version}__{snake_case_description}.sql`
-  - `V1__init_dorm_management_schema.sql`: Khởi tạo 12 bảng PostgreSQL, các ràng buộc `CHECK`, khóa ngoại `ON DELETE RESTRICT`, chỉ mục B-tree và SQL View tính Lợi nhuận ròng.
-  - `V2__seed_master_amenities.sql`: Khởi tạo danh mục tiện nghi phòng mặc định (Điều hòa, Tủ lạnh, Bình nóng lạnh, Bàn học...).
-  - `V3__seed_initial_admin_account.sql`: Tạo tài khoản quản trị viên mặc định (`MANAGER`) với mật khẩu băm.
-
-**Quy tắc Dữ liệu Seed:**
-- **CHO PHÉP trong Flyway:** Dữ liệu danh mục dùng chung của hệ thống (`amenities`, tài khoản bootstrap admin đầu tiên).
-- **CẤM trong Flyway:** Không lưu dữ liệu mock, giao dịch thử nghiệm hay thông tin cá nhân khách thuê vào migration chính (sử dụng profile `dev` hoặc bộ nạp dữ liệu riêng cho môi trường thử nghiệm).
+- Hiện trạng sử dụng file baseline sạch duy nhất `V1__clean_baseline.sql`: khởi tạo toàn bộ **20 bảng PostgreSQL**, kiểu `numeric(14,0)`, ràng buộc `CHECK`, khóa ngoại `ON DELETE RESTRICT`, các partial unique index (`uq_users_email_canonical`, `uq_rooms_number_canonical`, `uq_beds_slot_key_canonical`, `uq_contracts_active_bed`, `uq_contracts_active_tenant`, `uq_vehicles_issued_card_code`, `uq_vehicles_tenant_active_quota`, `uq_vehicle_change_requests_pending_tenant`), trigger đồng bộ, và dữ liệu seed danh mục `amenities` (7 tiện nghi chuẩn).
+- Không sửa đổi `V1__clean_baseline.sql` khi chưa có yêu cầu migration chính thức; mọi dữ liệu kiểm thử được nạp riêng trong profile `dev` hoặc test fixtures.
 
 ---
 
@@ -211,19 +214,20 @@ Hệ thống quản lý phiên bản cơ sở dữ liệu bằng **Flyway**:
 
 ## 5. Chuẩn hóa Phản hồi & Xử lý Ngoại lệ
 
-Toàn bộ hệ thống tuân thủ cấu trúc của `docs/Response-ErrorHandling-Architecutre.md`:
+Toàn bộ hệ thống tuân thủ cấu trúc chuẩn hóa trực tiếp bởi `ResponseFactory`, `dtos/response/base/`, `AppExceptionHandler`, `DataIntegrityViolationClassifier` và `exceptions/error/*ErrorCode.java`:
 - Đóng gói dữ liệu đầu ra qua Envelope Pattern:
   - `SingleResponse<T>`: Chứa mã `httpStatus`, thông điệp `message` và payload `data`.
   - `SuccessResponse`: Cho các thao tác Command không có payload trả về.
   - `PageResponse<T>`: Chuẩn hóa phân trang (`items`, `page`, `size`, `totalElements`, `totalPages`, `last`).
-  - `ErrorResponse`: Phản hồi lỗi chi tiết chứa `errorCode`, `message`, `timestamp`, `path`.
+  - `ErrorResponse`: Phản hồi lỗi chuẩn chứa `httpStatus`, `errorCode`, `message`, `timestamp`, `path`.
+  - `DetailedErrorResponse`: Bổ sung `items` (`Map<String, List<String>>`) cho lỗi xác thực đầu vào (`WEB_400_VAL`).
 
 ---
 
 ## 6. Tài liệu Hóa API Hiện Đại với Scalar (Scalar API Reference)
 
 Hệ thống sử dụng **Scalar** thay thế cho giao diện Swagger truyền thống:
-- **Thư viện tích hợp:** `org.springdoc:springdoc-openapi-starter-webmvc-scalar` (tương thích Spring Boot 4.x và OpenAPI 3.1).
+- **Thư viện tích hợp:** `org.springdoc:springdoc-openapi-starter-webmvc-scalar` `3.1.1` (tương thích Spring Boot 4.x và OpenAPI 3.1).
 - **Đường dẫn OpenAPI JSON:** `/v3/api-docs`
-- **Giao diện API Reference tương tác:** `/scalar`
+- **Giao diện API Reference tương tác:** `/scalar` (kèm alias `/docs`)
 - **Ưu điểm:** Giao diện người dùng hiện đại, tối ưu tra cứu DTOs, hỗ trợ dark/light theme, tích hợp client kiểm thử API mượt mà và trực quan hơn.

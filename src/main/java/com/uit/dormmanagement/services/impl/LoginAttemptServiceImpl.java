@@ -2,6 +2,7 @@ package com.uit.dormmanagement.services.impl;
 
 import com.uit.dormmanagement.constants.RedisKeyConstants;
 import com.uit.dormmanagement.services.LoginAttemptService;
+import com.uit.dormmanagement.utils.LogMaskingUtils;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
@@ -32,9 +33,10 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
       redisTemplate.expire(attemptsKey, ATTEMPTS_TTL);
     }
 
+    String maskedIdentifier = LogMaskingUtils.maskIdentifier(identifier);
     log.warn(
         "Failed login attempt for identifier: {}, attempt count: {}/{}",
-        identifier,
+        maskedIdentifier,
         currentAttempts,
         MAX_ATTEMPTS);
 
@@ -43,7 +45,7 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
       redisTemplate.opsForValue().set(lockedKey, LOCKED_VALUE, LOCK_DURATION);
       log.warn(
           "Identifier: {} has been locked for 15 minutes due to exceeding max attempts",
-          identifier);
+          maskedIdentifier);
     }
   }
 
@@ -54,7 +56,9 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
     }
     redisTemplate.delete(RedisKeyConstants.loginAttemptsKey(identifier));
     redisTemplate.delete(RedisKeyConstants.loginLockedKey(identifier));
-    log.debug("Reset login attempts and lock status for identifier: {}", identifier);
+    log.debug(
+        "Reset login attempts and lock status for identifier: {}",
+        LogMaskingUtils.maskIdentifier(identifier));
   }
 
   @Override

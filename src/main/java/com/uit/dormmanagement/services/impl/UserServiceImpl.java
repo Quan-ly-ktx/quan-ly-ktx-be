@@ -13,6 +13,7 @@ import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
@@ -22,6 +23,7 @@ import com.uit.dormmanagement.services.RandomPasswordGenerator;
 import com.uit.dormmanagement.services.TokenRevocationService;
 import com.uit.dormmanagement.services.UserService;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
+import com.uit.dormmanagement.utils.LogMaskingUtils;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
@@ -30,6 +32,7 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -67,7 +70,8 @@ public class UserServiceImpl implements UserService {
         StaffProfile staff = staffProfileRepository.findByUserId(userId).orElse(null);
         if (staff != null) {
           staffInfo =
-              new UserProfileResponse.StaffInfo(staff.getId(), staff.getFullName(), staff.getPhone());
+              new UserProfileResponse.StaffInfo(
+                  staff.getId(), staff.getFullName(), staff.getPhone());
         }
       }
       case TENANT -> {
@@ -92,12 +96,7 @@ public class UserServiceImpl implements UserService {
     }
 
     return new UserProfileResponse(
-        user.getId(),
-        user.getEmail(),
-        user.getRole(),
-        user.getStatus(),
-        staffInfo,
-        tenantInfo);
+        user.getId(), user.getEmail(), user.getRole(), user.getStatus(), staffInfo, tenantInfo);
   }
 
   @Override
@@ -118,7 +117,7 @@ public class UserServiceImpl implements UserService {
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
             .build();
-    User savedUser = userRepository.save(user);
+    User savedUser = saveUserHandlingEmailConflict(user);
 
     StaffProfile profile =
         StaffProfile.builder()
@@ -131,7 +130,7 @@ public class UserServiceImpl implements UserService {
     log.info(
         "Manager created new technician account: id={}, email={}",
         savedProfile.getId(),
-        savedUser.getEmail());
+        LogMaskingUtils.maskEmail(savedUser.getEmail()));
 
     return new CreateTechnicianResponse(
         TechnicianResponse.fromEntity(savedProfile), generatedPassword);
@@ -149,8 +148,7 @@ public class UserServiceImpl implements UserService {
 
           if (active != null) {
             predicates.add(
-                cb.equal(
-                    userJoin.get("status"), active ? UserStatus.ACTIVE : UserStatus.LOCKED));
+                cb.equal(userJoin.get("status"), active ? UserStatus.ACTIVE : UserStatus.LOCKED));
           }
 
           if (search != null && !search.isBlank()) {
@@ -211,14 +209,17 @@ public class UserServiceImpl implements UserService {
     }
 
     user.setEmail(newEmail);
-    userRepository.save(user);
+    saveUserHandlingEmailConflict(user);
 
     profile.setFullName(newFullName);
     profile.setPhone(newPhone);
     StaffProfile savedProfile = staffProfileRepository.save(profile);
 
     log.info(
-        "Manager updated technician profile: id={}, email={}, phone={}", id, newEmail, newPhone);
+        "Manager updated technician profile: id={}, email={}, phone={}",
+        id,
+        LogMaskingUtils.maskEmail(newEmail),
+        LogMaskingUtils.maskPhone(newPhone));
     return TechnicianResponse.fromEntity(savedProfile);
   }
 
@@ -243,7 +244,8 @@ public class UserServiceImpl implements UserService {
     passwordRecoveryService.invalidateRecoveryCredentials(lockedUser.getId());
     userTokenInvalidationService.invalidateAll(lockedUser.getId());
 
-    log.info("Manager reset password for technician: staff id={}, user id={}", id, lockedUser.getId());
+    log.info(
+        "Manager reset password for technician: staff id={}, user id={}", id, lockedUser.getId());
     return new OneTimePasswordResponse(generatedPassword);
   }
 
@@ -257,5 +259,16 @@ public class UserServiceImpl implements UserService {
       }
     }
     return profileOpt.orElseThrow(() -> new BaseAppException(AuthErrorCode.TECHNICIAN_NOT_FOUND));
+  }
+
+  private User saveUserHandlingEmailConflict(User user) {
+    try {
+      return userRepository.saveAndFlush(user);
+    } catch (DataIntegrityViolationException e) {
+      if (DataIntegrityViolationClassifier.matchesUniqueConstraint(e, "uq_users_email_canonical")) {
+        throw new BaseAppException(AuthErrorCode.DUPLICATE_EMAIL);
+      }
+      throw e;
+    }
   }
 }

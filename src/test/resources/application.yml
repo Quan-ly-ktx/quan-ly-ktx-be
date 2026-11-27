@@ -39,3 +39,11 @@ app:
     max-attempts: 3
     resend-cooldown-seconds: 60
     reset-max-per-hour: 3
+  storage:
+    provider: in-memory
+  vietqr:
+    bank-bin: ""
+    bank-name: ""
+    account-number: ""
+    account-name: ""
+    transfer-prefix: KTX

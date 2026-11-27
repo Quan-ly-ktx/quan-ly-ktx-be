@@ -13,16 +13,15 @@ import com.uit.dormmanagement.dtos.response.vehicle.VehicleResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Room;
-import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.ResidentStatus;
-import java.math.BigDecimal;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.WebErrorCode;
 import com.uit.dormmanagement.repositories.ContractRepository;
@@ -35,6 +34,7 @@ import com.uit.dormmanagement.services.RandomPasswordGenerator;
 import com.uit.dormmanagement.services.TenantService;
 import com.uit.dormmanagement.services.UserService;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -42,6 +42,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -103,6 +104,15 @@ public class TenantServiceImpl implements TenantService {
           .orElseThrow(() -> new BaseAppException(WebErrorCode.FORBIDDEN));
     }
 
+    if (request.idCardNumber() != null && request.idCardNumber().isBlank()) {
+      throw new BaseAppException(
+          WebErrorCode.VALIDATION_FAILED, "Số CCCD không được để trống khi cung cấp");
+    }
+    if (request.email() != null && request.email().isBlank()) {
+      throw new BaseAppException(
+          WebErrorCode.VALIDATION_FAILED, "Email không được để trống khi cung cấp");
+    }
+
     Tenant preRead =
         tenantRepository
             .findById(tenantId)
@@ -135,8 +145,11 @@ public class TenantServiceImpl implements TenantService {
             ? request.emergencyContactPhone().trim()
             : null);
 
-    if (request.idCardNumber() != null && !request.idCardNumber().isBlank()) {
+    if (request.idCardNumber() != null) {
       String cleanCccd = request.idCardNumber().trim();
+      if (!cleanCccd.matches("^[0-9]{12}$")) {
+        throw new BaseAppException(TenantErrorCode.INVALID_ID_CARD_FORMAT);
+      }
       if (!cleanCccd.equals(lockedTenant.getIdCardNumber())) {
         if (tenantRepository.existsByIdCardNumber(cleanCccd)) {
           throw new BaseAppException(TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
@@ -146,7 +159,7 @@ public class TenantServiceImpl implements TenantService {
     }
 
     boolean emailChanged = false;
-    if (request.email() != null && !request.email().isBlank()) {
+    if (request.email() != null) {
       String cleanEmail = request.email().trim().toLowerCase(Locale.ROOT);
       if (!cleanEmail.equals(lockedUser.getEmail())) {
         if (userRepository.existsByEmail(cleanEmail)) {
@@ -171,8 +184,20 @@ public class TenantServiceImpl implements TenantService {
       lockedTenant.setGender(request.gender());
     }
 
-    userRepository.save(lockedUser);
-    Tenant saved = tenantRepository.save(lockedTenant);
+    Tenant saved;
+    try {
+      userRepository.saveAndFlush(lockedUser);
+      saved = tenantRepository.saveAndFlush(lockedTenant);
+    } catch (DataIntegrityViolationException e) {
+      if (DataIntegrityViolationClassifier.matchesUniqueConstraint(e, "uq_users_email_canonical")) {
+        throw new BaseAppException(TenantErrorCode.EMAIL_DUPLICATED);
+      }
+      if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+          e, "tenants_id_card_number_key")) {
+        throw new BaseAppException(TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
+      }
+      throw e;
+    }
 
     if (emailChanged) {
       passwordRecoveryService.invalidateRecoveryCredentials(lockedUser.getId());
@@ -266,8 +291,7 @@ public class TenantServiceImpl implements TenantService {
 
   private TenantSummaryResponse toSummaryResponse(Tenant tenant) {
     Optional<Contract> activeContractOpt =
-        contractRepository.findFirstByTenantIdAndStatusIn(
-            tenant.getId(), ACTIVE_CONTRACT_STATUSES);
+        contractRepository.findFirstByTenantIdAndStatusIn(tenant.getId(), ACTIVE_CONTRACT_STATUSES);
 
     String roomNumber = null;
     String bedCode = null;
@@ -306,8 +330,7 @@ public class TenantServiceImpl implements TenantService {
 
   private TenantDetailResponse toDetailResponse(Tenant tenant) {
     Optional<Contract> activeContractOpt =
-        contractRepository.findFirstByTenantIdAndStatusIn(
-            tenant.getId(), ACTIVE_CONTRACT_STATUSES);
+        contractRepository.findFirstByTenantIdAndStatusIn(tenant.getId(), ACTIVE_CONTRACT_STATUSES);
 
     UUID currentBedId = null;
     String currentBedCode = null;
@@ -375,7 +398,9 @@ public class TenantServiceImpl implements TenantService {
                             .id(doc.getId())
                             .contractId(contract.getId())
                             .fileName(doc.getFileName())
-                            .fileUrl(doc.getFileUrl())
+                            .fileUrl(
+                                ContractServiceImpl.adminDocumentContentPath(
+                                    contract.getId(), doc.getId()))
                             .fileType(doc.getFileType())
                             .fileSize(doc.getFileSize())
                             .documentCategory(doc.getDocumentCategory())
@@ -457,9 +482,7 @@ public class TenantServiceImpl implements TenantService {
         .replacedVehicleId(
             vehicle.getReplacedVehicle() != null ? vehicle.getReplacedVehicle().getId() : null)
         .replacedByVehicleId(
-            vehicle.getReplacedByVehicle() != null
-                ? vehicle.getReplacedByVehicle().getId()
-                : null)
+            vehicle.getReplacedByVehicle() != null ? vehicle.getReplacedByVehicle().getId() : null)
         .createdAt(vehicle.getCreatedAt())
         .build();
   }

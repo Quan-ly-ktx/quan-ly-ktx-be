@@ -1,9 +1,8 @@
 package com.uit.dormmanagement.security;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -25,8 +24,8 @@ import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.repositories.VehicleChangeRequestRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
-import com.uit.dormmanagement.services.VehicleEvidenceStorage;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
+import com.uit.dormmanagement.services.VehicleEvidenceStorage;
 import com.uit.dormmanagement.support.RedisTestContainerSupport;
 import java.time.Instant;
 import java.util.UUID;
@@ -36,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -178,7 +178,10 @@ class VehicleSecurityIntegrationTest {
     // Create a dummy stored evidence file
     MockMultipartFile dummyFile =
         new MockMultipartFile(
-            "frontImage", "reg-front.jpg", MediaType.IMAGE_JPEG_VALUE, "dummy image bytes".getBytes());
+            "frontImage",
+            "reg-front.jpg",
+            MediaType.IMAGE_JPEG_VALUE,
+            "dummy image bytes".getBytes());
     UUID storageId = UUID.randomUUID();
     storedFrontKey = vehicleEvidenceStorage.store(storageId, "front", dummyFile);
 
@@ -234,9 +237,7 @@ class VehicleSecurityIntegrationTest {
 
     // Tenant cannot access admin endpoints
     mockMvc
-        .perform(
-            get("/api/v1/admin/vehicles")
-                .header("Authorization", "Bearer " + tenantToken))
+        .perform(get("/api/v1/admin/vehicles").header("Authorization", "Bearer " + tenantToken))
         .andExpect(status().isForbidden());
 
     mockMvc
@@ -248,21 +249,16 @@ class VehicleSecurityIntegrationTest {
     // Manager cannot access tenant endpoints
     mockMvc
         .perform(
-            get("/api/v1/tenant/vehicles/me")
-                .header("Authorization", "Bearer " + managerToken))
+            get("/api/v1/tenant/vehicles/me").header("Authorization", "Bearer " + managerToken))
         .andExpect(status().isForbidden());
 
     // Technician cannot access either
     mockMvc
-        .perform(
-            get("/api/v1/admin/vehicles")
-                .header("Authorization", "Bearer " + techToken))
+        .perform(get("/api/v1/admin/vehicles").header("Authorization", "Bearer " + techToken))
         .andExpect(status().isForbidden());
 
     mockMvc
-        .perform(
-            get("/api/v1/tenant/vehicles/me")
-                .header("Authorization", "Bearer " + techToken))
+        .perform(get("/api/v1/tenant/vehicles/me").header("Authorization", "Bearer " + techToken))
         .andExpect(status().isForbidden());
   }
 
@@ -326,9 +322,7 @@ class VehicleSecurityIntegrationTest {
     // Manager fetches change request evidence
     mockMvc
         .perform(
-            get(
-                    "/api/v1/admin/vehicle-change-requests/{id}/evidence/front",
-                    tenant1Request.getId())
+            get("/api/v1/admin/vehicle-change-requests/{id}/evidence/front", tenant1Request.getId())
                 .header("Authorization", "Bearer " + managerToken))
         .andExpect(status().isOk())
         .andExpect(header().string("Content-Type", MediaType.IMAGE_JPEG_VALUE))
@@ -348,12 +342,20 @@ class VehicleSecurityIntegrationTest {
   }
 
   @Test
-  @DisplayName("Direct access to /uploads/vehicles/** is denied")
+  @DisplayName("Direct access to /uploads/** is denied")
   void directUploadsVehicles_isDenied() throws Exception {
     mockMvc
         .perform(get("/uploads/vehicles/any-file.jpg"))
-        .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
-            result.getResponse().getStatus()).isIn(401, 403));
+        .andExpect(
+            result ->
+                org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+                    .isIn(401, 403));
+    mockMvc
+        .perform(get("/uploads/contracts/any-file.pdf"))
+        .andExpect(
+            result ->
+                org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+                    .isIn(401, 403));
   }
 
   @Test
@@ -364,8 +366,7 @@ class VehicleSecurityIntegrationTest {
     // Can view history
     mockMvc
         .perform(
-            get("/api/v1/tenant/vehicles")
-                .header("Authorization", "Bearer " + checkedOutToken))
+            get("/api/v1/tenant/vehicles").header("Authorization", "Bearer " + checkedOutToken))
         .andExpect(status().isOk());
 
     // Cannot register
@@ -386,5 +387,145 @@ class VehicleSecurityIntegrationTest {
                 .param("color", "Red")
                 .header("Authorization", "Bearer " + checkedOutToken))
         .andExpect(status().isBadRequest()); // TENANT_NOT_ACTIVE
+  }
+
+  @Test
+  @DisplayName(
+      "HEAD evidence endpoints return 200 with headers and empty body for owner and manager")
+  void evidence_headAuthorizedOwnerAndManagerReturnHeadersAndEmptyBody() throws Exception {
+    String tenant1Token = tokenFor(tenantUser1);
+    String managerToken = tokenFor(managerUser);
+    String expectedLength = String.valueOf("dummy image bytes".getBytes().length);
+
+    mockMvc
+        .perform(
+            head("/api/v1/tenant/vehicles/{id}/evidence/front", tenant1Vehicle.getId())
+                .header("Authorization", "Bearer " + tenant1Token))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_JPEG_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, expectedLength))
+        .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION))
+        .andExpect(content().bytes(new byte[0]));
+
+    mockMvc
+        .perform(
+            head("/api/v1/admin/vehicles/{id}/evidence/front", tenant1Vehicle.getId())
+                .header("Authorization", "Bearer " + managerToken))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_JPEG_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, expectedLength))
+        .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION))
+        .andExpect(content().bytes(new byte[0]));
+
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/tenant/vehicle-change-requests/{id}/evidence/front",
+                    tenant1Request.getId())
+                .header("Authorization", "Bearer " + tenant1Token))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_JPEG_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, expectedLength))
+        .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION))
+        .andExpect(content().bytes(new byte[0]));
+
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/admin/vehicle-change-requests/{id}/evidence/front",
+                    tenant1Request.getId())
+                .header("Authorization", "Bearer " + managerToken))
+        .andExpect(status().isOk())
+        .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.IMAGE_JPEG_VALUE))
+        .andExpect(header().string(HttpHeaders.CONTENT_LENGTH, expectedLength))
+        .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION))
+        .andExpect(content().bytes(new byte[0]));
+  }
+
+  @Test
+  @DisplayName(
+      "HEAD evidence endpoints enforce auth, RBAC, ownership, and missing evidence 404")
+  void evidence_headEnforcesAuthRbacOwnershipAndMissingSide() throws Exception {
+    String tenant1Token = tokenFor(tenantUser1);
+    String tenant2Token = tokenFor(tenantUser2);
+    String managerToken = tokenFor(managerUser);
+    String techToken = tokenFor(technicianUser);
+
+    // Anonymous -> 401
+    mockMvc
+        .perform(head("/api/v1/tenant/vehicles/{id}/evidence/front", tenant1Vehicle.getId()))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(head("/api/v1/admin/vehicles/{id}/evidence/front", tenant1Vehicle.getId()))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(
+            head(
+                "/api/v1/tenant/vehicle-change-requests/{id}/evidence/front",
+                tenant1Request.getId()))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(
+            head(
+                "/api/v1/admin/vehicle-change-requests/{id}/evidence/front",
+                tenant1Request.getId()))
+        .andExpect(status().isUnauthorized());
+
+    // Technician & cross-role -> 403
+    mockMvc
+        .perform(
+            head("/api/v1/admin/vehicles/{id}/evidence/front", tenant1Vehicle.getId())
+                .header("Authorization", "Bearer " + techToken))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            head("/api/v1/admin/vehicles/{id}/evidence/front", tenant1Vehicle.getId())
+                .header("Authorization", "Bearer " + tenant1Token))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            head("/api/v1/tenant/vehicles/{id}/evidence/front", tenant1Vehicle.getId())
+                .header("Authorization", "Bearer " + managerToken))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/admin/vehicle-change-requests/{id}/evidence/front",
+                    tenant1Request.getId())
+                .header("Authorization", "Bearer " + tenant1Token))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/tenant/vehicle-change-requests/{id}/evidence/front",
+                    tenant1Request.getId())
+                .header("Authorization", "Bearer " + managerToken))
+        .andExpect(status().isForbidden());
+
+    // Non-owning tenant & missing side -> 404
+    mockMvc
+        .perform(
+            head("/api/v1/tenant/vehicles/{id}/evidence/front", tenant1Vehicle.getId())
+                .header("Authorization", "Bearer " + tenant2Token))
+        .andExpect(status().isNotFound());
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/tenant/vehicle-change-requests/{id}/evidence/front",
+                    tenant1Request.getId())
+                .header("Authorization", "Bearer " + tenant2Token))
+        .andExpect(status().isNotFound());
+    mockMvc
+        .perform(
+            head("/api/v1/tenant/vehicles/{id}/evidence/back", tenant1Vehicle.getId())
+                .header("Authorization", "Bearer " + tenant1Token))
+        .andExpect(status().isNotFound());
+    mockMvc
+        .perform(
+            head(
+                    "/api/v1/admin/vehicle-change-requests/{id}/evidence/back",
+                    tenant1Request.getId())
+                .header("Authorization", "Bearer " + managerToken))
+        .andExpect(status().isNotFound());
   }
 }

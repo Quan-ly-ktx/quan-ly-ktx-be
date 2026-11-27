@@ -8,9 +8,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.uit.dormmanagement.constants.RedisKeyConstants;
 import com.uit.dormmanagement.services.impl.LoginAttemptServiceImpl;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -121,5 +127,45 @@ class LoginAttemptServiceTest {
 
     long minutes = loginAttemptService.getRemainingLockMinutes(identifier);
     assertThat(minutes).isEqualTo(15L);
+  }
+
+  @Test
+  @DisplayName(
+      "logs should mask raw 12-digit CCCD and full email across failed attempts, locks, and resets")
+  void logsShouldMaskRawCccdAndFullEmail() {
+    when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+    String rawCccd = "079203001187";
+    String rawEmail = "manager.secret@dorm.vn";
+
+    Logger logger = (Logger) LoggerFactory.getLogger(LoginAttemptServiceImpl.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.DEBUG);
+
+    try {
+      when(valueOperations.increment(RedisKeyConstants.loginAttemptsKey(rawCccd)))
+          .thenReturn(1L, 6L);
+      when(valueOperations.increment(RedisKeyConstants.loginAttemptsKey(rawEmail)))
+          .thenReturn(1L, 6L);
+
+      loginAttemptService.recordFailedAttempt(rawCccd);
+      loginAttemptService.recordFailedAttempt(rawCccd);
+      loginAttemptService.resetAttempts(rawCccd);
+
+      loginAttemptService.recordFailedAttempt(rawEmail);
+      loginAttemptService.recordFailedAttempt(rawEmail);
+      loginAttemptService.resetAttempts(rawEmail);
+
+      List<String> messages =
+          appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("***187"));
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("m***@dorm.vn"));
+      assertThat(messages).noneMatch(msg -> msg.contains(rawCccd) || msg.contains(rawEmail));
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(previousLevel);
+    }
   }
 }

@@ -21,6 +21,7 @@ import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.RoomType;
 import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.repositories.AmenityRepository;
 import com.uit.dormmanagement.repositories.BedRepository;
@@ -40,6 +41,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -134,9 +136,15 @@ public class RoomServiceImpl implements RoomService {
   @Transactional
   public RoomDetailResponse createRoom(CreateRoomRequest request) {
     String roomNumber = canonicalRoomNumber(request.roomNumber());
-    if (roomRepository.existsByRoomNumber(roomNumber)
-        || roomCodeRegistryRepository.existsById(roomNumber)) {
+    if (roomRepository.existsByRoomNumber(roomNumber)) {
       throw new BaseAppException(RoomErrorCode.ROOM_NUMBER_DUPLICATED);
+    }
+    RoomCodeRegistry existingCode = roomCodeRegistryRepository.findById(roomNumber).orElse(null);
+    if (existingCode != null) {
+      throw new BaseAppException(
+          existingCode.isUsedInBusiness()
+              ? RoomErrorCode.ROOM_CODE_PROTECTED
+              : RoomErrorCode.ROOM_NUMBER_DUPLICATED);
     }
 
     int totalBeds = request.roomType().getBedCount();
@@ -150,23 +158,35 @@ public class RoomServiceImpl implements RoomService {
             .basePrice(request.basePrice())
             .build();
 
-    Room savedRoom = roomRepository.save(room);
-    roomCodeRegistryRepository.save(
-        RoomCodeRegistry.builder().code(roomNumber).room(savedRoom).current(true).build());
-
+    Room savedRoom;
     List<Bed> beds = new ArrayList<>(totalBeds);
-    for (int i = 1; i <= totalBeds; i++) {
-      String bedCode = String.format("G%02d", i);
-      String slotKey = savedRoom.getRoomNumber() + "-" + bedCode;
-      beds.add(
-          Bed.builder()
-              .room(savedRoom)
-              .bedCode(bedCode)
-              .slotKey(slotKey.toUpperCase())
-              .status(BedStatus.AVAILABLE)
-              .build());
+    try {
+      savedRoom = roomRepository.saveAndFlush(room);
+      roomCodeRegistryRepository.saveAndFlush(
+          RoomCodeRegistry.builder().code(roomNumber).room(savedRoom).current(true).build());
+
+      for (int i = 1; i <= totalBeds; i++) {
+        String bedCode = String.format("G%02d", i);
+        String slotKey = savedRoom.getRoomNumber() + "-" + bedCode;
+        beds.add(
+            Bed.builder()
+                .room(savedRoom)
+                .bedCode(bedCode)
+                .slotKey(slotKey.toUpperCase())
+                .status(BedStatus.AVAILABLE)
+                .build());
+      }
+      bedRepository.saveAllAndFlush(beds);
+    } catch (DataIntegrityViolationException e) {
+      if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+          e,
+          "uq_rooms_number_canonical",
+          "room_code_registry_pkey",
+          "uq_beds_slot_key_canonical")) {
+        throw new BaseAppException(RoomErrorCode.ROOM_NUMBER_DUPLICATED);
+      }
+      throw e;
     }
-    bedRepository.saveAll(beds);
 
     if (request.amenities() != null && !request.amenities().isEmpty()) {
       attachAmenities(savedRoom, request.amenities());
@@ -186,8 +206,7 @@ public class RoomServiceImpl implements RoomService {
     Room room = aggregate.room();
     List<Bed> lockedBeds = aggregate.beds();
 
-    boolean hasOccupiedBed =
-        lockedBeds.stream().anyMatch(b -> b.getStatus() == BedStatus.OCCUPIED);
+    boolean hasOccupiedBed = lockedBeds.stream().anyMatch(b -> b.getStatus() == BedStatus.OCCUPIED);
     boolean hasActiveContract =
         contractRepository.existsByBed_Room_IdAndStatusIn(roomId, Set.of(ContractStatus.ACTIVE));
 
@@ -304,11 +323,18 @@ public class RoomServiceImpl implements RoomService {
       throw new BaseAppException(RoomErrorCode.ROOM_HAS_HISTORY);
     }
 
-    roomAmenityRepository.deleteByRoomId(roomId);
-    bedRepository.deleteAll(beds);
-    roomCodeRegistryRepository.deleteUnusedCodes(roomId);
-    roomRepository.delete(room);
-    roomRepository.flush();
+    try {
+      roomAmenityRepository.deleteByRoomId(roomId);
+      bedRepository.deleteAll(beds);
+      roomCodeRegistryRepository.deleteUnusedCodes(roomId);
+      roomRepository.delete(room);
+      roomRepository.flush();
+    } catch (DataIntegrityViolationException e) {
+      if (DataIntegrityViolationClassifier.isForeignKeyViolation(e)) {
+        throw new BaseAppException(RoomErrorCode.ROOM_HAS_HISTORY);
+      }
+      throw e;
+    }
   }
 
   @Override
@@ -484,19 +510,31 @@ public class RoomServiceImpl implements RoomService {
         roomCodeRegistryRepository
             .findByRoom_IdAndCurrentTrue(room.getId())
             .orElseThrow(() -> new IllegalStateException("Room has no current registry code"));
-    currentCode.setCurrent(false);
-    if (currentCode.isUsedInBusiness()) {
-      roomCodeRegistryRepository.saveAndFlush(currentCode);
-    } else {
-      roomCodeRegistryRepository.delete(currentCode);
-      roomCodeRegistryRepository.flush();
-    }
-    roomCodeRegistryRepository.save(
-        RoomCodeRegistry.builder().code(newCode).room(room).current(true).build());
+    try {
+      currentCode.setCurrent(false);
+      if (currentCode.isUsedInBusiness()) {
+        roomCodeRegistryRepository.saveAndFlush(currentCode);
+      } else {
+        roomCodeRegistryRepository.delete(currentCode);
+        roomCodeRegistryRepository.flush();
+      }
+      roomCodeRegistryRepository.saveAndFlush(
+          RoomCodeRegistry.builder().code(newCode).room(room).current(true).build());
 
-    room.setRoomNumber(newCode);
-    roomBeds.forEach(bed -> bed.setSlotKey(newCode + "-" + bed.getBedCode()));
-    bedRepository.saveAll(roomBeds);
+      room.setRoomNumber(newCode);
+      roomRepository.saveAndFlush(room);
+      roomBeds.forEach(bed -> bed.setSlotKey(newCode + "-" + bed.getBedCode()));
+      bedRepository.saveAllAndFlush(roomBeds);
+    } catch (DataIntegrityViolationException e) {
+      if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+          e,
+          "uq_rooms_number_canonical",
+          "room_code_registry_pkey",
+          "uq_beds_slot_key_canonical")) {
+        throw new BaseAppException(RoomErrorCode.ROOM_NUMBER_DUPLICATED);
+      }
+      throw e;
+    }
   }
 
   private int occupiedBedCount(UUID roomId) {

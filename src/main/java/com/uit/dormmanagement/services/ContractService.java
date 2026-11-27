@@ -1,7 +1,9 @@
 package com.uit.dormmanagement.services;
 
+import com.uit.dormmanagement.dtos.request.contract.CheckoutContractRequest;
 import com.uit.dormmanagement.dtos.request.contract.RenewContractRequest;
 import com.uit.dormmanagement.dtos.response.contract.ContractDetailResponse;
+import com.uit.dormmanagement.dtos.response.contract.ContractDocumentContent;
 import com.uit.dormmanagement.dtos.response.contract.ContractDocumentResponse;
 import com.uit.dormmanagement.dtos.response.contract.ContractSummaryResponse;
 import com.uit.dormmanagement.enums.ContractDocumentCategory;
@@ -22,12 +24,34 @@ public interface ContractService {
   ContractDetailResponse renewContract(
       UUID id, RenewContractRequest request, List<MultipartFile> annexDocuments);
 
-  ContractDetailResponse terminateContract(UUID id);
+  ContractDetailResponse terminateContract(
+      UUID managerUserId, UUID id, CheckoutContractRequest request);
+
+  default ContractDetailResponse terminateContract(UUID id, CheckoutContractRequest request) {
+    return terminateContract(null, id, request);
+  }
 
   List<ContractDocumentResponse> uploadDocuments(
-      UUID contractId, ContractDocumentCategory category, List<MultipartFile> files);
+      UUID contractId,
+      ContractDocumentCategory category,
+      UUID renewalId,
+      List<MultipartFile> files);
+
+  default List<ContractDocumentResponse> uploadDocuments(
+      UUID contractId, ContractDocumentCategory category, List<MultipartFile> files) {
+    return uploadDocuments(contractId, category, null, files);
+  }
 
   void deleteDocument(UUID contractId, UUID documentId);
 
   ContractDetailResponse getMyContract(UUID userId);
+
+  List<ContractDetailResponse> getMyContractHistory(UUID userId);
+
+  ContractDetailResponse getMyContractById(UUID userId, UUID contractId);
+
+  ContractDocumentContent loadDocumentContentForAdmin(UUID contractId, UUID documentId);
+
+  ContractDocumentContent loadDocumentContentForTenant(
+      UUID tenantUserId, UUID contractId, UUID documentId);
 }

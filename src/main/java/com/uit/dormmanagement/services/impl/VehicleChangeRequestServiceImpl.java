@@ -10,6 +10,7 @@ import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.VehicleChangeRequestStatus;
 import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
+import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
@@ -124,8 +125,12 @@ public class VehicleChangeRequestServiceImpl implements VehicleChangeRequestServ
     } catch (Exception e) {
       if (frontKey != null) vehicleEvidenceStorage.delete(frontKey);
       if (backKey != null) vehicleEvidenceStorage.delete(backKey);
-      if (e instanceof DataIntegrityViolationException) {
-        throw new BaseAppException(VehicleErrorCode.VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS);
+      if (e instanceof DataIntegrityViolationException dive) {
+        if (DataIntegrityViolationClassifier.matchesUniqueConstraint(
+            dive, "uq_vehicle_change_requests_pending_tenant")) {
+          throw new BaseAppException(VehicleErrorCode.VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS);
+        }
+        throw dive;
       }
       if (e instanceof BaseAppException) {
         throw (BaseAppException) e;

@@ -11,16 +11,17 @@ import static org.mockito.Mockito.when;
 import com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest;
 import com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest;
 import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
-import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantDetailResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
+import com.uit.dormmanagement.entities.ContractDocument;
 import com.uit.dormmanagement.entities.Room;
 import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
+import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
@@ -38,11 +39,13 @@ import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
 import com.uit.dormmanagement.services.impl.TenantServiceImpl;
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,6 +53,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -118,7 +122,12 @@ class TenantServiceImplTest {
             .createdAt(Instant.now())
             .build();
 
-    room = Room.builder().id(UUID.randomUUID()).roomNumber("P.302").genderPolicy(GenderPolicy.MALE).build();
+    room =
+        Room.builder()
+            .id(UUID.randomUUID())
+            .roomNumber("P.302")
+            .genderPolicy(GenderPolicy.MALE)
+            .build();
     bed = Bed.builder().id(UUID.randomUUID()).bedCode("G02").room(room).build();
 
     activeContract =
@@ -185,6 +194,19 @@ class TenantServiceImplTest {
   @Test
   @DisplayName("getTenantById: when found should return complete detail response")
   void getTenantById_whenFound_shouldReturnDetail() {
+    UUID docId = UUID.randomUUID();
+    String rawStorageKey = "contracts/" + activeContract.getId() + "/secret-key.pdf";
+    ContractDocument doc =
+        ContractDocument.builder()
+            .id(docId)
+            .contract(activeContract)
+            .documentType(ContractDocumentCategory.ORIGINAL_CONTRACT)
+            .originalFilename("hop-dong.pdf")
+            .mimeType("application/pdf")
+            .storageFileKey(rawStorageKey)
+            .build();
+    activeContract.getDocuments().add(doc);
+
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
     when(contractRepository.findFirstByTenantIdAndStatusIn(eq(tenantId), any()))
         .thenReturn(Optional.of(activeContract));
@@ -199,20 +221,32 @@ class TenantServiceImplTest {
     assertThat(detail.currentBedCode()).isEqualTo("G02");
     assertThat(detail.currentContract()).isNotNull();
     assertThat(detail.currentContract().contractCode()).isEqualTo("HD-2026-0187");
+    assertThat(detail.currentContract().documents()).hasSize(1);
+    assertThat(detail.currentContract().documents().getFirst().fileUrl())
+        .isEqualTo(
+            "/api/v1/admin/contracts/"
+                + activeContract.getId()
+                + "/documents/"
+                + docId
+                + "/content")
+        .doesNotContain(rawStorageKey)
+        .doesNotContain("/uploads/");
     assertThat(detail.vehicles()).hasSize(1);
     assertThat(detail.vehicles().getFirst().licensePlate()).isEqualTo("59-X3 789.12");
     assertThat(detail.contractHistory()).hasSize(1);
   }
 
   @Test
-  @DisplayName("updateTenantAsManager: should update fields, lock User and Tenant, and invalidate recovery on email change")
+  @DisplayName(
+      "updateTenantAsManager: should update fields, lock User and Tenant, and invalidate recovery on email change")
   void updateTenantAsManager_whenValidWithEmailChange_shouldUpdateAndInvalidateRecovery() {
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
     when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
     when(tenantRepository.findByIdForUpdate(tenantId)).thenReturn(Optional.of(tenant));
     when(userRepository.existsByEmail("new.email@example.com")).thenReturn(false);
-    when(tenantRepository.save(any(Tenant.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(tenantRepository.saveAndFlush(any(Tenant.class))).thenAnswer(inv -> inv.getArgument(0));
 
     ManagerUpdateTenantRequest request =
         ManagerUpdateTenantRequest.builder()
@@ -222,7 +256,8 @@ class TenantServiceImplTest {
             .email("new.email@example.com")
             .build();
 
-    TenantDetailResponse response = tenantService.updateTenantAsManager(managerUserId, tenantId, request);
+    TenantDetailResponse response =
+        tenantService.updateTenantAsManager(managerUserId, tenantId, request);
 
     assertThat(response.fullName()).isEqualTo("Nguyễn Hoàng Nam Mới");
     assertThat(response.phone()).isEqualTo("0912345678");
@@ -231,7 +266,8 @@ class TenantServiceImplTest {
   }
 
   @Test
-  @DisplayName("updateTenantAsManager: duplicate idCardNumber should throw ID_CARD_NUMBER_DUPLICATED")
+  @DisplayName(
+      "updateTenantAsManager: duplicate idCardNumber should throw ID_CARD_NUMBER_DUPLICATED")
   void updateTenantAsManager_whenDuplicateCccd_shouldThrow() {
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -249,11 +285,15 @@ class TenantServiceImplTest {
 
     assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, request))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
   }
 
   @Test
-  @DisplayName("updateTenantAsManager: gender mismatch with active room gender policy should throw GENDER_MISMATCH_CURRENT_ROOM")
+  @DisplayName(
+      "updateTenantAsManager: gender mismatch with active room gender policy should throw GENDER_MISMATCH_CURRENT_ROOM")
   void updateTenantAsManager_whenGenderMismatch_shouldThrow() {
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -272,7 +312,10 @@ class TenantServiceImplTest {
 
     assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, request))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.GENDER_MISMATCH_CURRENT_ROOM);
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == TenantErrorCode.GENDER_MISMATCH_CURRENT_ROOM);
   }
 
   @Test
@@ -303,11 +346,15 @@ class TenantServiceImplTest {
 
     assertThatThrownBy(() -> tenantService.updateOwnContact(tenantUserId, request))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.NO_CONTACT_FIELDS_PROVIDED);
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == TenantErrorCode.NO_CONTACT_FIELDS_PROVIDED);
   }
 
   @Test
-  @DisplayName("resetTenantPasswordAsManager: manager resets tenant password, saves hash, and invalidates sessions")
+  @DisplayName(
+      "resetTenantPasswordAsManager: manager resets tenant password, saves hash, and invalidates sessions")
   void resetTenantPasswordAsManager_shouldResetAndInvalidate() {
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -323,5 +370,175 @@ class TenantServiceImplTest {
     verify(userRepository).save(user);
     verify(passwordRecoveryService).invalidateRecoveryCredentials(user.getId());
     verify(userTokenInvalidationService).invalidateAll(user.getId());
+  }
+
+  @Test
+  @DisplayName(
+      "updateTenantAsManager: supplied blank idCardNumber or email throws VALIDATION_FAILED without locking")
+  void updateTenantAsManager_whenSuppliedBlankIdentity_shouldThrow400() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+
+    ManagerUpdateTenantRequest blankCccd =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .idCardNumber("   ")
+            .phone("0987654321")
+            .permanentAddress("123 Lê Lợi")
+            .build();
+    assertThatThrownBy(
+            () -> tenantService.updateTenantAsManager(managerUserId, tenantId, blankCccd))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == WebErrorCode.VALIDATION_FAILED);
+
+    ManagerUpdateTenantRequest blankEmail =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .email("")
+            .phone("0987654321")
+            .permanentAddress("123 Lê Lợi")
+            .build();
+    assertThatThrownBy(
+            () -> tenantService.updateTenantAsManager(managerUserId, tenantId, blankEmail))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == WebErrorCode.VALIDATION_FAILED);
+
+    verify(userRepository, never()).saveAndFlush(any());
+    verify(tenantRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  @DisplayName(
+      "updateTenantAsManager: omitted identity fields retain existing values while clearing null/blank optional contact fields")
+  void updateTenantAsManager_whenOmittedIdentity_retainsIdentityAndClearsOptionalContacts() {
+    tenant.setDateOfBirth(LocalDate.of(2000, 1, 1));
+    tenant.setEmergencyContactName("Old Contact");
+    tenant.setEmergencyContactPhone("0901111222");
+
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+    when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+    when(tenantRepository.findByIdForUpdate(tenantId)).thenReturn(Optional.of(tenant));
+    when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(tenantRepository.saveAndFlush(any(Tenant.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    ManagerUpdateTenantRequest request =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .idCardNumber(null)
+            .email(null)
+            .phone("0987654321")
+            .permanentAddress("123 Lê Lợi")
+            .dateOfBirth(null)
+            .emergencyContactName("   ")
+            .emergencyContactPhone("")
+            .build();
+
+    TenantDetailResponse response =
+        tenantService.updateTenantAsManager(managerUserId, tenantId, request);
+
+    assertThat(response.idCardNumber()).isEqualTo("079203001187");
+    assertThat(response.email()).isEqualTo("nam.nguyen@example.com");
+    assertThat(response.dateOfBirth()).isNull();
+    assertThat(response.emergencyContactName()).isNull();
+    assertThat(response.emergencyContactPhone()).isNull();
+    verify(passwordRecoveryService, never()).invalidateRecoveryCredentials(any());
+  }
+
+  @Test
+  @DisplayName(
+      "updateOwnContact: blank phone/address throws VALIDATION_FAILED while blank emergency fields clear")
+  void updateOwnContact_blankRequiredRejectedAndBlankOptionalCleared() {
+    UUID tenantUserId = user.getId();
+    tenant.setEmergencyContactName("Old Name");
+    tenant.setEmergencyContactPhone("0901111222");
+    when(tenantRepository.findByUserIdForUpdate(tenantUserId)).thenReturn(Optional.of(tenant));
+
+    TenantContactUpdateRequest blankPhone =
+        TenantContactUpdateRequest.builder().phone("   ").build();
+    assertThatThrownBy(() -> tenantService.updateOwnContact(tenantUserId, blankPhone))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == WebErrorCode.VALIDATION_FAILED);
+
+    TenantContactUpdateRequest blankAddr =
+        TenantContactUpdateRequest.builder().permanentAddress("").build();
+    assertThatThrownBy(() -> tenantService.updateOwnContact(tenantUserId, blankAddr))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == WebErrorCode.VALIDATION_FAILED);
+
+    TenantContactUpdateRequest clearEmergency =
+        TenantContactUpdateRequest.builder()
+            .emergencyContactName("  ")
+            .emergencyContactPhone("")
+            .build();
+    tenantService.updateOwnContact(tenantUserId, clearEmergency);
+    assertThat(tenant.getEmergencyContactName()).isNull();
+    assertThat(tenant.getEmergencyContactPhone()).isNull();
+  }
+
+  @Test
+  @DisplayName(
+      "updateTenantAsManager: database race on email/CCCD maps to Tenant 409, while CHECK 23514 rethrows")
+  void updateTenantAsManager_constraintRaceClassification() {
+    when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
+    when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+    when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
+    when(tenantRepository.findByIdForUpdate(tenantId)).thenReturn(Optional.of(tenant));
+
+    // Email race -> TenantErrorCode.EMAIL_DUPLICATED
+    when(userRepository.existsByEmail("race@example.com")).thenReturn(false);
+    when(userRepository.saveAndFlush(any(User.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "dup",
+                new ConstraintViolationException(
+                    "dup", new SQLException("dup", "23505"), "uq_users_email_canonical")));
+
+    ManagerUpdateTenantRequest emailReq =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .email("race@example.com")
+            .phone("0987654321")
+            .permanentAddress("123 Lê Lợi")
+            .build();
+
+    assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, emailReq))
+        .isInstanceOf(BaseAppException.class)
+        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.EMAIL_DUPLICATED);
+
+    // CCCD race -> TenantErrorCode.ID_CARD_NUMBER_DUPLICATED
+    when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(tenantRepository.existsByIdCardNumber("079203009998")).thenReturn(false);
+    when(tenantRepository.saveAndFlush(any(Tenant.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "dup",
+                new ConstraintViolationException(
+                    "dup", new SQLException("dup", "23505"), "tenants_id_card_number_key")));
+
+    ManagerUpdateTenantRequest cccdReq =
+        ManagerUpdateTenantRequest.builder()
+            .fullName("Nguyễn Hoàng Nam")
+            .idCardNumber("079203009998")
+            .phone("0987654321")
+            .permanentAddress("123 Lê Lợi")
+            .build();
+
+    assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, cccdReq))
+        .isInstanceOf(BaseAppException.class)
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
+
+    // CHECK 23514 -> NOT mapped to 409 (propagates as DataIntegrityViolationException -> 400)
+    when(tenantRepository.saveAndFlush(any(Tenant.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "check",
+                new ConstraintViolationException(
+                    "check", new SQLException("check", "23514"), "ck_tenants_check")));
+
+    assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, cccdReq))
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 }

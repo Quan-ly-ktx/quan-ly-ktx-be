@@ -27,12 +27,25 @@
 		<lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
 		<jjwt.version>0.12.6</jjwt.version>
 		<springdoc.version>3.1.1</springdoc.version>
-		<cloudinary.version>2.0.0</cloudinary.version>
+		<aws-sdk.version>2.59.10</aws-sdk.version>
 		<spring-dotenv.version>4.0.0</spring-dotenv.version>
 		<spotless.version>3.3.0</spotless.version>
 		<google-java-format.version>1.29.0</google-java-format.version>
 		<poi.version>5.4.0</poi.version>
+		<openpdf.version>2.0.3</openpdf.version>
 	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>${aws-sdk.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 
 	<dependencies>
 		<!-- ==================== 1. WEB & VALIDATION ==================== -->
@@ -97,18 +110,22 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
-		<!-- Lưu trữ ảnh CCCD, cà vẹt xe, ảnh hợp đồng, ảnh hóa đơn, ảnh sự cố -->
+		<!-- Lưu trữ ảnh CCCD, cà vẹt xe, ảnh hợp đồng, ảnh hóa đơn, ảnh sự cố (OCI S3-Compatible API) -->
 		<dependency>
-			<groupId>com.cloudinary</groupId>
-			<artifactId>cloudinary-http5</artifactId>
-			<version>${cloudinary.version}</version>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
 		</dependency>
 
-		<!-- ==================== 5. EXCEL EXPORT (FR-14) ==================== -->
+		<!-- ==================== 5. EXCEL & PDF EXPORT (FR-14) ==================== -->
 		<dependency>
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi-ooxml</artifactId>
 			<version>${poi.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.github.librepdf</groupId>
+			<artifactId>openpdf</artifactId>
+			<version>${openpdf.version}</version>
 		</dependency>
 
 		<!-- ==================== 6. API DOCUMENTATION (SCALAR) ==================== -->

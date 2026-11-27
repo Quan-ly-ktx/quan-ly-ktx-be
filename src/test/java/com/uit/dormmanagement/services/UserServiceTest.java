@@ -7,6 +7,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.uit.dormmanagement.dtos.request.auth.CreateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianRequest;
 import com.uit.dormmanagement.dtos.request.auth.UpdateTechnicianStatusRequest;
@@ -27,17 +31,21 @@ import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.impl.UserServiceImpl;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -159,7 +167,7 @@ class UserServiceTest {
             .role(UserRole.TECHNICIAN)
             .status(UserStatus.ACTIVE)
             .build();
-    when(userRepository.save(any(User.class))).thenReturn(savedUser);
+    when(userRepository.saveAndFlush(any(User.class))).thenReturn(savedUser);
 
     StaffProfile savedProfile =
         StaffProfile.builder()
@@ -177,12 +185,13 @@ class UserServiceTest {
     assertThat(response.technician().fullName()).isEqualTo("Võ Văn Thịnh");
     assertThat(response.technician().email()).isEqualTo("thinh.vv@dorm.vn");
     assertThat(response.technician().userStatus()).isEqualTo(UserStatus.ACTIVE);
-    verify(userRepository).save(any(User.class));
+    verify(userRepository).saveAndFlush(any(User.class));
     verify(staffProfileRepository).save(any(StaffProfile.class));
   }
 
   @Test
-  @DisplayName("resetTechnicianPassword should generate temporary password, update hash, advance recovery version, and invalidate all sessions")
+  @DisplayName(
+      "resetTechnicianPassword should generate temporary password, update hash, advance recovery version, and invalidate all sessions")
   void shouldResetTechnicianPasswordSuccessfully() {
     UUID staffId = UUID.randomUUID();
     UUID techUserId = UUID.randomUUID();
@@ -317,6 +326,7 @@ class UserServiceTest {
     when(staffProfileRepository.findByIdAndUser_Role(staffId, UserRole.TECHNICIAN))
         .thenReturn(Optional.of(profile));
     when(userRepository.existsByEmail("thinh.new@dorm.vn")).thenReturn(false);
+    when(userRepository.saveAndFlush(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
     when(staffProfileRepository.save(any(StaffProfile.class))).thenReturn(profile);
 
     TechnicianResponse response = userService.updateTechnician(staffId, request);
@@ -324,7 +334,137 @@ class UserServiceTest {
     assertThat(profile.getFullName()).isEqualTo("Võ Văn Thịnh Updated");
     assertThat(user.getEmail()).isEqualTo("thinh.new@dorm.vn");
     assertThat(profile.getPhone()).isEqualTo("0909999888");
-    verify(userRepository).save(user);
+    verify(userRepository).saveAndFlush(user);
     verify(staffProfileRepository).save(profile);
+  }
+
+  @Test
+  @DisplayName(
+      "createTechnician and updateTechnician logs mask email, phone, and generated password")
+  void technicianLogs_shouldMaskEmailPhoneAndPassword() {
+    Logger logger = (Logger) LoggerFactory.getLogger(UserServiceImpl.class);
+    Level previousLevel = logger.getLevel();
+    ListAppender<ILoggingEvent> appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+    logger.setLevel(Level.INFO);
+
+    try {
+      String rawEmail = "tech.secret@dorm.vn";
+      String rawPhone = "0908112245";
+      String rawPassword = "GenSecretPassword@9";
+
+      when(userRepository.existsByEmail(rawEmail)).thenReturn(false);
+      when(randomPasswordGenerator.generate()).thenReturn(rawPassword);
+      when(passwordEncoder.encode(rawPassword)).thenReturn("hashed");
+      User savedUser =
+          User.builder()
+              .id(UUID.randomUUID())
+              .email(rawEmail)
+              .role(UserRole.TECHNICIAN)
+              .status(UserStatus.ACTIVE)
+              .build();
+      when(userRepository.saveAndFlush(any(User.class))).thenReturn(savedUser);
+      when(staffProfileRepository.save(any(StaffProfile.class)))
+          .thenReturn(
+              StaffProfile.builder()
+                  .id(UUID.randomUUID())
+                  .user(savedUser)
+                  .fullName("Tech")
+                  .phone(rawPhone)
+                  .build());
+
+      userService.createTechnician(new CreateTechnicianRequest("Tech", rawEmail, rawPhone));
+
+      UUID staffId = UUID.randomUUID();
+      StaffProfile existing =
+          StaffProfile.builder()
+              .id(staffId)
+              .user(savedUser)
+              .fullName("Tech")
+              .phone(rawPhone)
+              .build();
+      when(staffProfileRepository.findByIdAndUser_Role(staffId, UserRole.TECHNICIAN))
+          .thenReturn(Optional.of(existing));
+      String updatedEmail = "updated.tech@dorm.vn";
+      String updatedPhone = "0909777888";
+      when(userRepository.existsByEmail(updatedEmail)).thenReturn(false);
+
+      userService.updateTechnician(
+          staffId, new UpdateTechnicianRequest("Tech 2", updatedEmail, updatedPhone));
+
+      List<String> messages =
+          appender.list.stream().map(ILoggingEvent::getFormattedMessage).toList();
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("t***@dorm.vn"));
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("u***@dorm.vn"));
+      assertThat(messages).anySatisfy(msg -> assertThat(msg).contains("***888"));
+      assertThat(messages)
+          .noneMatch(
+              msg ->
+                  msg.contains(rawEmail)
+                      || msg.contains(updatedEmail)
+                      || msg.contains(rawPhone)
+                      || msg.contains(updatedPhone)
+                      || msg.contains(rawPassword));
+    } finally {
+      logger.detachAppender(appender);
+      logger.setLevel(previousLevel);
+    }
+  }
+
+  @Test
+  @DisplayName(
+      "createTechnician and updateTechnician map uq_users_email_canonical race to DUPLICATE_EMAIL while rethrowing CHECK")
+  void technicianEmailConstraintRaceClassification() {
+    CreateTechnicianRequest createReq =
+        new CreateTechnicianRequest("Thợ Điện", "race.tech@dorm.vn", "0908112245");
+    when(userRepository.existsByEmail("race.tech@dorm.vn")).thenReturn(false);
+    when(randomPasswordGenerator.generate()).thenReturn("GenPassword@123");
+    when(passwordEncoder.encode("GenPassword@123")).thenReturn("$2a$12$encodedHash");
+    when(userRepository.saveAndFlush(any(User.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "dup",
+                new ConstraintViolationException(
+                    "dup", new SQLException("dup", "23505"), "uq_users_email_canonical")));
+
+    assertThatThrownBy(() -> userService.createTechnician(createReq))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.DUPLICATE_EMAIL);
+
+    UUID staffId = UUID.randomUUID();
+    User techUser =
+        User.builder()
+            .id(UUID.randomUUID())
+            .email("old@dorm.vn")
+            .role(UserRole.TECHNICIAN)
+            .status(UserStatus.ACTIVE)
+            .build();
+    StaffProfile profile =
+        StaffProfile.builder()
+            .id(staffId)
+            .user(techUser)
+            .fullName("Tech")
+            .phone("0908112245")
+            .build();
+    when(staffProfileRepository.findByIdAndUser_Role(staffId, UserRole.TECHNICIAN))
+        .thenReturn(Optional.of(profile));
+    when(userRepository.existsByEmail("new.race@dorm.vn")).thenReturn(false);
+
+    UpdateTechnicianRequest updateReq =
+        new UpdateTechnicianRequest("Tech", "new.race@dorm.vn", "0908112245");
+    assertThatThrownBy(() -> userService.updateTechnician(staffId, updateReq))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.DUPLICATE_EMAIL);
+
+    // CHECK 23514 must propagate instead of converting to DUPLICATE_EMAIL
+    when(userRepository.saveAndFlush(any(User.class)))
+        .thenThrow(
+            new DataIntegrityViolationException(
+                "check",
+                new ConstraintViolationException(
+                    "check", new SQLException("check", "23514"), "ck_users_email_canonical")));
+    assertThatThrownBy(() -> userService.updateTechnician(staffId, updateReq))
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 }
