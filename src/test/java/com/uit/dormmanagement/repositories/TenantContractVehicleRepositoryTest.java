@@ -14,11 +14,10 @@ import com.uit.dormmanagement.enums.ContractDocumentCategory;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
-import com.uit.dormmanagement.enums.RoomType;
-import com.uit.dormmanagement.enums.VehicleStatus;
-import com.uit.dormmanagement.enums.VehicleType;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
+import com.uit.dormmanagement.enums.VehicleStatus;
+import com.uit.dormmanagement.enums.VehicleType;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -265,12 +264,10 @@ class TenantContractVehicleRepositoryTest {
     assertThat(existsPlate).isTrue();
 
     boolean existsCard =
-        vehicleRepository.existsByCardCodeAndStatus(
-            "CARD-999", VehicleStatus.ISSUED);
+        vehicleRepository.existsByCardCodeAndStatus("CARD-999", VehicleStatus.ISSUED);
     assertThat(existsCard).isTrue();
 
-    List<Vehicle> tenantVehicles =
-        vehicleRepository.findByTenantId(testTenant.getId());
+    List<Vehicle> tenantVehicles = vehicleRepository.findByTenantId(testTenant.getId());
     assertThat(tenantVehicles).hasSize(1);
 
     Page<Vehicle> filtered =

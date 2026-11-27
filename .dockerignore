@@ -1,0 +1,12 @@
+target/
+.git
+.gitignore
+.env
+.env.*
+*.log
+.mvn/
+docker/
+docs/
+*.md
+Makefile*
+pom-example.xml

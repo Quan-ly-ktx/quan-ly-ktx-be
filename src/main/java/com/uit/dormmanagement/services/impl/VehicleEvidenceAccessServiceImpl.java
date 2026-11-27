@@ -71,13 +71,15 @@ public class VehicleEvidenceAccessServiceImpl implements VehicleEvidenceAccessSe
     VehicleChangeRequest request =
         vehicleChangeRequestRepository
             .findById(requestId)
-            .orElseThrow(() -> new BaseAppException(VehicleErrorCode.VEHICLE_CHANGE_REQUEST_NOT_FOUND));
+            .orElseThrow(
+                () -> new BaseAppException(VehicleErrorCode.VEHICLE_CHANGE_REQUEST_NOT_FOUND));
 
     if (!isManager) {
       Tenant callerTenant =
           tenantRepository
               .findByUserId(actorUserId)
-              .orElseThrow(() -> new BaseAppException(VehicleErrorCode.VEHICLE_CHANGE_REQUEST_NOT_FOUND));
+              .orElseThrow(
+                  () -> new BaseAppException(VehicleErrorCode.VEHICLE_CHANGE_REQUEST_NOT_FOUND));
 
       if (!request.getTenant().getId().equals(callerTenant.getId())) {
         // Return 404 to avoid disclosing other tenants' change requests

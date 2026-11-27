@@ -186,7 +186,8 @@ class RoomControllerTest {
   }
 
   @Test
-  @DisplayName("DELETE /api/v1/admin/rooms/{id}/permanent should return HTTP 200 with SuccessResponse")
+  @DisplayName(
+      "DELETE /api/v1/admin/rooms/{id}/permanent should return HTTP 200 with SuccessResponse")
   void deleteIncorrectRoom_permanent_success() throws Exception {
     doNothing().when(roomService).deleteIncorrectRoom(roomId);
 
@@ -197,7 +198,8 @@ class RoomControllerTest {
   }
 
   @Test
-  @DisplayName("DELETE /api/v1/admin/rooms/{id}/incorrect should return HTTP 200 with SuccessResponse")
+  @DisplayName(
+      "DELETE /api/v1/admin/rooms/{id}/incorrect should return HTTP 200 with SuccessResponse")
   void deleteIncorrectRoom_incorrect_success() throws Exception {
     doNothing().when(roomService).deleteIncorrectRoom(roomId);
 

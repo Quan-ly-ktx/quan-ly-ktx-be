@@ -1,8 +1,6 @@
 package com.uit.dormmanagement.security;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.uit.dormmanagement.entities.User;
@@ -99,7 +97,8 @@ class RoomBedSecurityIntegrationTest {
   @DisplayName("Technician requesting admin room routes should return 403")
   void technicianRequestingAdminRoomsShouldReturn403() throws Exception {
     String gen = userTokenInvalidationService.getOrCreateGeneration(technicianUser.getId());
-    String token = jwtService.generateAccessToken(technicianUser, UUID.randomUUID().toString(), gen);
+    String token =
+        jwtService.generateAccessToken(technicianUser, UUID.randomUUID().toString(), gen);
 
     mockMvc
         .perform(get("/api/v1/admin/rooms").header("Authorization", "Bearer " + token))

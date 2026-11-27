@@ -33,7 +33,9 @@ public class RoomHistoryGuardImpl implements RoomHistoryGuard {
     if (maintenanceTicketRepository.existsByRoomId(roomId)) {
       return true;
     }
-    if (bedIds != null && !bedIds.isEmpty() && maintenanceTicketRepository.existsByBed_IdIn(bedIds)) {
+    if (bedIds != null
+        && !bedIds.isEmpty()
+        && maintenanceTicketRepository.existsByBed_IdIn(bedIds)) {
       return true;
     }
     return false;

@@ -18,9 +18,7 @@ public class VehicleRegistrationValidatorImpl implements VehicleRegistrationVali
 
   private static final Set<VehicleType> MOTORIZED_TYPES =
       EnumSet.of(
-          VehicleType.SCOOTER,
-          VehicleType.MANUAL_MOTORCYCLE,
-          VehicleType.ELECTRIC_MOTORBIKE);
+          VehicleType.SCOOTER, VehicleType.MANUAL_MOTORCYCLE, VehicleType.ELECTRIC_MOTORBIKE);
 
   @Override
   public ValidatedVehicleRegistration validate(
@@ -69,12 +67,7 @@ public class VehicleRegistrationValidatorImpl implements VehicleRegistrationVali
     }
 
     return new ValidatedVehicleRegistration(
-        type,
-        canonicalPlate,
-        trimmedBrand,
-        trimmedColor,
-        front,
-        back);
+        type, canonicalPlate, trimmedBrand, trimmedColor, front, back);
   }
 
   @Override
@@ -105,9 +98,7 @@ public class VehicleRegistrationValidatorImpl implements VehicleRegistrationVali
   }
 
   private boolean isJpeg(byte[] header) {
-    return (header[0] == (byte) 0xFF)
-        && (header[1] == (byte) 0xD8)
-        && (header[2] == (byte) 0xFF);
+    return (header[0] == (byte) 0xFF) && (header[1] == (byte) 0xD8) && (header[2] == (byte) 0xFF);
   }
 
   private boolean isPng(byte[] header) {

@@ -44,7 +44,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.web.PageableHandlerMethodArgumentResolver;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -115,7 +114,8 @@ class VehicleControllerTest {
 
     adminMockMvc =
         MockMvcBuilders.standaloneSetup(adminVehicleController)
-            .setCustomArgumentResolvers(principalResolver, new PageableHandlerMethodArgumentResolver())
+            .setCustomArgumentResolvers(
+                principalResolver, new PageableHandlerMethodArgumentResolver())
             .setControllerAdvice(new AppExceptionHandler(responseFactory))
             .build();
 
@@ -192,7 +192,11 @@ class VehicleControllerTest {
   void rejectVehicle_shouldReturn200() throws Exception {
     RejectVehicleRequest req = RejectVehicleRequest.builder().reason("Ảnh mờ").build();
     VehicleResponse rejected =
-        VehicleResponse.builder().id(vehicleId).status(VehicleStatus.REJECTED).rejectionReason("Ảnh mờ").build();
+        VehicleResponse.builder()
+            .id(vehicleId)
+            .status(VehicleStatus.REJECTED)
+            .rejectionReason("Ảnh mờ")
+            .build();
     when(vehicleService.rejectVehicle(any(), eq(vehicleId), eq("Ảnh mờ"))).thenReturn(rejected);
 
     adminMockMvc
@@ -236,7 +240,8 @@ class VehicleControllerTest {
     byte[] data = "front-evidence-bytes".getBytes();
     VehicleEvidenceContent content =
         new VehicleEvidenceContent(new ByteArrayResource(data), "image/jpeg", data.length);
-    when(vehicleEvidenceAccessService.loadVehicleEvidence(any(), eq(true), eq(vehicleId), eq("front")))
+    when(vehicleEvidenceAccessService.loadVehicleEvidence(
+            any(), eq(true), eq(vehicleId), eq("front")))
         .thenReturn(content);
 
     adminMockMvc

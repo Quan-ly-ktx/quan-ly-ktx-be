@@ -95,7 +95,8 @@ public class AuthController extends AbstractBaseController {
   public ResponseEntity<SingleResponse<PasswordRecoveryRequestedResponse>> forgotPassword(
       @Valid @RequestBody PasswordRecoveryRequest request) {
     PasswordRecoveryRequestedResponse response = authService.forgotPassword(request);
-    return success(response, "Nếu thông tin tồn tại trong hệ thống, mã OTP đã được gửi đến hộp thư");
+    return success(
+        response, "Nếu thông tin tồn tại trong hệ thống, mã OTP đã được gửi đến hộp thư");
   }
 
   @Operation(

@@ -24,7 +24,8 @@ class StorageConfigTest {
           assertThat(context)
               .getBean(StorageService.class)
               .isInstanceOf(LocalStorageServiceImpl.class);
-          assertThat(context).hasSingleBean(com.uit.dormmanagement.services.VehicleEvidenceStorage.class);
+          assertThat(context)
+              .hasSingleBean(com.uit.dormmanagement.services.VehicleEvidenceStorage.class);
           assertThat(context)
               .getBean(com.uit.dormmanagement.services.VehicleEvidenceStorage.class)
               .isInstanceOf(com.uit.dormmanagement.services.impl.LocalVehicleEvidenceStorage.class);

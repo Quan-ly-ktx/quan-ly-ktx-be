@@ -18,7 +18,6 @@ import com.uit.dormmanagement.enums.BedStatus;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
-import com.uit.dormmanagement.enums.RoomType;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;

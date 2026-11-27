@@ -36,7 +36,8 @@ public class StorageConfig {
   @Bean
   @ConditionalOnMissingBean(com.uit.dormmanagement.services.VehicleEvidenceStorage.class)
   public com.uit.dormmanagement.services.VehicleEvidenceStorage vehicleEvidenceStorage(
-      @Value("${storage.vehicle.private-base-dir:private-storage/vehicles}") String privateBaseDir) {
+      @Value("${storage.vehicle.private-base-dir:private-storage/vehicles}")
+          String privateBaseDir) {
     return new com.uit.dormmanagement.services.impl.LocalVehicleEvidenceStorage(privateBaseDir);
   }
 }

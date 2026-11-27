@@ -12,7 +12,6 @@ import com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest;
 import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.entities.User;
-import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
@@ -119,12 +118,7 @@ class TenantProfileControllerTest {
 
     UserProfileResponse response =
         new UserProfileResponse(
-            tenantUserId,
-            "tenant@dorm.vn",
-            UserRole.TENANT,
-            UserStatus.ACTIVE,
-            null,
-            tenantInfo);
+            tenantUserId, "tenant@dorm.vn", UserRole.TENANT, UserStatus.ACTIVE, null, tenantInfo);
 
     when(tenantService.updateOwnContact(eq(tenantUserId), any())).thenReturn(response);
 
@@ -137,16 +131,16 @@ class TenantProfileControllerTest {
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.data.email").value("tenant@dorm.vn"))
         .andExpect(jsonPath("$.data.tenantProfile.phone").value("0987654321"))
-        .andExpect(jsonPath("$.data.tenantProfile.permanentAddress").value("123 Vo Van Ngan, Thu Duc, TP.HCM"));
+        .andExpect(
+            jsonPath("$.data.tenantProfile.permanentAddress")
+                .value("123 Vo Van Ngan, Thu Duc, TP.HCM"));
   }
 
   @Test
   @DisplayName("PATCH /api/v1/tenant/profile: when invalid phone format should return 400")
   void updateOwnContact_whenInvalidPhone_shouldReturn400() throws Exception {
     TenantContactUpdateRequest request =
-        TenantContactUpdateRequest.builder()
-            .phone("invalid-phone")
-            .build();
+        TenantContactUpdateRequest.builder().phone("invalid-phone").build();
 
     mockMvc
         .perform(

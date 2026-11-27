@@ -64,11 +64,7 @@ class AuthControllerTest {
   void shouldLoginSuccessfully() throws Exception {
     LoginRequest request = new LoginRequest("manager", "Password@123");
     UserResponse userResponse =
-        new UserResponse(
-            UUID.randomUUID(),
-            "manager@dorm.vn",
-            UserRole.MANAGER,
-            UserStatus.ACTIVE);
+        new UserResponse(UUID.randomUUID(), "manager@dorm.vn", UserRole.MANAGER, UserStatus.ACTIVE);
     AuthResponse authResponse =
         new AuthResponse("access-token-xyz", "refresh-token-xyz", "Bearer", 86400L, userResponse);
 
@@ -105,11 +101,7 @@ class AuthControllerTest {
   void shouldRefreshTokenSuccessfully() throws Exception {
     RefreshTokenRequest request = new RefreshTokenRequest("valid-refresh-token");
     UserResponse userResponse =
-        new UserResponse(
-            UUID.randomUUID(),
-            "manager@dorm.vn",
-            UserRole.MANAGER,
-            UserStatus.ACTIVE);
+        new UserResponse(UUID.randomUUID(), "manager@dorm.vn", UserRole.MANAGER, UserStatus.ACTIVE);
     AuthResponse authResponse =
         new AuthResponse("new-access-token", "new-refresh-token", "Bearer", 86400L, userResponse);
 
@@ -192,7 +184,8 @@ class AuthControllerTest {
     VerifyRecoveryOtpRequest request = new VerifyRecoveryOtpRequest(reqId, "123456");
     VerifyResetPasswordOtpResponse response = new VerifyResetPasswordOtpResponse("reset-token-abc");
 
-    when(authService.verifyForgotPasswordOtp(any(VerifyRecoveryOtpRequest.class))).thenReturn(response);
+    when(authService.verifyForgotPasswordOtp(any(VerifyRecoveryOtpRequest.class)))
+        .thenReturn(response);
 
     mockMvc
         .perform(

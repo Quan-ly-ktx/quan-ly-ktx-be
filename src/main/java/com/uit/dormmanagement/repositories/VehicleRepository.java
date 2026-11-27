@@ -35,14 +35,12 @@ public interface VehicleRepository extends JpaRepository<Vehicle, UUID> {
 
   List<Vehicle> findByStatus(VehicleStatus status);
 
-  long countByTenantIdAndStatusIn(
-      UUID tenantId, Collection<VehicleStatus> statuses);
+  long countByTenantIdAndStatusIn(UUID tenantId, Collection<VehicleStatus> statuses);
 
   Optional<Vehicle> findFirstByTenantIdAndStatusIn(
       UUID tenantId, Collection<VehicleStatus> statuses);
 
-  boolean existsByLicensePlateAndStatusIn(
-      String licensePlate, Collection<VehicleStatus> statuses);
+  boolean existsByLicensePlateAndStatusIn(String licensePlate, Collection<VehicleStatus> statuses);
 
   boolean existsByCardCodeAndStatus(String cardCode, VehicleStatus status);
 

@@ -15,8 +15,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface VehicleChangeRequestRepository
-    extends JpaRepository<VehicleChangeRequest, UUID> {
+public interface VehicleChangeRequestRepository extends JpaRepository<VehicleChangeRequest, UUID> {
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("SELECT r FROM VehicleChangeRequest r WHERE r.id = :id")

@@ -1,8 +1,6 @@
 package com.uit.dormmanagement.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -25,7 +23,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 
 @ExtendWith(MockitoExtension.class)
 class JwtAuthenticationFilterTest {
@@ -77,7 +74,8 @@ class JwtAuthenticationFilterTest {
   }
 
   @Test
-  @DisplayName("filter should reject token when sessionGeneration does not match Redis current generation")
+  @DisplayName(
+      "filter should reject token when sessionGeneration does not match Redis current generation")
   void shouldRejectTokenWithMismatchedSessionGeneration() throws Exception {
     UUID userId = UUID.randomUUID();
     String token = "jwt-token-old-gen";
@@ -97,7 +95,8 @@ class JwtAuthenticationFilterTest {
 
     when(jwtService.parseAndValidateToken(token)).thenReturn(payload);
     when(tokenRevocationService.isAccessTokenBlacklisted("jti-1")).thenReturn(false);
-    when(userTokenInvalidationService.isCurrentGeneration(userId, "old-generation")).thenReturn(false);
+    when(userTokenInvalidationService.isCurrentGeneration(userId, "old-generation"))
+        .thenReturn(false);
 
     filter.doFilter(request, response, filterChain);
 
@@ -106,7 +105,8 @@ class JwtAuthenticationFilterTest {
   }
 
   @Test
-  @DisplayName("filter should authenticate when sessionGeneration matches and token is not blacklisted")
+  @DisplayName(
+      "filter should authenticate when sessionGeneration matches and token is not blacklisted")
   void shouldAuthenticateWhenSessionGenerationMatches() throws Exception {
     UUID userId = UUID.randomUUID();
     String token = "valid-token";
@@ -142,7 +142,8 @@ class JwtAuthenticationFilterTest {
     filter.doFilter(request, response, filterChain);
 
     assertThat(SecurityContextHolder.getContext().getAuthentication()).isNotNull();
-    assertThat(SecurityContextHolder.getContext().getAuthentication().getName()).isEqualTo("manager@dorm.vn");
+    assertThat(SecurityContextHolder.getContext().getAuthentication().getName())
+        .isEqualTo("manager@dorm.vn");
     verify(filterChain).doFilter(request, response);
   }
 }

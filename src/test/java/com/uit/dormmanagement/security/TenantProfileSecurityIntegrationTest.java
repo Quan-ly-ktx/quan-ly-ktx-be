@@ -3,11 +3,9 @@ package com.uit.dormmanagement.security;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest;
 import com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest;
 import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
@@ -21,7 +19,6 @@ import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
 import com.uit.dormmanagement.support.RedisTestContainerSupport;
-import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -30,8 +27,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -142,8 +139,12 @@ class TenantProfileSecurityIntegrationTest {
   @DisplayName("Anonymous requesting admin tenant endpoints should return 401")
   void anonymous_requestingAdminTenants_shouldReturn401() throws Exception {
     mockMvc.perform(get("/api/v1/admin/tenants")).andExpect(status().isUnauthorized());
-    mockMvc.perform(get("/api/v1/admin/tenants/" + activeTenant.getId())).andExpect(status().isUnauthorized());
-    mockMvc.perform(post("/api/v1/admin/tenants/" + activeTenant.getId() + "/reset-password")).andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(get("/api/v1/admin/tenants/" + activeTenant.getId()))
+        .andExpect(status().isUnauthorized());
+    mockMvc
+        .perform(post("/api/v1/admin/tenants/" + activeTenant.getId() + "/reset-password"))
+        .andExpect(status().isUnauthorized());
   }
 
   @Test
@@ -154,7 +155,9 @@ class TenantProfileSecurityIntegrationTest {
         .perform(get("/api/v1/admin/tenants").header("Authorization", "Bearer " + token))
         .andExpect(status().isForbidden());
     mockMvc
-        .perform(post("/api/v1/admin/tenants/" + activeTenant.getId() + "/reset-password").header("Authorization", "Bearer " + token))
+        .perform(
+            post("/api/v1/admin/tenants/" + activeTenant.getId() + "/reset-password")
+                .header("Authorization", "Bearer " + token))
         .andExpect(status().isForbidden());
   }
 
@@ -175,7 +178,9 @@ class TenantProfileSecurityIntegrationTest {
         .perform(get("/api/v1/admin/tenants").header("Authorization", "Bearer " + token))
         .andExpect(status().isOk());
     mockMvc
-        .perform(get("/api/v1/admin/tenants/" + activeTenant.getId()).header("Authorization", "Bearer " + token))
+        .perform(
+            get("/api/v1/admin/tenants/" + activeTenant.getId())
+                .header("Authorization", "Bearer " + token))
         .andExpect(status().isOk());
   }
 

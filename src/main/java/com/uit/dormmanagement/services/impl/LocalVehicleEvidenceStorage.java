@@ -24,7 +24,8 @@ public class LocalVehicleEvidenceStorage implements VehicleEvidenceStorage {
   private final Path baseDir;
 
   public LocalVehicleEvidenceStorage(
-      @Value("${storage.vehicle.private-base-dir:private-storage/vehicles}") String privateBaseDir) {
+      @Value("${storage.vehicle.private-base-dir:private-storage/vehicles}")
+          String privateBaseDir) {
     this.baseDir = Paths.get(privateBaseDir).toAbsolutePath().normalize();
     try {
       Files.createDirectories(this.baseDir);

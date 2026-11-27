@@ -31,5 +31,4 @@ public class Amenity {
 
   @Column(nullable = false)
   private String name;
-
 }

@@ -25,5 +25,4 @@ public record VehicleChangeRequestResponse(
     UUID processedByStaffId,
     Instant processedAt,
     UUID newVehicleId,
-    Instant createdAt
-) {}
+    Instant createdAt) {}

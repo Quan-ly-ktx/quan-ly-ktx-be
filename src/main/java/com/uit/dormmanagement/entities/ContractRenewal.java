@@ -25,9 +25,15 @@ import org.hibernate.annotations.CreationTimestamp;
 @Table(
     name = "contract_renewals",
     uniqueConstraints = {
-      @UniqueConstraint(name = "uq_contract_renewals_sequence", columnNames = {"contract_id", "sequence_no"}),
-      @UniqueConstraint(name = "uq_contract_renewals_effective", columnNames = {"contract_id", "effective_from"}),
-      @UniqueConstraint(name = "uq_contract_renewals_id_contract", columnNames = {"id", "contract_id"})
+      @UniqueConstraint(
+          name = "uq_contract_renewals_sequence",
+          columnNames = {"contract_id", "sequence_no"}),
+      @UniqueConstraint(
+          name = "uq_contract_renewals_effective",
+          columnNames = {"contract_id", "effective_from"}),
+      @UniqueConstraint(
+          name = "uq_contract_renewals_id_contract",
+          columnNames = {"id", "contract_id"})
     })
 @Getter
 @Setter

@@ -13,13 +13,11 @@ import com.uit.dormmanagement.dtos.response.vehicle.VehicleResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Room;
-import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Vehicle;
 import com.uit.dormmanagement.enums.ContractStatus;
 import com.uit.dormmanagement.enums.ResidentStatus;
-import java.math.BigDecimal;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
@@ -35,6 +33,7 @@ import com.uit.dormmanagement.services.RandomPasswordGenerator;
 import com.uit.dormmanagement.services.TenantService;
 import com.uit.dormmanagement.services.UserService;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -266,8 +265,7 @@ public class TenantServiceImpl implements TenantService {
 
   private TenantSummaryResponse toSummaryResponse(Tenant tenant) {
     Optional<Contract> activeContractOpt =
-        contractRepository.findFirstByTenantIdAndStatusIn(
-            tenant.getId(), ACTIVE_CONTRACT_STATUSES);
+        contractRepository.findFirstByTenantIdAndStatusIn(tenant.getId(), ACTIVE_CONTRACT_STATUSES);
 
     String roomNumber = null;
     String bedCode = null;
@@ -306,8 +304,7 @@ public class TenantServiceImpl implements TenantService {
 
   private TenantDetailResponse toDetailResponse(Tenant tenant) {
     Optional<Contract> activeContractOpt =
-        contractRepository.findFirstByTenantIdAndStatusIn(
-            tenant.getId(), ACTIVE_CONTRACT_STATUSES);
+        contractRepository.findFirstByTenantIdAndStatusIn(tenant.getId(), ACTIVE_CONTRACT_STATUSES);
 
     UUID currentBedId = null;
     String currentBedCode = null;
@@ -457,9 +454,7 @@ public class TenantServiceImpl implements TenantService {
         .replacedVehicleId(
             vehicle.getReplacedVehicle() != null ? vehicle.getReplacedVehicle().getId() : null)
         .replacedByVehicleId(
-            vehicle.getReplacedByVehicle() != null
-                ? vehicle.getReplacedByVehicle().getId()
-                : null)
+            vehicle.getReplacedByVehicle() != null ? vehicle.getReplacedByVehicle().getId() : null)
         .createdAt(vehicle.getCreatedAt())
         .build();
   }

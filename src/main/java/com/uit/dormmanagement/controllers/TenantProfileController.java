@@ -29,7 +29,8 @@ public class TenantProfileController {
 
   @Operation(
       summary = "Update own contact information",
-      description = "Update tenant's own phone, permanent address, and emergency contact details (FR-06, FR-07)")
+      description =
+          "Update tenant's own phone, permanent address, and emergency contact details (FR-06, FR-07)")
   @PreAuthorize("hasRole('TENANT')")
   @PatchMapping("/profile")
   public ResponseEntity<SingleResponse<UserProfileResponse>> updateOwnContact(

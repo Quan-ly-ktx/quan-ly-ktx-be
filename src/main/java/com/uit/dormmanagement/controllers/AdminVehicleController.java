@@ -116,8 +116,7 @@ public class AdminVehicleController extends AbstractBaseController {
   @PreAuthorize("hasRole('MANAGER')")
   @PatchMapping("/{id}/revoke-card")
   public ResponseEntity<SingleResponse<VehicleResponse>> revokeCard(
-      @AuthenticationPrincipal UserPrincipal principal,
-      @PathVariable UUID id) {
+      @AuthenticationPrincipal UserPrincipal principal, @PathVariable UUID id) {
     UUID managerUserId = principal != null ? principal.getId() : null;
     VehicleResponse response = vehicleService.revokeCard(managerUserId, id);
     return responseFactory.success(response, "Thu hồi thẻ xe thành công");

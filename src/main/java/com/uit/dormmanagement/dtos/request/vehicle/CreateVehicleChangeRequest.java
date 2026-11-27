@@ -12,5 +12,4 @@ public record CreateVehicleChangeRequest(
     @NotNull(message = "Loại xe đề xuất không được để trống") VehicleType proposedVehicleType,
     String proposedLicensePlate,
     @NotBlank(message = "Hãng xe đề xuất không được để trống") String proposedBrand,
-    @NotBlank(message = "Màu xe đề xuất không được để trống") String proposedColor
-) {}
+    @NotBlank(message = "Màu xe đề xuất không được để trống") String proposedColor) {}

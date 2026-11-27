@@ -2,7 +2,6 @@ package com.uit.dormmanagement.services;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -12,10 +11,7 @@ import static org.mockito.Mockito.when;
 import com.uit.dormmanagement.constants.RedisKeyConstants;
 import com.uit.dormmanagement.dtos.response.auth.PasswordRecoveryRequestedResponse;
 import com.uit.dormmanagement.entities.StaffProfile;
-import com.uit.dormmanagement.entities.Tenant;
 import com.uit.dormmanagement.entities.User;
-import com.uit.dormmanagement.enums.GenderPolicy;
-import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.enums.UserStatus;
 import com.uit.dormmanagement.exceptions.BaseAppException;
@@ -24,7 +20,6 @@ import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.impl.PasswordRecoveryServiceImpl;
-import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -143,7 +138,8 @@ class PasswordRecoveryServiceTest {
   }
 
   @Test
-  @DisplayName("reset should update password, advance recovery version, and invalidate all sessions")
+  @DisplayName(
+      "reset should update password, advance recovery version, and invalidate all sessions")
   void resetShouldSucceedAndInvalidateAllSessions() {
     String resetToken = "reset-token-xyz";
     String resetKey = RedisKeyConstants.recoveryResetTokenKey(resetToken);
@@ -151,7 +147,8 @@ class PasswordRecoveryServiceTest {
     when(valueOperations.get(resetKey)).thenReturn(managerId + ":1");
     when(userRepository.findByIdForUpdate(managerId)).thenReturn(Optional.of(managerUser));
     when(valueOperations.get(RedisKeyConstants.userRecoveryVersionKey(managerId))).thenReturn("1");
-    when(passwordEncoder.matches("NewPassword@123", managerUser.getPasswordHash())).thenReturn(false);
+    when(passwordEncoder.matches("NewPassword@123", managerUser.getPasswordHash()))
+        .thenReturn(false);
     when(passwordEncoder.encode("NewPassword@123")).thenReturn("$2a$12$newHash");
 
     recoveryService.reset(resetToken, "NewPassword@123", "NewPassword@123");

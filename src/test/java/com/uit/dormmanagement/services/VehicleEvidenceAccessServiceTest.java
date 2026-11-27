@@ -2,7 +2,6 @@ package com.uit.dormmanagement.services;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.uit.dormmanagement.dtos.response.vehicle.VehicleEvidenceContent;
@@ -108,7 +107,8 @@ class VehicleEvidenceAccessServiceTest {
     when(vehicleRepository.findById(vehicleId)).thenReturn(Optional.of(vehicle));
     when(tenantRepository.findByUserId(otherUserId)).thenReturn(Optional.of(otherTenant));
 
-    assertThatThrownBy(() -> accessService.loadVehicleEvidence(otherUserId, false, vehicleId, "front"))
+    assertThatThrownBy(
+            () -> accessService.loadVehicleEvidence(otherUserId, false, vehicleId, "front"))
         .isInstanceOf(BaseAppException.class)
         .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.VEHICLE_NOT_FOUND);
   }
@@ -133,8 +133,13 @@ class VehicleEvidenceAccessServiceTest {
   void loadChangeRequestEvidence_missingBack_shouldThrowNotFound() {
     when(vehicleChangeRequestRepository.findById(requestId)).thenReturn(Optional.of(request));
 
-    assertThatThrownBy(() -> accessService.loadChangeRequestEvidence(UUID.randomUUID(), true, requestId, "back"))
+    assertThatThrownBy(
+            () ->
+                accessService.loadChangeRequestEvidence(UUID.randomUUID(), true, requestId, "back"))
         .isInstanceOf(BaseAppException.class)
-        .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.VEHICLE_EVIDENCE_NOT_FOUND);
+        .matches(
+            e ->
+                ((BaseAppException) e).getErrorCode()
+                    == VehicleErrorCode.VEHICLE_EVIDENCE_NOT_FOUND);
   }
 }

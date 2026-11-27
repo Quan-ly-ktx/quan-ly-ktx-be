@@ -53,7 +53,12 @@ compile:
 
 # Chạy toàn bộ Unit & Integration tests
 test:
-	./mvnw test
+	@if [ -z "$$DOCKER_HOST" ] && [ ! -e /var/run/docker.sock ] && [ -S "/run/user/$$(id -u)/podman/podman.sock" ]; then \
+		echo "Detected rootless Podman socket; running tests with DOCKER_HOST=unix:///run/user/$$(id -u)/podman/podman.sock"; \
+		DOCKER_HOST="unix:///run/user/$$(id -u)/podman/podman.sock" TESTCONTAINERS_RYUK_DISABLED=true ./mvnw test; \
+	else \
+		./mvnw test; \
+	fi
 
 # Build project (bỏ qua unit tests)
 build:

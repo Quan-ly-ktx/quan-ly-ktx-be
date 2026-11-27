@@ -214,7 +214,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     if (!StringUtils.hasText(refreshPayload.sessionGeneration())
-        || !userTokenInvalidationService.isCurrentGeneration(userId, refreshPayload.sessionGeneration())) {
+        || !userTokenInvalidationService.isCurrentGeneration(
+            userId, refreshPayload.sessionGeneration())) {
       log.warn("Logout rejected: refresh token has stale or missing session generation");
       throw new BaseAppException(AuthErrorCode.INVALID_REFRESH_TOKEN);
     }
@@ -228,7 +229,8 @@ public class AuthServiceImpl implements AuthService {
     long remainingMs = jwtService.getRemainingExpirationMs(accessToken);
     tokenRevocationService.blacklistAccessToken(accessPayload.jti(), remainingMs);
     tokenRevocationService.revokeRefreshToken(userId, refreshPayload.jti());
-    log.info("Successfully logged out user: {}, revoked refresh jti: {}", userId, refreshPayload.jti());
+    log.info(
+        "Successfully logged out user: {}, revoked refresh jti: {}", userId, refreshPayload.jti());
   }
 
   @Override
@@ -294,7 +296,8 @@ public class AuthServiceImpl implements AuthService {
 
   @Override
   public void resetPassword(ResetPasswordRequest request) {
-    passwordRecoveryService.reset(request.resetToken(), request.newPassword(), request.confirmPassword());
+    passwordRecoveryService.reset(
+        request.resetToken(), request.newPassword(), request.confirmPassword());
   }
 
   private AuthResponse generateAuthResponse(User user) {

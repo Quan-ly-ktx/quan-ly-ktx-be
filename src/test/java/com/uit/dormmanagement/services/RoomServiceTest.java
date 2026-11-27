@@ -12,7 +12,6 @@ import com.uit.dormmanagement.dtos.request.room.RoomAmenityRequest;
 import com.uit.dormmanagement.dtos.request.room.UpdateRoomRequest;
 import com.uit.dormmanagement.dtos.response.room.ArchivedRoomSummaryResponse;
 import com.uit.dormmanagement.dtos.response.room.RoomDetailResponse;
-import com.uit.dormmanagement.dtos.response.room.RoomSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Room;
@@ -35,7 +34,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -148,9 +146,11 @@ class RoomServiceTest {
   }
 
   @Test
-  @DisplayName("updateRoom should allow genderPolicy change when occupiedBeds is 0 and no active contract")
+  @DisplayName(
+      "updateRoom should allow genderPolicy change when occupiedBeds is 0 and no active contract")
   void updateRoom_whenNoOccupants_shouldAllowGenderPolicyChange() {
-    Bed bed1 = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed bed1 =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed1));
     when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(false);
@@ -169,7 +169,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("updateRoom should reject genderPolicy change when occupiedBeds > 0")
   void updateRoom_whenOccupied_shouldRejectGenderPolicyChange() {
-    Bed occupiedBed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.OCCUPIED).build();
+    Bed occupiedBed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.OCCUPIED).build();
     when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(occupiedBed));
 
@@ -187,7 +188,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("updateRoom should reject rename when room has active contract")
   void updateRoom_whenActiveContract_shouldRejectRename() {
-    Bed availableBed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed availableBed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(availableBed));
     when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(true);
@@ -226,14 +228,13 @@ class RoomServiceTest {
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
     when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(false);
     when(roomCodeRegistryRepository.findById("P.303")).thenReturn(Optional.empty());
-    when(roomCodeRegistryRepository.findByRoom_IdAndCurrentTrue(roomId)).thenReturn(Optional.of(oldCode));
+    when(roomCodeRegistryRepository.findByRoom_IdAndCurrentTrue(roomId))
+        .thenReturn(Optional.of(oldCode));
     when(bedRepository.findByRoomIdOrderByBedCodeAsc(roomId)).thenReturn(List.of(bed));
     when(roomRepository.save(any(Room.class))).thenAnswer(inv -> inv.getArgument(0));
 
     roomService.updateRoom(
-        roomId,
-        new UpdateRoomRequest(
-            "P.303", GenderPolicy.MALE, new BigDecimal("1500000"), null));
+        roomId, new UpdateRoomRequest("P.303", GenderPolicy.MALE, new BigDecimal("1500000"), null));
 
     assertThat(testRoom.getRoomNumber()).isEqualTo("P.303");
     assertThat(oldCode.isCurrent()).isFalse();
@@ -246,7 +247,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("deleteRoom should archive room when vacant and no active contracts")
   void deleteRoom_whenVacant_shouldArchive() {
-    Bed bed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed bed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
     when(contractRepository.existsByBed_Room_IdAndStatusIn(eq(roomId), any())).thenReturn(false);
@@ -277,7 +279,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("deleteIncorrectRoom should reject when room has protected history")
   void deleteIncorrectRoom_whenProtectedHistory_shouldThrow() {
-    Bed bed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed bed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdUnfilteredForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
     when(roomHistoryGuard.hasProtectedHistory(eq(roomId), any())).thenReturn(true);
@@ -293,7 +296,8 @@ class RoomServiceTest {
   @Test
   @DisplayName("deleteIncorrectRoom should delete unused room cleanly")
   void deleteIncorrectRoom_whenUnused_shouldDeleteCleanly() {
-    Bed bed = Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
+    Bed bed =
+        Bed.builder().id(UUID.randomUUID()).room(testRoom).status(BedStatus.AVAILABLE).build();
     when(roomRepository.findByIdUnfilteredForUpdate(roomId)).thenReturn(Optional.of(testRoom));
     when(bedRepository.findByRoomIdForUpdateOrderById(roomId)).thenReturn(List.of(bed));
     when(roomHistoryGuard.hasProtectedHistory(eq(roomId), any())).thenReturn(false);
@@ -326,7 +330,8 @@ class RoomServiceTest {
   }
 
   @Test
-  @DisplayName("getRoomDetails should include occupant CCCD when bed is occupied with active contract")
+  @DisplayName(
+      "getRoomDetails should include occupant CCCD when bed is occupied with active contract")
   void getRoomDetails_shouldIncludeOccupantCccd() {
     Tenant tenant =
         Tenant.builder()

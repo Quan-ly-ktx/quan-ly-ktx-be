@@ -29,7 +29,9 @@ import org.hibernate.annotations.CreationTimestamp;
 @Table(
     name = "invoices",
     uniqueConstraints = {
-      @UniqueConstraint(name = "uq_invoices_contract_period", columnNames = {"contract_id", "billing_period"})
+      @UniqueConstraint(
+          name = "uq_invoices_contract_period",
+          columnNames = {"contract_id", "billing_period"})
     })
 @Getter
 @Setter

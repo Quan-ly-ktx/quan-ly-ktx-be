@@ -185,9 +185,7 @@ class Phase2CoreModulesE2ETest {
 
     mockMvc
         .perform(
-            post("/api/v1/auth/login")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(loginJson))
+            post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(loginJson))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
         .andExpect(jsonPath("$.data.user.role").value("MANAGER"));
@@ -219,7 +217,8 @@ class Phase2CoreModulesE2ETest {
 
     // Manager forbidden from tenant endpoints
     mockMvc
-        .perform(get("/api/v1/tenant/vehicles/me").header("Authorization", "Bearer " + managerToken))
+        .perform(
+            get("/api/v1/tenant/vehicles/me").header("Authorization", "Bearer " + managerToken))
         .andExpect(status().isForbidden());
 
     // 3. User lock immediately invalidates active sessions across all modules
@@ -253,7 +252,8 @@ class Phase2CoreModulesE2ETest {
   }
 
   @Test
-  @DisplayName("Scenario 3: Tenant self-service & Vehicle lifecycle with checked-out permission split")
+  @DisplayName(
+      "Scenario 3: Tenant self-service & Vehicle lifecycle with checked-out permission split")
   void scenario3_tenantSelfServiceAndVehicle_checkedOutSplit() throws Exception {
     String tenantToken = tokenFor(tenantUser);
     String managerToken = tokenFor(managerUser);

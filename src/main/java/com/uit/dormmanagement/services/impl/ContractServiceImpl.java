@@ -58,8 +58,7 @@ public class ContractServiceImpl implements ContractService {
   private static final Set<String> ALLOWED_EXTENSIONS =
       Set.of("pdf", "doc", "docx", "jpg", "jpeg", "png", "webp");
 
-  private static final List<ContractStatus> ACTIVE_STATUSES =
-      List.of(ContractStatus.ACTIVE);
+  private static final List<ContractStatus> ACTIVE_STATUSES = List.of(ContractStatus.ACTIVE);
 
   @Override
   @Transactional(readOnly = true)

@@ -19,8 +19,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataAccessException;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -82,15 +82,33 @@ class Phase1APostgresMigrationTest {
             Set.of("id", "email", "password_hash", "role", "status", "created_at", "updated_at"),
             "tenants",
             Set.of(
-                "id", "user_id", "tenant_code", "id_card_number", "full_name", "gender",
-                "date_of_birth", "phone", "permanent_address", "emergency_contact_name",
-                "emergency_contact_phone", "resident_status", "created_at", "updated_at"),
+                "id",
+                "user_id",
+                "tenant_code",
+                "id_card_number",
+                "full_name",
+                "gender",
+                "date_of_birth",
+                "phone",
+                "permanent_address",
+                "emergency_contact_name",
+                "emergency_contact_phone",
+                "resident_status",
+                "created_at",
+                "updated_at"),
             "staff_profiles",
             Set.of("id", "user_id", "full_name", "phone", "created_at", "updated_at"),
             "rooms",
             Set.of(
-                "id", "room_number", "floor", "total_beds", "gender_policy", "base_price",
-                "archived_at", "created_at", "updated_at"),
+                "id",
+                "room_number",
+                "floor",
+                "total_beds",
+                "gender_policy",
+                "base_price",
+                "archived_at",
+                "created_at",
+                "updated_at"),
             "beds",
             Set.of("id", "room_id", "bed_code", "slot_key", "status", "created_at"),
             "amenities",
@@ -168,11 +186,9 @@ class Phase1APostgresMigrationTest {
     insertTenant(tenantUser1, "NT-" + UUID.randomUUID(), cccd1, "0900000000");
     insertTenant(tenantUser2, "NT-" + UUID.randomUUID(), cccd2, "0900000000");
 
-    assertThatThrownBy(
-            () -> insertTenant(tenantUser1, "NT-DUP-USER", randomCccd(), "0900000001"))
+    assertThatThrownBy(() -> insertTenant(tenantUser1, "NT-DUP-USER", randomCccd(), "0900000001"))
         .isInstanceOf(DataIntegrityViolationException.class);
-    assertThatThrownBy(
-            () -> insertTenant(tenantUser2, "NT-DUP-CCCD", cccd1, "0900000002"))
+    assertThatThrownBy(() -> insertTenant(tenantUser2, "NT-DUP-CCCD", cccd1, "0900000002"))
         .isInstanceOf(DataIntegrityViolationException.class);
 
     jdbcTemplate.update(
@@ -266,7 +282,8 @@ class Phase1APostgresMigrationTest {
   }
 
   @Test
-  @DisplayName("Bed code, canonical slot key, and Bed status constraints reject duplicates and legacy values")
+  @DisplayName(
+      "Bed code, canonical slot key, and Bed status constraints reject duplicates and legacy values")
   void bedUniquenessAndStatusConstraints() {
     var room =
         roomService.createRoom(
@@ -278,14 +295,11 @@ class Phase1APostgresMigrationTest {
                 java.math.BigDecimal.valueOf(1_500_000),
                 List.of()));
 
-    assertThatThrownBy(
-            () -> insertBed(room.id(), "GX", "P.408-G01", "AVAILABLE"))
+    assertThatThrownBy(() -> insertBed(room.id(), "GX", "P.408-G01", "AVAILABLE"))
         .isInstanceOf(DataAccessException.class);
-    assertThatThrownBy(
-            () -> insertBed(room.id(), "G01", "P.408-G01", "AVAILABLE"))
+    assertThatThrownBy(() -> insertBed(room.id(), "G01", "P.408-G01", "AVAILABLE"))
         .isInstanceOf(DataIntegrityViolationException.class);
-    assertThatThrownBy(
-            () -> insertBed(room.id(), "GX2", "P.408-GX2", "RESERVED"))
+    assertThatThrownBy(() -> insertBed(room.id(), "GX2", "P.408-GX2", "RESERVED"))
         .isInstanceOf(DataAccessException.class);
   }
 
@@ -306,11 +320,15 @@ class Phase1APostgresMigrationTest {
 
     assertThatThrownBy(() -> roomService.createRoom(request))
         .isInstanceOf(com.uit.dormmanagement.exceptions.BaseAppException.class);
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from rooms where room_number = ?", Integer.class, roomNumber))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from rooms where room_number = ?", Integer.class, roomNumber))
         .isZero();
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from room_code_registry where code = ?", Integer.class, roomNumber))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from room_code_registry where code = ?",
+                Integer.class,
+                roomNumber))
         .isZero();
   }
 
@@ -371,22 +389,25 @@ class Phase1APostgresMigrationTest {
         new UpdateRoomRequest(
             newCode, GenderPolicy.MALE, java.math.BigDecimal.valueOf(1_500_000), null));
 
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from room_code_registry where code = ? and not is_current "
-                + "and used_in_business",
-            Integer.class,
-            oldCode))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from room_code_registry where code = ? and not is_current "
+                    + "and used_in_business",
+                Integer.class,
+                oldCode))
         .isEqualTo(1);
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from room_code_registry where code = ? and is_current",
-            Integer.class,
-            newCode))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from room_code_registry where code = ? and is_current",
+                Integer.class,
+                newCode))
         .isEqualTo(1);
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from beds where room_id = ? and slot_key like ?",
-            Integer.class,
-            created.id(),
-            newCode + "-%"))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from beds where room_id = ? and slot_key like ?",
+                Integer.class,
+                created.id(),
+                newCode + "-%"))
         .isEqualTo(4);
   }
 
@@ -406,15 +427,17 @@ class Phase1APostgresMigrationTest {
 
     roomService.deleteRoom(created.id());
 
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from rooms where id = ? and archived_at is not null",
-            Integer.class,
-            created.id()))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from rooms where id = ? and archived_at is not null",
+                Integer.class,
+                created.id()))
         .isEqualTo(1);
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from room_code_registry where code = ? and is_current",
-            Integer.class,
-            roomNumber))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from room_code_registry where code = ? and is_current",
+                Integer.class,
+                roomNumber))
         .isEqualTo(1);
   }
 
@@ -464,7 +487,9 @@ class Phase1APostgresMigrationTest {
             "select id from tenants where user_id = ?", UUID.class, tenantUserId);
     UUID bedId =
         jdbcTemplate.queryForObject(
-            "select id from beds where room_id = ? order by bed_code limit 1", UUID.class, room.id());
+            "select id from beds where room_id = ? order by bed_code limit 1",
+            UUID.class,
+            room.id());
 
     jdbcTemplate.update(
         "insert into contracts(contract_code, tenant_id, bed_id, room_code_snapshot, bed_code_snapshot, "
@@ -476,8 +501,11 @@ class Phase1APostgresMigrationTest {
         roomNumber,
         "G01");
 
-    assertThat(jdbcTemplate.queryForObject(
-            "select used_in_business from room_code_registry where code = ?", Boolean.class, roomNumber))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select used_in_business from room_code_registry where code = ?",
+                Boolean.class,
+                roomNumber))
         .isTrue();
   }
 
@@ -496,21 +524,27 @@ class Phase1APostgresMigrationTest {
                 List.of()));
     roomService.deleteIncorrectRoom(original.id());
 
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from rooms where id = ?", Integer.class, original.id()))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from rooms where id = ?", Integer.class, original.id()))
         .isZero();
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from room_code_registry where code = ?", Integer.class, roomNumber))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from room_code_registry where code = ?",
+                Integer.class,
+                roomNumber))
         .isZero();
-    assertThat(roomService.createRoom(
-            new CreateRoomRequest(
-                roomNumber,
-                4,
-                RoomType.FOUR_BEDS,
-                GenderPolicy.MALE,
-                java.math.BigDecimal.valueOf(1_500_000),
-                List.of()))
-        .roomNumber())
+    assertThat(
+            roomService
+                .createRoom(
+                    new CreateRoomRequest(
+                        roomNumber,
+                        4,
+                        RoomType.FOUR_BEDS,
+                        GenderPolicy.MALE,
+                        java.math.BigDecimal.valueOf(1_500_000),
+                        List.of()))
+                .roomNumber())
         .isEqualTo(roomNumber);
   }
 
@@ -544,19 +578,22 @@ class Phase1APostgresMigrationTest {
 
       assertThat(List.of(first.get(), second.get())).containsExactlyInAnyOrder(true, false);
     }
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from rooms where room_number = ?", Integer.class, roomNumber))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from rooms where room_number = ?", Integer.class, roomNumber))
         .isEqualTo(1);
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from beds b join rooms r on r.id = b.room_id "
-                + "where r.room_number = ?",
-            Integer.class,
-            roomNumber))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from beds b join rooms r on r.id = b.room_id "
+                    + "where r.room_number = ?",
+                Integer.class,
+                roomNumber))
         .isEqualTo(4);
-    assertThat(jdbcTemplate.queryForObject(
-            "select count(*) from room_code_registry where code = ? and is_current",
-            Integer.class,
-            roomNumber))
+    assertThat(
+            jdbcTemplate.queryForObject(
+                "select count(*) from room_code_registry where code = ? and is_current",
+                Integer.class,
+                roomNumber))
         .isEqualTo(1);
   }
 

@@ -114,7 +114,8 @@ class VehicleChangeRequestControllerTest {
 
     adminMockMvc =
         MockMvcBuilders.standaloneSetup(adminController)
-            .setCustomArgumentResolvers(principalResolver, new PageableHandlerMethodArgumentResolver())
+            .setCustomArgumentResolvers(
+                principalResolver, new PageableHandlerMethodArgumentResolver())
             .setControllerAdvice(new AppExceptionHandler(responseFactory))
             .build();
 
@@ -175,7 +176,8 @@ class VehicleChangeRequestControllerTest {
     when(vehicleChangeRequestService.getAdminRequests(any(), any(), any())).thenReturn(page);
 
     adminMockMvc
-        .perform(get("/api/v1/admin/vehicle-change-requests").param("page", "0").param("size", "10"))
+        .perform(
+            get("/api/v1/admin/vehicle-change-requests").param("page", "0").param("size", "10"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.httpStatus").value(200))
         .andExpect(jsonPath("$.data.items[0].id").value(requestId.toString()));

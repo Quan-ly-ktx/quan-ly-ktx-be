@@ -172,7 +172,8 @@ class TenantControllerTest {
             .currentRoomNumber("P.302")
             .build();
 
-    when(tenantService.updateTenantAsManager(any(), eq(tenantId), any())).thenReturn(updatedResponse);
+    when(tenantService.updateTenantAsManager(any(), eq(tenantId), any()))
+        .thenReturn(updatedResponse);
 
     mockMvc
         .perform(
@@ -205,10 +206,12 @@ class TenantControllerTest {
   }
 
   @Test
-  @DisplayName("POST /api/v1/admin/tenants/{id}/reset-password: when success should return 200 and one-time password")
+  @DisplayName(
+      "POST /api/v1/admin/tenants/{id}/reset-password: when success should return 200 and one-time password")
   void resetTenantPassword_whenSuccess_shouldReturn200() throws Exception {
     OneTimePasswordResponse passwordResponse = new OneTimePasswordResponse("GeneratedP@ss1");
-    when(tenantService.resetTenantPasswordAsManager(any(), eq(tenantId))).thenReturn(passwordResponse);
+    when(tenantService.resetTenantPasswordAsManager(any(), eq(tenantId)))
+        .thenReturn(passwordResponse);
 
     mockMvc
         .perform(post("/api/v1/admin/tenants/{id}/reset-password", tenantId))
