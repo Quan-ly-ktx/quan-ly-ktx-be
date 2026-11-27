@@ -19,8 +19,8 @@ import com.uit.dormmanagement.dtos.request.auth.VerifyRecoveryOtpRequest;
 import com.uit.dormmanagement.dtos.response.auth.AuthResponse;
 import com.uit.dormmanagement.dtos.response.auth.PasswordRecoveryRequestedResponse;
 import com.uit.dormmanagement.dtos.response.auth.VerifyResetPasswordOtpResponse;
-import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.entities.Tenant;
+import com.uit.dormmanagement.entities.User;
 import com.uit.dormmanagement.enums.GenderPolicy;
 import com.uit.dormmanagement.enums.ResidentStatus;
 import com.uit.dormmanagement.enums.UserRole;
@@ -87,7 +87,8 @@ class AuthServiceTest {
     when(userRepository.findByEmail("manager@dorm.vn")).thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("Password@123", testUser.getPasswordHash())).thenReturn(true);
     when(userTokenInvalidationService.getOrCreateGeneration(userId)).thenReturn("gen-123");
-    when(jwtService.generateAccessToken(eq(testUser), anyString(), eq("gen-123"))).thenReturn("mock-access-token");
+    when(jwtService.generateAccessToken(eq(testUser), anyString(), eq("gen-123")))
+        .thenReturn("mock-access-token");
     when(jwtService.generateRefreshToken(eq(testUser), anyString(), eq("gen-123")))
         .thenReturn("mock-refresh-token");
     when(jwtService.getAccessTokenExpirationSeconds()).thenReturn(86400L);
@@ -101,8 +102,7 @@ class AuthServiceTest {
     assertThat(response.user().email()).isEqualTo("manager@dorm.vn");
 
     verify(loginAttemptService).resetAttempts("manager@dorm.vn");
-    verify(tokenRevocationService)
-        .recordRefreshToken(eq(userId), anyString(), eq(604800L));
+    verify(tokenRevocationService).recordRefreshToken(eq(userId), anyString(), eq(604800L));
   }
 
   @Test
@@ -129,13 +129,14 @@ class AuthServiceTest {
     when(tenantRepository.findByIdCardNumber("079203001187")).thenReturn(Optional.of(tenant));
     when(passwordEncoder.matches("Password@123", "tenant-hash")).thenReturn(true);
     when(userTokenInvalidationService.getOrCreateGeneration(userId)).thenReturn("gen-123");
-    when(jwtService.generateAccessToken(eq(tenantUser), anyString(), eq("gen-123"))).thenReturn("access");
-    when(jwtService.generateRefreshToken(eq(tenantUser), anyString(), eq("gen-123"))).thenReturn("refresh");
+    when(jwtService.generateAccessToken(eq(tenantUser), anyString(), eq("gen-123")))
+        .thenReturn("access");
+    when(jwtService.generateRefreshToken(eq(tenantUser), anyString(), eq("gen-123")))
+        .thenReturn("refresh");
     when(jwtService.getAccessTokenExpirationSeconds()).thenReturn(86400L);
     when(jwtService.getRefreshTokenExpirationSeconds()).thenReturn(604800L);
 
-    AuthResponse response =
-        authService.login(new LoginRequest("079203001187", "Password@123"));
+    AuthResponse response = authService.login(new LoginRequest("079203001187", "Password@123"));
 
     assertThat(response.user().email()).isEqualTo("tenant@example.test");
     verify(loginAttemptService).resetAttempts("079203001187");
@@ -172,11 +173,11 @@ class AuthServiceTest {
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(BaseAppException.class)
         .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_TEMPORARILY_LOCKED);
-
   }
 
   @Test
-  @DisplayName("login should return generic INVALID_CREDENTIALS when user status is LOCKED to avoid enumeration")
+  @DisplayName(
+      "login should return generic INVALID_CREDENTIALS when user status is LOCKED to avoid enumeration")
   void permanentlyLockedLoginUsesGenericCredentialsError() {
     LoginRequest request = new LoginRequest("manager@dorm.vn", "Password@123");
     testUser.setStatus(UserStatus.LOCKED);
@@ -192,7 +193,8 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("login should throw ACCOUNT_TEMPORARILY_LOCKED when 6th failure locks the identifier")
+  @DisplayName(
+      "login should throw ACCOUNT_TEMPORARILY_LOCKED when 6th failure locks the identifier")
   void sixthFailureDuringLoginThrowsAccountTemporarilyLocked() {
     LoginRequest request = new LoginRequest("manager@dorm.vn", "WrongPassword");
 
@@ -249,7 +251,8 @@ class AuthServiceTest {
     when(tokenRevocationService.isRefreshTokenValid(userId, jti)).thenReturn(true);
     when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
     when(userTokenInvalidationService.getOrCreateGeneration(userId)).thenReturn(gen);
-    when(jwtService.generateAccessToken(eq(testUser), anyString(), eq(gen))).thenReturn("new-access-token");
+    when(jwtService.generateAccessToken(eq(testUser), anyString(), eq(gen)))
+        .thenReturn("new-access-token");
     when(jwtService.generateRefreshToken(eq(testUser), anyString(), eq(gen)))
         .thenReturn("new-refresh-token");
     when(jwtService.getAccessTokenExpirationSeconds()).thenReturn(86400L);
@@ -261,8 +264,7 @@ class AuthServiceTest {
     assertThat(response.refreshToken()).isEqualTo("new-refresh-token");
 
     verify(tokenRevocationService).revokeRefreshToken(userId, jti);
-    verify(tokenRevocationService)
-        .recordRefreshToken(eq(userId), anyString(), eq(604800L));
+    verify(tokenRevocationService).recordRefreshToken(eq(userId), anyString(), eq(604800L));
   }
 
   @Test
@@ -297,7 +299,8 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("logout should reject when refresh token belongs to a different user without modifying either token")
+  @DisplayName(
+      "logout should reject when refresh token belongs to a different user without modifying either token")
   void logoutShouldRejectDifferentUserRefreshTokenWithoutModifyingEitherToken() {
     String authHeader = "Bearer access-token-abc";
     RefreshTokenRequest request = new RefreshTokenRequest("refresh-token-xyz");
@@ -339,7 +342,8 @@ class AuthServiceTest {
   }
 
   @Test
-  @DisplayName("logout should blacklist access token and revoke refresh token when both are valid and owned by user")
+  @DisplayName(
+      "logout should blacklist access token and revoke refresh token when both are valid and owned by user")
   void logoutShouldSucceedWhenBothTokensAreValidAndOwnedByUser() {
     String authHeader = "Bearer access-token-abc";
     RefreshTokenRequest request = new RefreshTokenRequest("refresh-token-xyz");

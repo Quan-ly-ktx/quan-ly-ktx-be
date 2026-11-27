@@ -66,7 +66,8 @@ public class TenantController {
 
   @Operation(
       summary = "Update tenant profile",
-      description = "Update tenant personal information, contact details, and identity fields (FR-06)")
+      description =
+          "Update tenant personal information, contact details, and identity fields (FR-06)")
   @PreAuthorize("hasRole('MANAGER')")
   @PutMapping("/{id}")
   public ResponseEntity<SingleResponse<TenantDetailResponse>> updateTenant(
@@ -84,10 +85,10 @@ public class TenantController {
   @PreAuthorize("hasRole('MANAGER')")
   @PostMapping("/{id}/reset-password")
   public ResponseEntity<SingleResponse<OneTimePasswordResponse>> resetTenantPassword(
-      @AuthenticationPrincipal UserPrincipal principal,
-      @PathVariable UUID id) {
+      @AuthenticationPrincipal UserPrincipal principal, @PathVariable UUID id) {
     UUID managerUserId = principal != null ? principal.getId() : null;
-    OneTimePasswordResponse response = tenantService.resetTenantPasswordAsManager(managerUserId, id);
+    OneTimePasswordResponse response =
+        tenantService.resetTenantPasswordAsManager(managerUserId, id);
     return responseFactory.success(response, "Đặt lại mật khẩu cho khách thuê thành công");
   }
 }

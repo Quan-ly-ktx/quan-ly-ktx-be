@@ -25,7 +25,11 @@ import org.hibernate.annotations.CreationTimestamp;
 @Entity
 @Table(
     name = "beds",
-    uniqueConstraints = {@UniqueConstraint(name = "uq_beds_room_bed_code", columnNames = {"room_id", "bed_code"})})
+    uniqueConstraints = {
+      @UniqueConstraint(
+          name = "uq_beds_room_bed_code",
+          columnNames = {"room_id", "bed_code"})
+    })
 @Getter
 @Setter
 @NoArgsConstructor

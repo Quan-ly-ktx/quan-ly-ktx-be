@@ -1,9 +1,7 @@
 package com.uit.dormmanagement.security;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -25,8 +23,8 @@ import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.repositories.VehicleChangeRequestRepository;
 import com.uit.dormmanagement.repositories.VehicleRepository;
-import com.uit.dormmanagement.services.VehicleEvidenceStorage;
 import com.uit.dormmanagement.services.UserTokenInvalidationService;
+import com.uit.dormmanagement.services.VehicleEvidenceStorage;
 import com.uit.dormmanagement.support.RedisTestContainerSupport;
 import java.time.Instant;
 import java.util.UUID;
@@ -178,7 +176,10 @@ class VehicleSecurityIntegrationTest {
     // Create a dummy stored evidence file
     MockMultipartFile dummyFile =
         new MockMultipartFile(
-            "frontImage", "reg-front.jpg", MediaType.IMAGE_JPEG_VALUE, "dummy image bytes".getBytes());
+            "frontImage",
+            "reg-front.jpg",
+            MediaType.IMAGE_JPEG_VALUE,
+            "dummy image bytes".getBytes());
     UUID storageId = UUID.randomUUID();
     storedFrontKey = vehicleEvidenceStorage.store(storageId, "front", dummyFile);
 
@@ -234,9 +235,7 @@ class VehicleSecurityIntegrationTest {
 
     // Tenant cannot access admin endpoints
     mockMvc
-        .perform(
-            get("/api/v1/admin/vehicles")
-                .header("Authorization", "Bearer " + tenantToken))
+        .perform(get("/api/v1/admin/vehicles").header("Authorization", "Bearer " + tenantToken))
         .andExpect(status().isForbidden());
 
     mockMvc
@@ -248,21 +247,16 @@ class VehicleSecurityIntegrationTest {
     // Manager cannot access tenant endpoints
     mockMvc
         .perform(
-            get("/api/v1/tenant/vehicles/me")
-                .header("Authorization", "Bearer " + managerToken))
+            get("/api/v1/tenant/vehicles/me").header("Authorization", "Bearer " + managerToken))
         .andExpect(status().isForbidden());
 
     // Technician cannot access either
     mockMvc
-        .perform(
-            get("/api/v1/admin/vehicles")
-                .header("Authorization", "Bearer " + techToken))
+        .perform(get("/api/v1/admin/vehicles").header("Authorization", "Bearer " + techToken))
         .andExpect(status().isForbidden());
 
     mockMvc
-        .perform(
-            get("/api/v1/tenant/vehicles/me")
-                .header("Authorization", "Bearer " + techToken))
+        .perform(get("/api/v1/tenant/vehicles/me").header("Authorization", "Bearer " + techToken))
         .andExpect(status().isForbidden());
   }
 
@@ -326,9 +320,7 @@ class VehicleSecurityIntegrationTest {
     // Manager fetches change request evidence
     mockMvc
         .perform(
-            get(
-                    "/api/v1/admin/vehicle-change-requests/{id}/evidence/front",
-                    tenant1Request.getId())
+            get("/api/v1/admin/vehicle-change-requests/{id}/evidence/front", tenant1Request.getId())
                 .header("Authorization", "Bearer " + managerToken))
         .andExpect(status().isOk())
         .andExpect(header().string("Content-Type", MediaType.IMAGE_JPEG_VALUE))
@@ -352,8 +344,10 @@ class VehicleSecurityIntegrationTest {
   void directUploadsVehicles_isDenied() throws Exception {
     mockMvc
         .perform(get("/uploads/vehicles/any-file.jpg"))
-        .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
-            result.getResponse().getStatus()).isIn(401, 403));
+        .andExpect(
+            result ->
+                org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus())
+                    .isIn(401, 403));
   }
 
   @Test
@@ -364,8 +358,7 @@ class VehicleSecurityIntegrationTest {
     // Can view history
     mockMvc
         .perform(
-            get("/api/v1/tenant/vehicles")
-                .header("Authorization", "Bearer " + checkedOutToken))
+            get("/api/v1/tenant/vehicles").header("Authorization", "Bearer " + checkedOutToken))
         .andExpect(status().isOk());
 
     // Cannot register

@@ -3,8 +3,6 @@ package com.uit.dormmanagement.services;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.uit.dormmanagement.dtos.request.vehicle.CreateVehicleChangeRequest;
@@ -116,7 +114,8 @@ class VehicleChangeRequestServiceTest {
     MockMultipartFile back = new MockMultipartFile("back", "b.jpg", "image/jpeg", new byte[] {2});
 
     when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.findByIdForUpdate(currentVehicleId)).thenReturn(Optional.of(currentVehicle));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
     when(vehicleChangeRequestRepository.existsByTenantIdAndStatus(
             tenant.getId(), VehicleChangeRequestStatus.PENDING))
         .thenReturn(false);
@@ -135,7 +134,8 @@ class VehicleChangeRequestServiceTest {
     assertThat(res.status()).isEqualTo(VehicleChangeRequestStatus.PENDING);
     assertThat(res.currentVehicleId()).isEqualTo(currentVehicleId);
     assertThat(res.proposedLicensePlate()).isEqualTo("59-X2 222.22");
-    assertThat(currentVehicle.getStatus()).isEqualTo(VehicleStatus.ISSUED); // current vehicle untouched
+    assertThat(currentVehicle.getStatus())
+        .isEqualTo(VehicleStatus.ISSUED); // current vehicle untouched
   }
 
   @Test
@@ -145,7 +145,8 @@ class VehicleChangeRequestServiceTest {
         CreateVehicleChangeRequest.builder().currentVehicleId(currentVehicleId).build();
 
     when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.findByIdForUpdate(currentVehicleId)).thenReturn(Optional.of(currentVehicle));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
     when(vehicleChangeRequestRepository.existsByTenantIdAndStatus(
             tenant.getId(), VehicleChangeRequestStatus.PENDING))
         .thenReturn(true);
@@ -162,9 +163,12 @@ class VehicleChangeRequestServiceTest {
   @DisplayName("approve: should atomically replace old vehicle with successor using same card code")
   void approve_shouldReplaceAtomically() {
     StaffProfile staff = StaffProfile.builder().id(UUID.randomUUID()).build();
-    when(vehicleChangeRequestRepository.findCurrentVehicleIdById(requestId)).thenReturn(Optional.of(currentVehicleId));
-    when(vehicleRepository.findByIdForUpdate(currentVehicleId)).thenReturn(Optional.of(currentVehicle));
-    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId)).thenReturn(Optional.of(request));
+    when(vehicleChangeRequestRepository.findCurrentVehicleIdById(requestId))
+        .thenReturn(Optional.of(currentVehicleId));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
+    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId))
+        .thenReturn(Optional.of(request));
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(staff));
     when(vehicleRepository.saveAndFlush(any(Vehicle.class))).thenAnswer(inv -> inv.getArgument(0));
     when(vehicleChangeRequestRepository.saveAndFlush(any(VehicleChangeRequest.class)))
@@ -187,9 +191,12 @@ class VehicleChangeRequestServiceTest {
   @DisplayName("approve: when request is already approved should throw NOT_PENDING")
   void approve_whenAlreadyProcessed_shouldThrow() {
     request.setStatus(VehicleChangeRequestStatus.APPROVED);
-    when(vehicleChangeRequestRepository.findCurrentVehicleIdById(requestId)).thenReturn(Optional.of(currentVehicleId));
-    when(vehicleRepository.findByIdForUpdate(currentVehicleId)).thenReturn(Optional.of(currentVehicle));
-    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId)).thenReturn(Optional.of(request));
+    when(vehicleChangeRequestRepository.findCurrentVehicleIdById(requestId))
+        .thenReturn(Optional.of(currentVehicleId));
+    when(vehicleRepository.findByIdForUpdate(currentVehicleId))
+        .thenReturn(Optional.of(currentVehicle));
+    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId))
+        .thenReturn(Optional.of(request));
 
     assertThatThrownBy(() -> service.approve(managerUserId, requestId))
         .isInstanceOf(BaseAppException.class)
@@ -203,7 +210,8 @@ class VehicleChangeRequestServiceTest {
   @DisplayName("reject: should reject request with reason and leave current vehicle untouched")
   void reject_shouldRejectRequest() {
     StaffProfile staff = StaffProfile.builder().id(UUID.randomUUID()).build();
-    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId)).thenReturn(Optional.of(request));
+    when(vehicleChangeRequestRepository.findByIdForUpdate(requestId))
+        .thenReturn(Optional.of(request));
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(staff));
     when(vehicleChangeRequestRepository.save(any(VehicleChangeRequest.class)))
         .thenAnswer(inv -> inv.getArgument(0));

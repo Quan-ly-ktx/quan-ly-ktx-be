@@ -53,8 +53,7 @@ public class BedServiceImpl implements BedService {
 
     if (newStatus == BedStatus.MAINTENANCE) {
       boolean hasActiveContract =
-          contractRepository.existsByBedIdAndStatusIn(
-              bedId, Set.of(ContractStatus.ACTIVE));
+          contractRepository.existsByBedIdAndStatusIn(bedId, Set.of(ContractStatus.ACTIVE));
       if (hasActiveContract) {
         throw new BaseAppException(RoomErrorCode.CANNOT_MAINTAIN_OCCUPIED_BED);
       }

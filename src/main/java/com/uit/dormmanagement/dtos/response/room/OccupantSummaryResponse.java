@@ -4,11 +4,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 public record OccupantSummaryResponse(
-    UUID tenantId,
-    String fullName,
-    String phone,
-    String idCardNumber,
-    LocalDate contractEndDate) {
+    UUID tenantId, String fullName, String phone, String idCardNumber, LocalDate contractEndDate) {
 
   public OccupantSummaryResponse(
       UUID tenantId, String fullName, String phone, LocalDate contractEndDate) {

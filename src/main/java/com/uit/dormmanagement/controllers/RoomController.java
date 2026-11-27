@@ -98,7 +98,8 @@ public class RoomController {
 
   @Operation(
       summary = "Permanently delete unused room",
-      description = "Physically delete room that was never used in business and has no history (FR-04, BR-02)")
+      description =
+          "Physically delete room that was never used in business and has no history (FR-04, BR-02)")
   @PreAuthorize("hasRole('MANAGER')")
   @DeleteMapping({"/{id}/permanent", "/{id}/incorrect"})
   public ResponseEntity<SuccessResponse> deleteIncorrectRoom(@PathVariable UUID id) {

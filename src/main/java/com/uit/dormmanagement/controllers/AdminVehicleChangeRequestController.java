@@ -61,21 +61,20 @@ public class AdminVehicleChangeRequestController extends AbstractBaseController 
   @GetMapping("/{id}")
   public ResponseEntity<SingleResponse<VehicleChangeRequestResponse>> getRequestById(
       @PathVariable UUID id) {
-    VehicleChangeRequestResponse response =
-        vehicleChangeRequestService.getAdminRequestById(id);
+    VehicleChangeRequestResponse response = vehicleChangeRequestService.getAdminRequestById(id);
     return responseFactory.success(response, "Lấy chi tiết yêu cầu đổi xe thành công");
   }
 
   @Operation(
       summary = "Approve vehicle change request",
-      description = "Approve request: atomically replace old vehicle with successor using same RFID card")
+      description =
+          "Approve request: atomically replace old vehicle with successor using same RFID card")
   @PreAuthorize("hasRole('MANAGER')")
   @PatchMapping("/{id}/approve")
   public ResponseEntity<SingleResponse<VehicleChangeRequestResponse>> approveRequest(
       @AuthenticationPrincipal UserPrincipal principal, @PathVariable UUID id) {
     UUID managerUserId = principal != null ? principal.getId() : null;
-    VehicleChangeRequestResponse response =
-        vehicleChangeRequestService.approve(managerUserId, id);
+    VehicleChangeRequestResponse response = vehicleChangeRequestService.approve(managerUserId, id);
     return responseFactory.success(response, "Duyệt yêu cầu đổi phương tiện thành công");
   }
 

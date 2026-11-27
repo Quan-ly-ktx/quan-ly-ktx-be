@@ -41,8 +41,7 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
   List<Contract> findByBedIdInAndStatusIn(
       Collection<UUID> bedIds, Collection<ContractStatus> statuses);
 
-  Optional<Contract> findFirstByBedIdAndStatusIn(
-      UUID bedId, Collection<ContractStatus> statuses);
+  Optional<Contract> findFirstByBedIdAndStatusIn(UUID bedId, Collection<ContractStatus> statuses);
 
   Optional<Contract> findFirstByTenantIdAndStatusIn(
       UUID tenantId, Collection<ContractStatus> statuses);

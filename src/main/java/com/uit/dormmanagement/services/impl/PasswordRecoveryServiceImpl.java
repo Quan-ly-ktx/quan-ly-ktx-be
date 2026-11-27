@@ -131,13 +131,17 @@ public class PasswordRecoveryServiceImpl implements PasswordRecoveryService {
       attempts++;
       if (attempts >= 3) {
         redisTemplate.delete(challengeKey);
-        log.warn("Recovery challenge failed 3 times, invalidating request id: {}", recoveryRequestId);
+        log.warn(
+            "Recovery challenge failed 3 times, invalidating request id: {}", recoveryRequestId);
         throw new BaseAppException(AuthErrorCode.OTP_MAX_ATTEMPTS_EXCEEDED);
       } else {
-        String updatedPayload = userId + ":" + challengeVersion + ":" + expectedOtpHash + ":" + attempts;
+        String updatedPayload =
+            userId + ":" + challengeVersion + ":" + expectedOtpHash + ":" + attempts;
         Long remainingTtl = redisTemplate.getExpire(challengeKey);
         if (remainingTtl != null && remainingTtl > 0) {
-          redisTemplate.opsForValue().set(challengeKey, updatedPayload, Duration.ofSeconds(remainingTtl));
+          redisTemplate
+              .opsForValue()
+              .set(challengeKey, updatedPayload, Duration.ofSeconds(remainingTtl));
         }
         throw new BaseAppException(AuthErrorCode.INVALID_OTP);
       }
@@ -257,7 +261,9 @@ public class PasswordRecoveryServiceImpl implements PasswordRecoveryService {
   private Optional<User> findUserByIdentifier(String identifier) {
     String normalized = identifier.trim();
     if (normalized.matches("^\\d{12}$")) {
-      return tenantRepository.findByIdCardNumber(normalized).map(com.uit.dormmanagement.entities.Tenant::getUser);
+      return tenantRepository
+          .findByIdCardNumber(normalized)
+          .map(com.uit.dormmanagement.entities.Tenant::getUser);
     }
     return userRepository
         .findByEmail(normalized.toLowerCase(Locale.ROOT))

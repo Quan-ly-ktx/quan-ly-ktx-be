@@ -21,7 +21,6 @@ import com.uit.dormmanagement.services.VehicleEvidenceStorage;
 import com.uit.dormmanagement.services.VehicleRegistrationValidator;
 import com.uit.dormmanagement.services.VehicleService;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -153,7 +152,8 @@ public class VehicleServiceImpl implements VehicleService {
       throw new BaseAppException(TenantErrorCode.TENANT_NOT_ACTIVE);
     }
 
-    String cleanCardCode = request.cardCode() != null ? request.cardCode().trim().toUpperCase() : null;
+    String cleanCardCode =
+        request.cardCode() != null ? request.cardCode().trim().toUpperCase() : null;
     if (cleanCardCode == null || cleanCardCode.isBlank()) {
       throw new BaseAppException(VehicleErrorCode.CARD_CODE_DUPLICATED);
     }
@@ -390,9 +390,7 @@ public class VehicleServiceImpl implements VehicleService {
         .replacedVehicleId(
             vehicle.getReplacedVehicle() != null ? vehicle.getReplacedVehicle().getId() : null)
         .replacedByVehicleId(
-            vehicle.getReplacedByVehicle() != null
-                ? vehicle.getReplacedByVehicle().getId()
-                : null)
+            vehicle.getReplacedByVehicle() != null ? vehicle.getReplacedByVehicle().getId() : null)
         .createdAt(vehicle.getCreatedAt())
         .build();
   }

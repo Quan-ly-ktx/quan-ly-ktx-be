@@ -1,0 +1,244 @@
+name: Dorm Backend CD flow (AWS)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: be-deploy-dorm-gateway-aws
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/quan-ly-ktx-be
+  AWS_REGION: ap-southeast-1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
+  build-and-push-ghcr:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: "temurin"
+          cache: maven
+
+      - name: Normalize mvnw line endings and permissions
+        run: sed -i 's/\r$//' mvnw && chmod +x mvnw
+
+      - name: Build application package
+        run: ./mvnw clean package -DskipTests -B
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Normalize image name to lowercase
+        run: echo "IMAGE_NAME_LOWER=${IMAGE_NAME,,}" >> "$GITHUB_ENV"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest-aws
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_LOWER }}:latest
+
+  deploy:
+    needs: build-and-push-ghcr
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Deploy to gateway via Bastion SSH
+        env:
+          BASTION_HOST: ${{ secrets.BASTION_HOST }}
+          BASTION_KEY: ${{ secrets.BASTION_SSH_KEY }}
+          GHCR_ACTOR: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${BASTION_HOST:-}" || -z "${BASTION_KEY:-}" ]]; then
+            echo "::error::BASTION_HOST and BASTION_SSH_KEY secrets must be configured."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf "%s\n" "$BASTION_KEY" | tr -d '\r' > ~/.ssh/bastion.pem
+          chmod 600 ~/.ssh/bastion.pem
+
+          {
+            printf 'GHCR_ACTOR=%q\n' "${GHCR_ACTOR}"
+            printf 'GHCR_TOKEN=%q\n' "${GHCR_TOKEN}"
+            printf 'AWS_REGION=%q\n' "${{ env.AWS_REGION }}"
+            cat <<'REMOTE_EOF'
+          set -euo pipefail
+
+          mkdir -p ~/gitops/env ~/gitops/compose/dorm
+
+          SECRET_VAL="$(aws secretsmanager get-secret-value \
+            --region "${AWS_REGION}" \
+            --secret-id occupify/prod/dorm-be \
+            --query SecretString \
+            --output text)"
+
+          if [[ -z "${SECRET_VAL}" ]]; then
+            echo "Failed to fetch occupify/prod/dorm-be from AWS Secrets Manager (empty secret)." >&2
+            exit 1
+          fi
+
+          if printf '%s' "${SECRET_VAL}" | python3 -c 'import json, sys; data = json.load(sys.stdin); assert isinstance(data, dict); [print(f"{k}={v}") for k, v in data.items()]' > ~/gitops/env/dorm-be.env.tmp 2>/dev/null; then
+            mv ~/gitops/env/dorm-be.env.tmp ~/gitops/env/dorm-be.env
+          else
+            rm -f ~/gitops/env/dorm-be.env.tmp
+            printf '%s\n' "${SECRET_VAL}" > ~/gitops/env/dorm-be.env
+          fi
+          chmod 600 ~/gitops/env/dorm-be.env
+
+          cat > ~/gitops/compose/dorm/compose.prod.yml <<'COMPOSE_EOF'
+          services:
+            dorm-postgres:
+              image: docker.io/library/postgres:17-alpine
+              container_name: dorm-postgres
+              restart: unless-stopped
+              env_file:
+                - ../../env/dorm-be.env
+              volumes:
+                - dorm_postgres_data:/var/lib/postgresql/data
+              mem_limit: 192m
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-dorm_user}\" -d \"$${POSTGRES_DB:-dorm_db}\""]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+
+            dorm-redis:
+              image: docker.io/library/redis:8-alpine
+              container_name: dorm-redis
+              restart: unless-stopped
+              env_file:
+                - ../../env/dorm-be.env
+              command: ["sh", "-c", "exec redis-server --requirepass \"$${REDIS_PASSWORD:-dorm_redis_pass}\" --appendonly yes --notify-keyspace-events Ex"]
+              volumes:
+                - dorm_redis_data:/data
+              mem_limit: 64m
+              healthcheck:
+                test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD:-dorm_redis_pass}\" ping | grep -q PONG"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+
+            dorm-be:
+              image: ghcr.io/quan-ly-ktx/quan-ly-ktx-be:latest
+              container_name: dorm-be
+              restart: on-failure:3
+              ports:
+                - "8090:8080"
+              env_file:
+                - ../../env/dorm-be.env
+              environment:
+                SPRING_PROFILES_ACTIVE: prod
+                PORT: "8080"
+                POSTGRES_HOST: dorm-postgres
+                POSTGRES_PORT: "5432"
+                REDIS_HOST: dorm-redis
+                REDIS_PORT: "6379"
+              depends_on:
+                dorm-postgres:
+                  condition: service_healthy
+                dorm-redis:
+                  condition: service_healthy
+              mem_limit: 384m
+              healthcheck:
+                test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080 && printf \"GET /actuator/health HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3 && grep -q \"200\" <&3'"]
+                interval: 15s
+                timeout: 5s
+                retries: 5
+                start_period: 40s
+
+          volumes:
+            dorm_postgres_data:
+            dorm_redis_data:
+          COMPOSE_EOF
+
+          if ! sudo swapon --show | grep -q '/swapfile'; then
+            sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+            sudo swapon /swapfile
+            grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+          fi
+
+          export DOCKER_HOST=unix:///run/podman/podman.sock
+
+          if [[ -n "${GHCR_TOKEN:-}" ]]; then
+            printf '%s\n' "${GHCR_TOKEN}" | sudo podman login ghcr.io -u "${GHCR_ACTOR}" --password-stdin >/dev/null
+          fi
+
+          sudo DOCKER_HOST=unix:///run/podman/podman.sock podman compose -f ~/gitops/compose/dorm/compose.prod.yml pull dorm-be
+          sudo DOCKER_HOST=unix:///run/podman/podman.sock podman compose -f ~/gitops/compose/dorm/compose.prod.yml up -d
+
+          READY=false
+          for i in $(seq 1 45); do
+            DOCS_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/v3/api-docs || true)"
+            HEALTH_CODE="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/actuator/health || true)"
+            echo "Attempt ${i}/45: /v3/api-docs -> HTTP ${DOCS_CODE}, /actuator/health -> HTTP ${HEALTH_CODE}"
+            if [[ "${DOCS_CODE}" == "200" || "${HEALTH_CODE}" == "200" ]]; then
+              READY=true
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ "${READY}" != "true" ]]; then
+            echo "dorm-be failed readiness polling after 45 attempts." >&2
+            sudo DOCKER_HOST=unix:///run/podman/podman.sock podman compose -f ~/gitops/compose/dorm/compose.prod.yml ps || true
+            sudo DOCKER_HOST=unix:///run/podman/podman.sock podman compose -f ~/gitops/compose/dorm/compose.prod.yml logs --tail=100 dorm-be || true
+            exit 1
+          fi
+          REMOTE_EOF
+          } | ssh -i ~/.ssh/bastion.pem \
+            -o StrictHostKeyChecking=accept-new \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            "ubuntu@${BASTION_HOST}" \
+            "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o ConnectTimeout=15 gateway 'bash -s'"
+
+      - name: Clean up SSH private key
+        if: always()
+        run: shred -u ~/.ssh/bastion.pem 2>/dev/null || rm -f ~/.ssh/bastion.pem

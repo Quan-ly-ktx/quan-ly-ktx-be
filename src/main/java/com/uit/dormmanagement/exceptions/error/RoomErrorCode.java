@@ -12,8 +12,11 @@ public enum RoomErrorCode implements AppErrorCode {
   BED_NOT_FOUND("BED_404", "Không tìm thấy vị trí giường tương ứng", HttpStatus.NOT_FOUND),
   ROOM_NUMBER_DUPLICATED("ROOM_409", "Số phòng đã tồn tại trong tòa nhà", HttpStatus.CONFLICT),
   ROOM_CODE_PROTECTED(
-      "ROOM_409_CODE_PROTECTED", "Mã phòng đã được sử dụng trong hồ sơ nghiệp vụ", HttpStatus.CONFLICT),
-  AMENITY_NOT_FOUND("ROOM_404_AMENITY", "Không tìm thấy một hoặc nhiều tiện nghi", HttpStatus.NOT_FOUND),
+      "ROOM_409_CODE_PROTECTED",
+      "Mã phòng đã được sử dụng trong hồ sơ nghiệp vụ",
+      HttpStatus.CONFLICT),
+  AMENITY_NOT_FOUND(
+      "ROOM_404_AMENITY", "Không tìm thấy một hoặc nhiều tiện nghi", HttpStatus.NOT_FOUND),
   GENDER_POLICY_MISMATCH(
       "ROOM_400_GENDER",
       "Chính sách giới tính phòng không khớp với giới tính khách thuê (BR-02)",
@@ -37,11 +40,22 @@ public enum RoomErrorCode implements AppErrorCode {
       "Sức chứa phòng không được phép giảm dưới số lượng người đang cư trú thực tế",
       HttpStatus.BAD_REQUEST),
   ROOM_ALREADY_ARCHIVED("ROOM_409_ARCHIVED", "Phòng đã ở trạng thái lưu trữ", HttpStatus.CONFLICT),
-  ROOM_NOT_ARCHIVED("ROOM_409_NOT_ARCHIVED", "Phòng không ở trạng thái lưu trữ", HttpStatus.CONFLICT),
-  ROOM_HAS_HISTORY("ROOM_409_HISTORY", "Phòng đã phát sinh lịch sử nghiệp vụ không thể xóa vĩnh viễn", HttpStatus.CONFLICT),
-  ROOM_OCCUPIED_OR_CONTRACT_ACTIVE("ROOM_409_OCCUPIED", "Phòng đang có khách cư trú hoặc hợp đồng còn hiệu lực", HttpStatus.CONFLICT),
-  BED_INVALID_STATUS_TRANSITION("BED_409_STATUS", "Chuyển đổi trạng thái giường không hợp lệ", HttpStatus.CONFLICT),
-  BED_HAS_ACTIVE_CONTRACT("BED_409_CONTRACT", "Giường đang có hợp đồng hiệu lực không thể chuyển trạng thái", HttpStatus.CONFLICT);
+  ROOM_NOT_ARCHIVED(
+      "ROOM_409_NOT_ARCHIVED", "Phòng không ở trạng thái lưu trữ", HttpStatus.CONFLICT),
+  ROOM_HAS_HISTORY(
+      "ROOM_409_HISTORY",
+      "Phòng đã phát sinh lịch sử nghiệp vụ không thể xóa vĩnh viễn",
+      HttpStatus.CONFLICT),
+  ROOM_OCCUPIED_OR_CONTRACT_ACTIVE(
+      "ROOM_409_OCCUPIED",
+      "Phòng đang có khách cư trú hoặc hợp đồng còn hiệu lực",
+      HttpStatus.CONFLICT),
+  BED_INVALID_STATUS_TRANSITION(
+      "BED_409_STATUS", "Chuyển đổi trạng thái giường không hợp lệ", HttpStatus.CONFLICT),
+  BED_HAS_ACTIVE_CONTRACT(
+      "BED_409_CONTRACT",
+      "Giường đang có hợp đồng hiệu lực không thể chuyển trạng thái",
+      HttpStatus.CONFLICT);
 
   private final String errorCode;
   private final String message;

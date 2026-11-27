@@ -32,8 +32,7 @@ class LocalVehicleEvidenceStorageTest {
   void store_shouldSaveFileAndReturnKey() throws IOException {
     UUID vehicleId = UUID.randomUUID();
     byte[] content = "test-image-bytes".getBytes();
-    MockMultipartFile file =
-        new MockMultipartFile("front", "evidence.jpg", "image/jpeg", content);
+    MockMultipartFile file = new MockMultipartFile("front", "evidence.jpg", "image/jpeg", content);
 
     String key = storage.store(vehicleId, "front", file);
 
@@ -50,7 +49,10 @@ class LocalVehicleEvidenceStorageTest {
     storage.delete(key);
     assertThatThrownBy(() -> storage.load(key))
         .isInstanceOf(BaseAppException.class)
-        .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.VEHICLE_EVIDENCE_NOT_FOUND);
+        .matches(
+            e ->
+                ((BaseAppException) e).getErrorCode()
+                    == VehicleErrorCode.VEHICLE_EVIDENCE_NOT_FOUND);
   }
 
   @Test
@@ -58,7 +60,10 @@ class LocalVehicleEvidenceStorageTest {
   void load_whenPathTraversal_shouldThrowNotFound() {
     assertThatThrownBy(() -> storage.load("../../etc/passwd"))
         .isInstanceOf(BaseAppException.class)
-        .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.VEHICLE_EVIDENCE_NOT_FOUND);
+        .matches(
+            e ->
+                ((BaseAppException) e).getErrorCode()
+                    == VehicleErrorCode.VEHICLE_EVIDENCE_NOT_FOUND);
   }
 
   @Test
@@ -66,6 +71,9 @@ class LocalVehicleEvidenceStorageTest {
   void load_whenNonExistent_shouldThrowNotFound() {
     assertThatThrownBy(() -> storage.load("vehicles/" + UUID.randomUUID() + "/front-dummy.jpg"))
         .isInstanceOf(BaseAppException.class)
-        .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.VEHICLE_EVIDENCE_NOT_FOUND);
+        .matches(
+            e ->
+                ((BaseAppException) e).getErrorCode()
+                    == VehicleErrorCode.VEHICLE_EVIDENCE_NOT_FOUND);
   }
 }

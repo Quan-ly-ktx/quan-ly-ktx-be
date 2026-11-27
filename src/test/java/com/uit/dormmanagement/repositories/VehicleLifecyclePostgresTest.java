@@ -3,7 +3,6 @@ package com.uit.dormmanagement.repositories;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.uit.dormmanagement.dtos.request.vehicle.CreateVehicleChangeRequest;
 import com.uit.dormmanagement.dtos.response.vehicle.VehicleChangeRequestResponse;
 import com.uit.dormmanagement.entities.StaffProfile;
 import com.uit.dormmanagement.entities.Tenant;
@@ -21,17 +20,14 @@ import com.uit.dormmanagement.services.VehicleChangeRequestService;
 import com.uit.dormmanagement.support.RedisTestContainerSupport;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.annotation.Transactional;
-
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;

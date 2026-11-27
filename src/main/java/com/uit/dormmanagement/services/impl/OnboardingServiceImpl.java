@@ -25,7 +25,6 @@ import com.uit.dormmanagement.repositories.TenantRepository;
 import com.uit.dormmanagement.repositories.UserRepository;
 import com.uit.dormmanagement.services.OnboardingService;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -82,7 +81,6 @@ public class OnboardingServiceImpl implements OnboardingService {
 
     bed.setStatus(BedStatus.OCCUPIED);
     bedRepository.save(bed);
-
 
     ContractDetailResponse contractResponse = toContractDetailResponse(contract, tenant, bed, room);
     TenantDetailResponse tenantResponse =

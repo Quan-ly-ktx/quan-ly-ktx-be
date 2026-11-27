@@ -191,8 +191,7 @@ class ContractServiceImplTest {
       "terminateContract (Checkout): should cascade to Bed, Room, Tenant, and Vehicle in 1 transaction")
   void terminateContract_shouldCascadeToBedTenantAndVehicle() {
     when(contractRepository.findById(contractId)).thenReturn(Optional.of(contract));
-    when(vehicleRepository.findByTenantId(tenant.getId()))
-        .thenReturn(List.of(vehicle));
+    when(vehicleRepository.findByTenantId(tenant.getId())).thenReturn(List.of(vehicle));
     when(contractRepository.save(any(Contract.class))).thenAnswer(inv -> inv.getArgument(0));
 
     ContractDetailResponse res = contractService.terminateContract(contractId);

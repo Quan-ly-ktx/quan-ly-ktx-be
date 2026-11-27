@@ -4,14 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.uit.dormmanagement.dtos.request.tenant.ManagerUpdateTenantRequest;
 import com.uit.dormmanagement.dtos.request.tenant.TenantContactUpdateRequest;
 import com.uit.dormmanagement.dtos.response.auth.OneTimePasswordResponse;
-import com.uit.dormmanagement.dtos.response.auth.UserProfileResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantDetailResponse;
 import com.uit.dormmanagement.dtos.response.tenant.TenantSummaryResponse;
 import com.uit.dormmanagement.entities.Bed;
@@ -30,7 +28,6 @@ import com.uit.dormmanagement.enums.VehicleStatus;
 import com.uit.dormmanagement.enums.VehicleType;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
-import com.uit.dormmanagement.exceptions.error.WebErrorCode;
 import com.uit.dormmanagement.repositories.ContractRepository;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
 import com.uit.dormmanagement.repositories.TenantRepository;
@@ -118,7 +115,12 @@ class TenantServiceImplTest {
             .createdAt(Instant.now())
             .build();
 
-    room = Room.builder().id(UUID.randomUUID()).roomNumber("P.302").genderPolicy(GenderPolicy.MALE).build();
+    room =
+        Room.builder()
+            .id(UUID.randomUUID())
+            .roomNumber("P.302")
+            .genderPolicy(GenderPolicy.MALE)
+            .build();
     bed = Bed.builder().id(UUID.randomUUID()).bedCode("G02").room(room).build();
 
     activeContract =
@@ -205,7 +207,8 @@ class TenantServiceImplTest {
   }
 
   @Test
-  @DisplayName("updateTenantAsManager: should update fields, lock User and Tenant, and invalidate recovery on email change")
+  @DisplayName(
+      "updateTenantAsManager: should update fields, lock User and Tenant, and invalidate recovery on email change")
   void updateTenantAsManager_whenValidWithEmailChange_shouldUpdateAndInvalidateRecovery() {
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -222,7 +225,8 @@ class TenantServiceImplTest {
             .email("new.email@example.com")
             .build();
 
-    TenantDetailResponse response = tenantService.updateTenantAsManager(managerUserId, tenantId, request);
+    TenantDetailResponse response =
+        tenantService.updateTenantAsManager(managerUserId, tenantId, request);
 
     assertThat(response.fullName()).isEqualTo("Nguyễn Hoàng Nam Mới");
     assertThat(response.phone()).isEqualTo("0912345678");
@@ -231,7 +235,8 @@ class TenantServiceImplTest {
   }
 
   @Test
-  @DisplayName("updateTenantAsManager: duplicate idCardNumber should throw ID_CARD_NUMBER_DUPLICATED")
+  @DisplayName(
+      "updateTenantAsManager: duplicate idCardNumber should throw ID_CARD_NUMBER_DUPLICATED")
   void updateTenantAsManager_whenDuplicateCccd_shouldThrow() {
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -249,11 +254,15 @@ class TenantServiceImplTest {
 
     assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, request))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == TenantErrorCode.ID_CARD_NUMBER_DUPLICATED);
   }
 
   @Test
-  @DisplayName("updateTenantAsManager: gender mismatch with active room gender policy should throw GENDER_MISMATCH_CURRENT_ROOM")
+  @DisplayName(
+      "updateTenantAsManager: gender mismatch with active room gender policy should throw GENDER_MISMATCH_CURRENT_ROOM")
   void updateTenantAsManager_whenGenderMismatch_shouldThrow() {
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -272,7 +281,10 @@ class TenantServiceImplTest {
 
     assertThatThrownBy(() -> tenantService.updateTenantAsManager(managerUserId, tenantId, request))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.GENDER_MISMATCH_CURRENT_ROOM);
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == TenantErrorCode.GENDER_MISMATCH_CURRENT_ROOM);
   }
 
   @Test
@@ -303,11 +315,15 @@ class TenantServiceImplTest {
 
     assertThatThrownBy(() -> tenantService.updateOwnContact(tenantUserId, request))
         .isInstanceOf(BaseAppException.class)
-        .matches(ex -> ((BaseAppException) ex).getErrorCode() == TenantErrorCode.NO_CONTACT_FIELDS_PROVIDED);
+        .matches(
+            ex ->
+                ((BaseAppException) ex).getErrorCode()
+                    == TenantErrorCode.NO_CONTACT_FIELDS_PROVIDED);
   }
 
   @Test
-  @DisplayName("resetTenantPasswordAsManager: manager resets tenant password, saves hash, and invalidates sessions")
+  @DisplayName(
+      "resetTenantPasswordAsManager: manager resets tenant password, saves hash, and invalidates sessions")
   void resetTenantPasswordAsManager_shouldResetAndInvalidate() {
     when(staffProfileRepository.findByUserId(managerUserId)).thenReturn(Optional.of(managerStaff));
     when(tenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant));

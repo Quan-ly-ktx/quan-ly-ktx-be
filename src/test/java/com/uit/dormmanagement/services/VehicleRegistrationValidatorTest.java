@@ -27,15 +27,15 @@ class VehicleRegistrationValidatorTest {
   void setUp() {
     validator = new VehicleRegistrationValidatorImpl();
 
-    byte[] jpegBytes = new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
+    byte[] jpegBytes =
+        new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0, 0, 0, 0, 0, 0, 0};
     validJpeg = new MockMultipartFile("front", "front.jpg", "image/jpeg", jpegBytes);
 
     byte[] pngBytes =
         new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0};
     validPng = new MockMultipartFile("back", "back.png", "image/png", pngBytes);
 
-    byte[] webpBytes =
-        new byte[] {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'};
+    byte[] webpBytes = new byte[] {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'};
     validWebp = new MockMultipartFile("front", "front.webp", "image/webp", webpBytes);
 
     invalidFile =
@@ -52,13 +52,19 @@ class VehicleRegistrationValidatorTest {
     // Missing plate
     assertThatThrownBy(() -> validator.validate(type, "", "Honda", "Red", validJpeg, validPng))
         .isInstanceOf(BaseAppException.class)
-        .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.INVALID_VEHICLE_TYPE_DATA);
+        .matches(
+            e ->
+                ((BaseAppException) e).getErrorCode()
+                    == VehicleErrorCode.INVALID_VEHICLE_TYPE_DATA);
 
     // Missing back image
     assertThatThrownBy(
             () -> validator.validate(type, "59-A1 12345", "Honda", "Red", validJpeg, null))
         .isInstanceOf(BaseAppException.class)
-        .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.INVALID_VEHICLE_TYPE_DATA);
+        .matches(
+            e ->
+                ((BaseAppException) e).getErrorCode()
+                    == VehicleErrorCode.INVALID_VEHICLE_TYPE_DATA);
 
     // Valid motorized registration
     VehicleRegistrationValidator.ValidatedVehicleRegistration validated =
@@ -94,11 +100,14 @@ class VehicleRegistrationValidatorTest {
   void validateImageFile_shouldRejectInvalidMagicBytes() {
     assertThatThrownBy(() -> validator.validateImageFile(invalidFile))
         .isInstanceOf(BaseAppException.class)
-        .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.INVALID_EVIDENCE_FILE);
+        .matches(
+            e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.INVALID_EVIDENCE_FILE);
 
-    MockMultipartFile emptyFile = new MockMultipartFile("empty", "empty.jpg", "image/jpeg", new byte[0]);
+    MockMultipartFile emptyFile =
+        new MockMultipartFile("empty", "empty.jpg", "image/jpeg", new byte[0]);
     assertThatThrownBy(() -> validator.validateImageFile(emptyFile))
         .isInstanceOf(BaseAppException.class)
-        .matches(e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.INVALID_EVIDENCE_FILE);
+        .matches(
+            e -> ((BaseAppException) e).getErrorCode() == VehicleErrorCode.INVALID_EVIDENCE_FILE);
   }
 }

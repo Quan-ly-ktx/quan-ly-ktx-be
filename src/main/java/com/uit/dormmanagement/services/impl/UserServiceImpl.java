@@ -67,7 +67,8 @@ public class UserServiceImpl implements UserService {
         StaffProfile staff = staffProfileRepository.findByUserId(userId).orElse(null);
         if (staff != null) {
           staffInfo =
-              new UserProfileResponse.StaffInfo(staff.getId(), staff.getFullName(), staff.getPhone());
+              new UserProfileResponse.StaffInfo(
+                  staff.getId(), staff.getFullName(), staff.getPhone());
         }
       }
       case TENANT -> {
@@ -92,12 +93,7 @@ public class UserServiceImpl implements UserService {
     }
 
     return new UserProfileResponse(
-        user.getId(),
-        user.getEmail(),
-        user.getRole(),
-        user.getStatus(),
-        staffInfo,
-        tenantInfo);
+        user.getId(), user.getEmail(), user.getRole(), user.getStatus(), staffInfo, tenantInfo);
   }
 
   @Override
@@ -149,8 +145,7 @@ public class UserServiceImpl implements UserService {
 
           if (active != null) {
             predicates.add(
-                cb.equal(
-                    userJoin.get("status"), active ? UserStatus.ACTIVE : UserStatus.LOCKED));
+                cb.equal(userJoin.get("status"), active ? UserStatus.ACTIVE : UserStatus.LOCKED));
           }
 
           if (search != null && !search.isBlank()) {
@@ -243,7 +238,8 @@ public class UserServiceImpl implements UserService {
     passwordRecoveryService.invalidateRecoveryCredentials(lockedUser.getId());
     userTokenInvalidationService.invalidateAll(lockedUser.getId());
 
-    log.info("Manager reset password for technician: staff id={}, user id={}", id, lockedUser.getId());
+    log.info(
+        "Manager reset password for technician: staff id={}, user id={}", id, lockedUser.getId());
     return new OneTimePasswordResponse(generatedPassword);
   }
 

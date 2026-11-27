@@ -123,7 +123,8 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("registerVehicle: when tenant already has active vehicle should throw VEHICLE_QUOTA_EXCEEDED")
+  @DisplayName(
+      "registerVehicle: when tenant already has active vehicle should throw VEHICLE_QUOTA_EXCEEDED")
   void registerVehicle_whenQuotaExceeded_shouldThrow() {
     TenantRegisterVehicleRequest request =
         TenantRegisterVehicleRequest.builder()
@@ -139,8 +140,7 @@ class VehicleServiceImplTest {
         new MockMultipartFile("backImage", "back.jpg", "image/jpeg", new byte[] {3, 4});
 
     when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any()))
-        .thenReturn(1L);
+    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any())).thenReturn(1L);
 
     assertThatThrownBy(() -> vehicleService.registerVehicle(userId, request, front, back))
         .isInstanceOf(BaseAppException.class)
@@ -166,13 +166,18 @@ class VehicleServiceImplTest {
         new MockMultipartFile("backImage", "back.jpg", "image/jpeg", new byte[] {3, 4});
 
     when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any()))
-        .thenReturn(0L);
+    when(vehicleRepository.countByTenantIdAndStatusIn(eq(tenantId), any())).thenReturn(0L);
 
     VehicleRegistrationValidator.ValidatedVehicleRegistration validated =
         new VehicleRegistrationValidator.ValidatedVehicleRegistration(
             VehicleType.SCOOTER, "59-X3 999.99", "Honda", "Đỏ", front, back);
-    when(vehicleRegistrationValidator.validate(eq(VehicleType.SCOOTER), eq("59-X3 999.99"), eq("Honda"), eq("Đỏ"), eq(front), eq(back)))
+    when(vehicleRegistrationValidator.validate(
+            eq(VehicleType.SCOOTER),
+            eq("59-X3 999.99"),
+            eq("Honda"),
+            eq("Đỏ"),
+            eq(front),
+            eq(back)))
         .thenReturn(validated);
 
     when(vehicleEvidenceStorage.store(any(UUID.class), eq("front"), eq(front)))
@@ -197,8 +202,7 @@ class VehicleServiceImplTest {
 
     IssueCardRequest req = IssueCardRequest.builder().cardCode("THE-0187").build();
     when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
-    when(vehicleRepository.existsByCardCodeAndStatus(
-            "THE-0187", VehicleStatus.ISSUED))
+    when(vehicleRepository.existsByCardCodeAndStatus("THE-0187", VehicleStatus.ISSUED))
         .thenReturn(false);
     when(vehicleRepository.saveAndFlush(any(Vehicle.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -209,13 +213,13 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("issueCard: when cardCode already in use by active vehicle should throw CARD_CODE_DUPLICATED")
+  @DisplayName(
+      "issueCard: when cardCode already in use by active vehicle should throw CARD_CODE_DUPLICATED")
   void issueCard_whenCardCodeDuplicated_shouldThrow() {
     vehicle.setStatus(VehicleStatus.PENDING_CARD);
     IssueCardRequest req = IssueCardRequest.builder().cardCode("THE-0187").build();
     when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
-    when(vehicleRepository.existsByCardCodeAndStatus(
-            "THE-0187", VehicleStatus.ISSUED))
+    when(vehicleRepository.existsByCardCodeAndStatus("THE-0187", VehicleStatus.ISSUED))
         .thenReturn(true);
 
     assertThatThrownBy(() -> vehicleService.issueCard(managerUserId, vehicleId, req))
@@ -241,7 +245,8 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("revokeCard: should transition vehicle status to REVOKED when no pending change request")
+  @DisplayName(
+      "revokeCard: should transition vehicle status to REVOKED when no pending change request")
   void revokeCard_shouldSetStatusRevoked() {
     when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
     when(vehicleChangeRequestRepository.existsByCurrentVehicleIdAndStatus(
@@ -257,7 +262,8 @@ class VehicleServiceImplTest {
   }
 
   @Test
-  @DisplayName("revokeCard: when pending change request exists should throw VEHICLE_HAS_PENDING_CHANGE_REQUEST")
+  @DisplayName(
+      "revokeCard: when pending change request exists should throw VEHICLE_HAS_PENDING_CHANGE_REQUEST")
   void revokeCard_whenPendingChangeRequest_shouldThrow() {
     when(vehicleRepository.findByIdForUpdate(vehicleId)).thenReturn(Optional.of(vehicle));
     when(vehicleChangeRequestRepository.existsByCurrentVehicleIdAndStatus(
@@ -302,7 +308,8 @@ class VehicleServiceImplTest {
   @DisplayName("getVehicleHistory: should return all vehicles for tenant ordered by createdAt")
   void getVehicleHistory_shouldReturnHistory() {
     when(tenantRepository.findByUserId(userId)).thenReturn(Optional.of(tenant));
-    when(vehicleRepository.findByTenantIdOrderByCreatedAtDesc(tenantId)).thenReturn(List.of(vehicle));
+    when(vehicleRepository.findByTenantIdOrderByCreatedAtDesc(tenantId))
+        .thenReturn(List.of(vehicle));
 
     List<VehicleResponse> history = vehicleService.getVehicleHistory(userId);
 

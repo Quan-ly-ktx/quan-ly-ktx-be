@@ -1,15 +1,12 @@
 package com.uit.dormmanagement.services;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.uit.dormmanagement.constants.RedisKeyConstants;
 import com.uit.dormmanagement.services.impl.UserTokenInvalidationServiceImpl;
-import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,7 +28,8 @@ class UserTokenInvalidationServiceTest {
   @InjectMocks private UserTokenInvalidationServiceImpl invalidationService;
 
   @Test
-  @DisplayName("getOrCreateGeneration should return existing generation when present and refresh TTL")
+  @DisplayName(
+      "getOrCreateGeneration should return existing generation when present and refresh TTL")
   void shouldReturnExistingGenerationWhenPresent() {
     UUID userId = UUID.randomUUID();
     String key = RedisKeyConstants.sessionGenerationKey(userId);
@@ -55,7 +53,8 @@ class UserTokenInvalidationServiceTest {
     String gen = invalidationService.getOrCreateGeneration(userId);
 
     assertThat(gen).isNotBlank();
-    verify(valueOperations).set(eq(key), eq(gen), eq(UserTokenInvalidationServiceImpl.GENERATION_TTL));
+    verify(valueOperations)
+        .set(eq(key), eq(gen), eq(UserTokenInvalidationServiceImpl.GENERATION_TTL));
   }
 
   @Test
@@ -93,7 +92,8 @@ class UserTokenInvalidationServiceTest {
     invalidationService.invalidateAll(userId);
 
     ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
-    verify(valueOperations).set(eq(key), captor.capture(), eq(UserTokenInvalidationServiceImpl.GENERATION_TTL));
+    verify(valueOperations)
+        .set(eq(key), captor.capture(), eq(UserTokenInvalidationServiceImpl.GENERATION_TTL));
     assertThat(captor.getValue()).isNotBlank();
     verify(tokenRevocationService).revokeAllUserSessions(userId);
   }

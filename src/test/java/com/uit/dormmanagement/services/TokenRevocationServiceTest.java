@@ -37,7 +37,8 @@ class TokenRevocationServiceTest {
   }
 
   @Test
-  @DisplayName("recordRefreshToken should save ACTIVE marker with TTL and add jti to user session set")
+  @DisplayName(
+      "recordRefreshToken should save ACTIVE marker with TTL and add jti to user session set")
   void shouldRecordRefreshToken() {
     when(redisTemplate.opsForValue()).thenReturn(valueOperations);
     when(redisTemplate.opsForSet()).thenReturn(setOperations);

@@ -182,7 +182,8 @@ class UserServiceTest {
   }
 
   @Test
-  @DisplayName("resetTechnicianPassword should generate temporary password, update hash, advance recovery version, and invalidate all sessions")
+  @DisplayName(
+      "resetTechnicianPassword should generate temporary password, update hash, advance recovery version, and invalidate all sessions")
   void shouldResetTechnicianPasswordSuccessfully() {
     UUID staffId = UUID.randomUUID();
     UUID techUserId = UUID.randomUUID();

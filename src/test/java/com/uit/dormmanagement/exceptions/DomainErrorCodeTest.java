@@ -77,8 +77,7 @@ class DomainErrorCodeTest {
         .isEqualTo(HttpStatus.CONFLICT);
     assertThat(VehicleErrorCode.VEHICLE_ALREADY_ACTIVE.getHttpStatus())
         .isEqualTo(HttpStatus.CONFLICT);
-    assertThat(VehicleErrorCode.VEHICLE_NOT_PENDING.getHttpStatus())
-        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(VehicleErrorCode.VEHICLE_NOT_PENDING.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
 
     for (VehicleErrorCode code : VehicleErrorCode.values()) {
       assertThat(code.getErrorCode()).isNotBlank().startsWith("VEHICLE_");

@@ -5,5 +5,4 @@ import lombok.Builder;
 
 @Builder
 public record RejectVehicleRequest(
-    @NotBlank(message = "Lý do từ chối không được để trống") String reason
-) {}
+    @NotBlank(message = "Lý do từ chối không được để trống") String reason) {}

@@ -108,16 +108,10 @@ class UserControllerTest {
   @DisplayName("GET /api/v1/users/me should return 200 with UserProfileResponse")
   void shouldReturnCurrentUserProfile() throws Exception {
     UserProfileResponse.StaffInfo staffInfo =
-        new UserProfileResponse.StaffInfo(
-            UUID.randomUUID(), "Nguyễn Văn Quản Lý", "0901000001");
+        new UserProfileResponse.StaffInfo(UUID.randomUUID(), "Nguyễn Văn Quản Lý", "0901000001");
     UserProfileResponse profileResponse =
         new UserProfileResponse(
-            userId,
-            "manager@dorm.vn",
-            UserRole.MANAGER,
-            UserStatus.ACTIVE,
-            staffInfo,
-            null);
+            userId, "manager@dorm.vn", UserRole.MANAGER, UserStatus.ACTIVE, staffInfo, null);
 
     when(userService.getCurrentUserProfile(userId)).thenReturn(profileResponse);
 
@@ -164,7 +158,8 @@ class UserControllerTest {
   }
 
   @Test
-  @DisplayName("POST /api/v1/users/technicians/{id}/reset-password should return 200 with temporary password")
+  @DisplayName(
+      "POST /api/v1/users/technicians/{id}/reset-password should return 200 with temporary password")
   void shouldResetTechnicianPassword() throws Exception {
     UUID staffId = UUID.randomUUID();
     OneTimePasswordResponse response = new OneTimePasswordResponse("TempPass@123");

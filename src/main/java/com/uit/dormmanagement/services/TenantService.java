@@ -21,9 +21,7 @@ public interface TenantService {
   TenantDetailResponse updateTenantAsManager(
       UUID managerUserId, UUID tenantId, ManagerUpdateTenantRequest request);
 
-  UserProfileResponse updateOwnContact(
-      UUID tenantUserId, TenantContactUpdateRequest request);
+  UserProfileResponse updateOwnContact(UUID tenantUserId, TenantContactUpdateRequest request);
 
-  OneTimePasswordResponse resetTenantPasswordAsManager(
-      UUID managerUserId, UUID tenantId);
+  OneTimePasswordResponse resetTenantPasswordAsManager(UUID managerUserId, UUID tenantId);
 }

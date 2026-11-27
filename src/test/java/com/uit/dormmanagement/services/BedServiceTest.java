@@ -66,7 +66,8 @@ class BedServiceTest {
   }
 
   @Test
-  @DisplayName("updateBedStatus should successfully set status to MAINTENANCE when bed is AVAILABLE")
+  @DisplayName(
+      "updateBedStatus should successfully set status to MAINTENANCE when bed is AVAILABLE")
   void updateBedStatus_whenAvailable_shouldSetMaintenance() {
     when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));
     when(contractRepository.existsByBedIdAndStatusIn(eq(bedId), any())).thenReturn(false);
@@ -125,7 +126,8 @@ class BedServiceTest {
   }
 
   @Test
-  @DisplayName("updateBedStatus should throw CANNOT_MAINTAIN_OCCUPIED_BED when active contract exists")
+  @DisplayName(
+      "updateBedStatus should throw CANNOT_MAINTAIN_OCCUPIED_BED when active contract exists")
   void updateBedStatus_whenActiveContractExists_shouldThrow() {
     when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));
     when(contractRepository.existsByBedIdAndStatusIn(eq(bedId), any())).thenReturn(true);
@@ -141,7 +143,8 @@ class BedServiceTest {
   }
 
   @Test
-  @DisplayName("updateBedStatus should successfully set status to AVAILABLE when bed is MAINTENANCE")
+  @DisplayName(
+      "updateBedStatus should successfully set status to AVAILABLE when bed is MAINTENANCE")
   void updateBedStatus_whenMaintenance_shouldSetAvailable() {
     testBed.setStatus(BedStatus.MAINTENANCE);
     when(bedRepository.findByIdForUpdate(bedId)).thenReturn(Optional.of(testBed));

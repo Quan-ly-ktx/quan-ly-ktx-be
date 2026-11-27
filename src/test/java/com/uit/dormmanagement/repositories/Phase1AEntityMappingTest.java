@@ -102,7 +102,8 @@ class Phase1AEntityMappingTest {
                 .status(BedStatus.AVAILABLE)
                 .build());
     Amenity amenity =
-        amenityRepository.save(Amenity.builder().code("AIR_CONDITIONER").name("Air conditioner").build());
+        amenityRepository.save(
+            Amenity.builder().code("AIR_CONDITIONER").name("Air conditioner").build());
     RoomAmenity roomAmenity =
         roomAmenityRepository.save(
             RoomAmenity.builder()

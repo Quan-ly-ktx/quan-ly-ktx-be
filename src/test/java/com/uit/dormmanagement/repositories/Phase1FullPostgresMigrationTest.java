@@ -11,9 +11,7 @@ import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -124,7 +122,8 @@ class Phase1FullPostgresMigrationTest {
   }
 
   @Test
-  @DisplayName("2. Contracts enforce active uniqueness per bed/tenant, start day 1, and checkout status")
+  @DisplayName(
+      "2. Contracts enforce active uniqueness per bed/tenant, start day 1, and checkout status")
   void contractsIntegrityRules() {
     UUID tenantId1 = createTenantFixture("NT-C1", "079203000001");
     UUID tenantId2 = createTenantFixture("NT-C2", "079203000002");
@@ -191,7 +190,8 @@ class Phase1FullPostgresMigrationTest {
   }
 
   @Test
-  @DisplayName("3. Contract renewals enforce sequence uniqueness, effective day 1, and valid ranges")
+  @DisplayName(
+      "3. Contract renewals enforce sequence uniqueness, effective day 1, and valid ranges")
   void contractRenewalsRules() {
     UUID tenantId = createTenantFixture("NT-R1", "079203000003");
     UUID roomId = createRoomFixture("P.802");
@@ -235,7 +235,8 @@ class Phase1FullPostgresMigrationTest {
   }
 
   @Test
-  @DisplayName("4. Contract documents enforce RENEWAL_ANNEX renewal_id requirement and contract_id match")
+  @DisplayName(
+      "4. Contract documents enforce RENEWAL_ANNEX renewal_id requirement and contract_id match")
   void contractDocumentsRules() {
     UUID tenantId = createTenantFixture("NT-D1", "079203000004");
     UUID roomId = createRoomFixture("P.803");
@@ -292,7 +293,8 @@ class Phase1FullPostgresMigrationTest {
   }
 
   @Test
-  @DisplayName("5. Invoices enforce day 1 billing period, period uniqueness, and single confirmed receipt")
+  @DisplayName(
+      "5. Invoices enforce day 1 billing period, period uniqueness, and single confirmed receipt")
   void invoicesAndPaymentsRules() {
     UUID tenantId = createTenantFixture("NT-I1", "079203000005");
     UUID roomId = createRoomFixture("P.804");
@@ -448,7 +450,8 @@ class Phase1FullPostgresMigrationTest {
   }
 
   @Test
-  @DisplayName("9. Maintenance tickets and replacement parts enforce lifecycle and numeric constraints")
+  @DisplayName(
+      "9. Maintenance tickets and replacement parts enforce lifecycle and numeric constraints")
   void maintenanceTicketsAndPartsRules() {
     UUID tenantId = createTenantFixture("NT-M1", "079203000010");
     UUID roomId = createRoomFixture("P.805");
@@ -732,17 +735,20 @@ class Phase1FullPostgresMigrationTest {
     assertThat(loadedContract.getTenant().getFullName()).isEqualTo("Nguyen Van JPA");
     assertThat(loadedContract.getBed().getRoom().getRoomNumber()).isEqualTo("P.888");
 
-    ContractRenewal loadedRenewal = contractRenewalRepository.findById(renewal.getId()).orElseThrow();
+    ContractRenewal loadedRenewal =
+        contractRenewalRepository.findById(renewal.getId()).orElseThrow();
     assertThat(loadedRenewal.getContract().getId()).isEqualTo(contract.getId());
 
     ContractDocument loadedDoc = contractDocumentRepository.findById(doc.getId()).orElseThrow();
     assertThat(loadedDoc.getRenewal().getId()).isEqualTo(renewal.getId());
 
-    PaymentTransaction loadedPayment = paymentTransactionRepository.findById(payment.getId()).orElseThrow();
+    PaymentTransaction loadedPayment =
+        paymentTransactionRepository.findById(payment.getId()).orElseThrow();
     assertThat(loadedPayment.getInvoice().getContract().getId()).isEqualTo(contract.getId());
     assertThat(loadedPayment.getConfirmedByStaff().getFullName()).isEqualTo("Tran Van Staff");
 
-    VehicleChangeRequest loadedReq = vehicleChangeRequestRepository.findById(changeReq.getId()).orElseThrow();
+    VehicleChangeRequest loadedReq =
+        vehicleChangeRequestRepository.findById(changeReq.getId()).orElseThrow();
     assertThat(loadedReq.getCurrentVehicle().getId()).isEqualTo(vehicle.getId());
     assertThat(loadedReq.getTenant().getId()).isEqualTo(tenant.getId());
 
@@ -751,7 +757,8 @@ class Phase1FullPostgresMigrationTest {
   }
 
   @Test
-  @DisplayName("12. Negative verification: role domain, status domain, bed ON DELETE RESTRICT, deadline_at metadata")
+  @DisplayName(
+      "12. Negative verification: role domain, status domain, bed ON DELETE RESTRICT, deadline_at metadata")
   void testSpecificNegativeConstraintsAndThreeIssues() {
     // 1. Role domain: ADMIN rejected; MANAGER, TENANT, TECHNICIAN accepted
     assertThatThrownBy(
@@ -769,9 +776,15 @@ class Phase1FullPostgresMigrationTest {
     UUID mgrId = UUID.randomUUID();
     UUID tntId = UUID.randomUUID();
     UUID techId = UUID.randomUUID();
-    jdbcTemplate.update("INSERT INTO users(id, email, password_hash, role, status) VALUES (?, 'mgr@test.vn', 'hash', 'MANAGER', 'ACTIVE')", mgrId);
-    jdbcTemplate.update("INSERT INTO users(id, email, password_hash, role, status) VALUES (?, 'tnt@test.vn', 'hash', 'TENANT', 'ACTIVE')", tntId);
-    jdbcTemplate.update("INSERT INTO users(id, email, password_hash, role, status) VALUES (?, 'tech@test.vn', 'hash', 'TECHNICIAN', 'ACTIVE')", techId);
+    jdbcTemplate.update(
+        "INSERT INTO users(id, email, password_hash, role, status) VALUES (?, 'mgr@test.vn', 'hash', 'MANAGER', 'ACTIVE')",
+        mgrId);
+    jdbcTemplate.update(
+        "INSERT INTO users(id, email, password_hash, role, status) VALUES (?, 'tnt@test.vn', 'hash', 'TENANT', 'ACTIVE')",
+        tntId);
+    jdbcTemplate.update(
+        "INSERT INTO users(id, email, password_hash, role, status) VALUES (?, 'tech@test.vn', 'hash', 'TECHNICIAN', 'ACTIVE')",
+        techId);
 
     // 2. Status domain: INACTIVE rejected; ACTIVE, LOCKED accepted
     assertThatThrownBy(
@@ -782,7 +795,8 @@ class Phase1FullPostgresMigrationTest {
 
     jdbcTemplate.update("UPDATE users SET status = 'LOCKED' WHERE id = ?", tntId);
 
-    // 3. Bed FK deletion: Direct deletion of room does not cascade to beds; rejected by ON DELETE RESTRICT
+    // 3. Bed FK deletion: Direct deletion of room does not cascade to beds; rejected by ON DELETE
+    // RESTRICT
     UUID roomId = createRoomFixture("P.901");
     assertThatThrownBy(() -> jdbcTemplate.update("DELETE FROM rooms WHERE id = ?", roomId))
         .isInstanceOf(DataIntegrityViolationException.class);

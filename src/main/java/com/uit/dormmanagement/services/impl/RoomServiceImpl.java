@@ -186,8 +186,7 @@ public class RoomServiceImpl implements RoomService {
     Room room = aggregate.room();
     List<Bed> lockedBeds = aggregate.beds();
 
-    boolean hasOccupiedBed =
-        lockedBeds.stream().anyMatch(b -> b.getStatus() == BedStatus.OCCUPIED);
+    boolean hasOccupiedBed = lockedBeds.stream().anyMatch(b -> b.getStatus() == BedStatus.OCCUPIED);
     boolean hasActiveContract =
         contractRepository.existsByBed_Room_IdAndStatusIn(roomId, Set.of(ContractStatus.ACTIVE));
 

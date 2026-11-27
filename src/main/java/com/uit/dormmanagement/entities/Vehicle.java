@@ -21,13 +21,15 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.hibernate.annotations.CreationTimestamp; 
+import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
 @Table(
     name = "vehicles",
     uniqueConstraints = {
-      @UniqueConstraint(name = "uq_vehicles_id_tenant_id", columnNames = {"id", "tenant_id"})
+      @UniqueConstraint(
+          name = "uq_vehicles_id_tenant_id",
+          columnNames = {"id", "tenant_id"})
     })
 @Getter
 @Setter
