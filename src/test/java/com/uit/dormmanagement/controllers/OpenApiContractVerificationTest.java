@@ -33,8 +33,8 @@ class OpenApiContractVerificationTest {
 
   @Test
   @DisplayName(
-      "GET /v3/api-docs exposes Phase 2 and Phase 3 endpoints accurately and omits PUT /api/v1/admin/vehicles/{id}")
-  void openApiDocs_matchesLivePhase2AndPhase3Contract() throws Exception {
+      "GET /v3/api-docs exposes Phase 2, Phase 3, and Phase 4 endpoints accurately and omits PUT /api/v1/admin/vehicles/{id}")
+  void openApiDocs_matchesLivePhase2Phase3AndPhase4Contract() throws Exception {
     MvcResult result = mockMvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn();
 
     JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -144,6 +144,33 @@ class OpenApiContractVerificationTest {
                 .has("get"))
         .isTrue();
 
+    // Billing & Payments (Phase 4)
+    assertThat(paths.has("/api/v1/admin/invoices")).isTrue();
+    assertThat(paths.get("/api/v1/admin/invoices").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/admin/invoices/summary")).isTrue();
+    assertThat(paths.get("/api/v1/admin/invoices/summary").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/admin/invoices/{id}")).isTrue();
+    assertThat(paths.get("/api/v1/admin/invoices/{id}").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/admin/invoices/issue-batch")).isTrue();
+    assertThat(paths.get("/api/v1/admin/invoices/issue-batch").has("post")).isTrue();
+    assertThat(paths.has("/api/v1/admin/invoices/{id}/proof/content")).isTrue();
+    assertThat(paths.get("/api/v1/admin/invoices/{id}/proof/content").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/admin/invoices/{id}/confirm-cash")).isTrue();
+    assertThat(paths.get("/api/v1/admin/invoices/{id}/confirm-cash").has("patch")).isTrue();
+    assertThat(paths.has("/api/v1/admin/invoices/{id}/confirm-transfer")).isTrue();
+    assertThat(paths.get("/api/v1/admin/invoices/{id}/confirm-transfer").has("patch")).isTrue();
+    assertThat(paths.has("/api/v1/admin/invoices/{id}/reject-proof")).isTrue();
+    assertThat(paths.get("/api/v1/admin/invoices/{id}/reject-proof").has("patch")).isTrue();
+
+    assertThat(paths.has("/api/v1/tenant/invoices")).isTrue();
+    assertThat(paths.get("/api/v1/tenant/invoices").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/tenant/invoices/{id}")).isTrue();
+    assertThat(paths.get("/api/v1/tenant/invoices/{id}").has("get")).isTrue();
+    assertThat(paths.has("/api/v1/tenant/invoices/{id}/proof")).isTrue();
+    assertThat(paths.get("/api/v1/tenant/invoices/{id}/proof").has("post")).isTrue();
+    assertThat(paths.has("/api/v1/tenant/invoices/{id}/proof/content")).isTrue();
+    assertThat(paths.get("/api/v1/tenant/invoices/{id}/proof/content").has("get")).isTrue();
+
     // Streaming endpoints must not expose injected HttpMethod as a client API parameter
     assertStreamingEndpointHasNoHttpMethodParam(
         paths,
@@ -165,6 +192,10 @@ class OpenApiContractVerificationTest {
         paths,
         "/api/v1/tenant/vehicle-change-requests/{requestId}/evidence/{side}",
         List.of("requestId", "side"));
+    assertStreamingEndpointHasNoHttpMethodParam(
+        paths, "/api/v1/admin/invoices/{id}/proof/content", List.of("id"));
+    assertStreamingEndpointHasNoHttpMethodParam(
+        paths, "/api/v1/tenant/invoices/{id}/proof/content", List.of("id"));
   }
 
   private void assertStreamingEndpointHasNoHttpMethodParam(
