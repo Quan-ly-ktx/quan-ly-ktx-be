@@ -16,6 +16,8 @@ import static org.mockito.Mockito.when;
 import com.uit.dormmanagement.configs.TimeConfig;
 import com.uit.dormmanagement.dtos.response.invoice.InvoiceDetailResponse;
 import com.uit.dormmanagement.dtos.response.invoice.InvoiceProofContent;
+import com.uit.dormmanagement.dtos.response.invoice.InvoiceSummaryResponse;
+import com.uit.dormmanagement.dtos.response.invoice.InvoiceSummaryStatsResponse;
 import com.uit.dormmanagement.dtos.response.invoice.VietQrInfoResponse;
 import com.uit.dormmanagement.entities.Contract;
 import com.uit.dormmanagement.entities.Invoice;
@@ -32,6 +34,7 @@ import com.uit.dormmanagement.enums.UserRole;
 import com.uit.dormmanagement.exceptions.BaseAppException;
 import com.uit.dormmanagement.exceptions.ObjectStorageNotFoundException;
 import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
+import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.repositories.InvoiceRepository;
 import com.uit.dormmanagement.repositories.PaymentTransactionRepository;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
@@ -59,6 +62,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -985,6 +993,294 @@ class InvoiceServiceImplTest {
 
     assertThatThrownBy(() -> invoiceService.confirmTransferPayment(managerUserId, invoiceId))
         .isSameAs(checkFailure);
+  }
+
+  @Test
+  @DisplayName(
+      "getAdminInvoices: uses default sort when unsorted/null, trims search, forwards overdueOnly, and computes overdue dynamically")
+  void getAdminInvoices_appliesDefaultSortFiltersAndDynamicOverdue() {
+    Invoice debtOverdue =
+        Invoice.builder()
+            .id(UUID.randomUUID())
+            .invoiceCode("INV-202610-OVERDUE")
+            .contract(contract)
+            .billingPeriod(LocalDate.of(2026, 10, 1))
+            .amount(new BigDecimal("1500000"))
+            .dueOn(LocalDate.of(2026, 10, 5))
+            .status(InvoiceStatus.DEBT)
+            .issuedAt(Instant.parse("2026-09-25T00:00:00Z"))
+            .build();
+    Invoice debtDueToday =
+        Invoice.builder()
+            .id(UUID.randomUUID())
+            .invoiceCode("INV-202610-DUETODAY")
+            .contract(contract)
+            .billingPeriod(LocalDate.of(2026, 10, 1))
+            .amount(new BigDecimal("1500000"))
+            .dueOn(LocalDate.of(2026, 10, 10))
+            .status(InvoiceStatus.DEBT)
+            .issuedAt(Instant.parse("2026-09-25T00:00:00Z"))
+            .build();
+    Invoice pendingPastDue =
+        Invoice.builder()
+            .id(UUID.randomUUID())
+            .invoiceCode("INV-202610-PENDING")
+            .contract(contract)
+            .billingPeriod(LocalDate.of(2026, 10, 1))
+            .amount(new BigDecimal("1500000"))
+            .dueOn(LocalDate.of(2026, 10, 1))
+            .status(InvoiceStatus.PENDING_CONFIRMATION)
+            .proofFileKey("invoices/p/proof/img.png")
+            .proofSubmittedAt(FIXED_NOW)
+            .issuedAt(Instant.parse("2026-09-25T00:00:00Z"))
+            .build();
+    Invoice paidPastDue =
+        Invoice.builder()
+            .id(UUID.randomUUID())
+            .invoiceCode("INV-202609-PAID")
+            .contract(contract)
+            .billingPeriod(LocalDate.of(2026, 9, 1))
+            .amount(new BigDecimal("1400000"))
+            .dueOn(LocalDate.of(2026, 9, 5))
+            .status(InvoiceStatus.PAID)
+            .paymentTransaction(
+                PaymentTransaction.builder()
+                    .id(UUID.randomUUID())
+                    .receiptCode("PT-INV-202609-PAID")
+                    .amount(new BigDecimal("1400000"))
+                    .paymentMethod(PaymentMethod.CASH)
+                    .confirmedByStaff(managerStaff)
+                    .confirmedAt(FIXED_NOW)
+                    .build())
+            .issuedAt(Instant.parse("2026-08-25T00:00:00Z"))
+            .build();
+
+    LocalDate today = LocalDate.of(2026, 10, 10);
+    LocalDate octPeriod = LocalDate.of(2026, 10, 1);
+
+    when(invoiceRepository.findInvoicesWithFilters(
+            any(), any(), any(), any(Boolean.class), any(), any(Pageable.class)))
+        .thenReturn(
+            new PageImpl<>(List.of(debtOverdue, debtDueToday, pendingPastDue, paidPastDue)));
+
+    Page<InvoiceSummaryResponse> defaultPage =
+        invoiceService.getAdminInvoices(null, "  P.401  ", null, octPeriod, null);
+
+    ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+    verify(invoiceRepository)
+        .findInvoicesWithFilters(
+            eq("P.401"), eq(null), eq(octPeriod), eq(false), eq(today), pageableCaptor.capture());
+
+    Pageable usedPageable = pageableCaptor.getValue();
+    assertThat(usedPageable.getPageNumber()).isZero();
+    assertThat(usedPageable.getPageSize()).isEqualTo(20);
+    assertThat(usedPageable.getSort())
+        .containsExactly(Sort.Order.desc("billingPeriod"), Sort.Order.desc("issuedAt"));
+
+    assertThat(defaultPage.getContent()).hasSize(4);
+    assertThat(defaultPage.getContent().get(0).overdue()).isTrue();
+    assertThat(defaultPage.getContent().get(0).overdueDays()).isEqualTo(5L);
+    assertThat(defaultPage.getContent().get(0).tenantName()).isEqualTo("Nguyen Van Proof");
+    assertThat(defaultPage.getContent().get(0).roomNumber()).isEqualTo("P.401");
+
+    assertThat(defaultPage.getContent().get(1).overdue()).isFalse();
+    assertThat(defaultPage.getContent().get(1).overdueDays()).isZero();
+
+    assertThat(defaultPage.getContent().get(2).overdue()).isFalse();
+    assertThat(defaultPage.getContent().get(2).overdueDays()).isZero();
+    assertThat(defaultPage.getContent().get(2).proofAvailable()).isTrue();
+
+    assertThat(defaultPage.getContent().get(3).overdue()).isFalse();
+    assertThat(defaultPage.getContent().get(3).overdueDays()).isZero();
+    assertThat(defaultPage.getContent().get(3).payment()).isNotNull();
+    assertThat(defaultPage.getContent().get(3).payment().receiptCode())
+        .isEqualTo("PT-INV-202609-PAID");
+
+    // Custom sort + blank search + overdueOnly=true
+    Pageable customSort = PageRequest.of(1, 5, Sort.by(Sort.Order.asc("dueOn")));
+    invoiceService.getAdminInvoices(customSort, "   ", InvoiceStatus.DEBT, null, Boolean.TRUE);
+    verify(invoiceRepository)
+        .findInvoicesWithFilters(
+            eq(null), eq(InvoiceStatus.DEBT), eq(null), eq(true), eq(today), eq(customSort));
+  }
+
+  @Test
+  @DisplayName("getAdminInvoices: rejects non-day-01 billingPeriod with INVALID_BILLING_PERIOD")
+  void getAdminInvoices_rejectsNonDayOneBillingPeriod() {
+    LocalDate invalidPeriod = LocalDate.of(2026, 10, 15);
+    assertThatThrownBy(() -> invoiceService.getAdminInvoices(null, null, null, invalidPeriod, null))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVALID_BILLING_PERIOD);
+
+    verifyNoInteractions(invoiceRepository);
+  }
+
+  @Test
+  @DisplayName(
+      "getAdminInvoiceSummary: aggregates amounts and counts accurately, excludes PENDING_CONFIRMATION from overdue, and validates day-01")
+  void getAdminInvoiceSummary_aggregatesBucketsAndValidatesDayOne() {
+    LocalDate octPeriod = LocalDate.of(2026, 10, 1);
+    List<InvoiceRepository.InvoiceSummaryProjection> projections =
+        List.of(
+            summaryProjection(
+                InvoiceStatus.PAID, LocalDate.of(2026, 10, 1), new BigDecimal("1500000")),
+            summaryProjection(
+                InvoiceStatus.DEBT, LocalDate.of(2026, 10, 10), new BigDecimal("1200000")),
+            summaryProjection(
+                InvoiceStatus.DEBT, LocalDate.of(2026, 10, 15), new BigDecimal("1300000")),
+            summaryProjection(
+                InvoiceStatus.DEBT, LocalDate.of(2026, 10, 5), new BigDecimal("1400000")),
+            summaryProjection(
+                InvoiceStatus.PENDING_CONFIRMATION,
+                LocalDate.of(2026, 10, 2),
+                new BigDecimal("1600000")));
+
+    when(invoiceRepository.findAllForSummary(octPeriod)).thenReturn(projections);
+
+    InvoiceSummaryStatsResponse stats = invoiceService.getAdminInvoiceSummary(octPeriod);
+    assertThat(stats.billingPeriod()).isEqualTo(octPeriod);
+    assertThat(stats.paidAmount()).isEqualByComparingTo("1500000");
+    assertThat(stats.paidCount()).isEqualTo(1L);
+    assertThat(stats.unpaidInTermAmount()).isEqualByComparingTo("2500000");
+    assertThat(stats.unpaidInTermCount()).isEqualTo(2L);
+    assertThat(stats.overdueAmount()).isEqualByComparingTo("1400000");
+    assertThat(stats.overdueCount()).isEqualTo(1L);
+    assertThat(stats.pendingConfirmationAmount()).isEqualByComparingTo("1600000");
+    assertThat(stats.pendingConfirmationCount()).isEqualTo(1L);
+    assertThat(stats.totalExpectedAmount()).isEqualByComparingTo("7000000");
+    assertThat(stats.totalInvoiceCount()).isEqualTo(5L);
+
+    when(invoiceRepository.findAllForSummary(null)).thenReturn(List.of());
+    InvoiceSummaryStatsResponse emptyStats = invoiceService.getAdminInvoiceSummary(null);
+    assertThat(emptyStats.billingPeriod()).isNull();
+    assertThat(emptyStats.paidAmount()).isEqualByComparingTo("0");
+    assertThat(emptyStats.unpaidInTermAmount()).isEqualByComparingTo("0");
+    assertThat(emptyStats.overdueAmount()).isEqualByComparingTo("0");
+    assertThat(emptyStats.pendingConfirmationAmount()).isEqualByComparingTo("0");
+    assertThat(emptyStats.totalExpectedAmount()).isEqualByComparingTo("0");
+    assertThat(emptyStats.totalInvoiceCount()).isZero();
+
+    assertThatThrownBy(() -> invoiceService.getAdminInvoiceSummary(LocalDate.of(2026, 10, 2)))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVALID_BILLING_PERIOD);
+  }
+
+  @Test
+  @DisplayName("getAdminInvoiceById: returns detail with admin URL or 404 when missing/null")
+  void getAdminInvoiceById_returnsDetailOr404() {
+    invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+    invoice.setProofFileKey("invoices/" + invoiceId + "/proof/doc.png");
+    invoice.setProofSubmittedAt(FIXED_NOW);
+    when(invoiceRepository.findById(invoiceId)).thenReturn(Optional.of(invoice));
+
+    InvoiceDetailResponse detail = invoiceService.getAdminInvoiceById(invoiceId);
+    assertThat(detail.id()).isEqualTo(invoiceId);
+    assertThat(detail.proof()).isNotNull();
+    assertThat(detail.proof().contentUrl())
+        .isEqualTo("/api/v1/admin/invoices/" + invoiceId + "/proof/content");
+    assertThat(detail.vietQr()).isNull();
+
+    assertThatThrownBy(() -> invoiceService.getAdminInvoiceById(null))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_FOUND);
+
+    UUID missingId = UUID.randomUUID();
+    when(invoiceRepository.findById(missingId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> invoiceService.getAdminInvoiceById(missingId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName(
+      "getTenantInvoices: returns invoices for ACTIVE and CHECKED_OUT tenants, supports status filter, and throws 404 for missing tenant")
+  void getTenantInvoices_supportsActiveCheckedOutAndStatusFilter() {
+    VietQrInfoResponse qrInfo =
+        VietQrInfoResponse.builder()
+            .bankBin("970405")
+            .bankName("Agribank")
+            .accountNumber("1234567890")
+            .accountName("TEST KTX HUB")
+            .amount(new BigDecimal("1500000"))
+            .transferContent("KTX INV-202610-HD-2026-0099")
+            .qrPayload("000201...")
+            .build();
+    when(vietQrPayloadService.buildForInvoice(invoice)).thenReturn(Optional.of(qrInfo));
+    when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
+    when(invoiceRepository.findByContractTenantIdOrderByBillingPeriodDescIssuedAtDesc(tenantId))
+        .thenReturn(List.of(invoice));
+    when(invoiceRepository.findByContractTenantIdAndStatusOrderByBillingPeriodDescIssuedAtDesc(
+            tenantId, InvoiceStatus.DEBT))
+        .thenReturn(List.of(invoice));
+
+    List<InvoiceDetailResponse> unfiltered = invoiceService.getTenantInvoices(tenantUserId, null);
+    assertThat(unfiltered).hasSize(1);
+    assertThat(unfiltered.getFirst().vietQr()).isEqualTo(qrInfo);
+    assertThat(unfiltered.getFirst().overdue()).isTrue();
+    assertThat(unfiltered.getFirst().overdueDays()).isEqualTo(5L);
+
+    tenant.setResidentStatus(ResidentStatus.CHECKED_OUT);
+    List<InvoiceDetailResponse> filtered =
+        invoiceService.getTenantInvoices(tenantUserId, InvoiceStatus.DEBT);
+    assertThat(filtered).hasSize(1);
+
+    UUID unknownUserId = UUID.randomUUID();
+    when(tenantRepository.findByUserId(unknownUserId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> invoiceService.getTenantInvoices(unknownUserId, null))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", TenantErrorCode.TENANT_NOT_FOUND);
+  }
+
+  @Test
+  @DisplayName(
+      "getTenantInvoiceById: returns owned detail (ACTIVE & CHECKED_OUT) and enforces 404 on cross-tenant or missing invoice")
+  void getTenantInvoiceById_enforcesOwnershipAnd404() {
+    invoice.setStatus(InvoiceStatus.PENDING_CONFIRMATION);
+    invoice.setProofFileKey("invoices/" + invoiceId + "/proof/doc.png");
+    invoice.setProofSubmittedAt(FIXED_NOW);
+    tenant.setResidentStatus(ResidentStatus.CHECKED_OUT);
+
+    when(tenantRepository.findByUserId(tenantUserId)).thenReturn(Optional.of(tenant));
+    when(invoiceRepository.findById(invoiceId)).thenReturn(Optional.of(invoice));
+
+    InvoiceDetailResponse owned = invoiceService.getTenantInvoiceById(tenantUserId, invoiceId);
+    assertThat(owned.id()).isEqualTo(invoiceId);
+    assertThat(owned.proof()).isNotNull();
+    assertThat(owned.proof().contentUrl())
+        .isEqualTo("/api/v1/tenant/invoices/" + invoiceId + "/proof/content");
+
+    UUID otherUserId = UUID.randomUUID();
+    when(tenantRepository.findByUserId(otherUserId))
+        .thenReturn(Optional.of(Tenant.builder().id(UUID.randomUUID()).build()));
+    assertThatThrownBy(() -> invoiceService.getTenantInvoiceById(otherUserId, invoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_FOUND);
+
+    UUID missingInvoiceId = UUID.randomUUID();
+    when(invoiceRepository.findById(missingInvoiceId)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> invoiceService.getTenantInvoiceById(tenantUserId, missingInvoiceId))
+        .isInstanceOf(BaseAppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", InvoiceErrorCode.INVOICE_NOT_FOUND);
+  }
+
+  private static InvoiceRepository.InvoiceSummaryProjection summaryProjection(
+      InvoiceStatus status, LocalDate dueOn, BigDecimal amount) {
+    return new InvoiceRepository.InvoiceSummaryProjection() {
+      @Override
+      public InvoiceStatus getStatus() {
+        return status;
+      }
+
+      @Override
+      public LocalDate getDueOn() {
+        return dueOn;
+      }
+
+      @Override
+      public BigDecimal getAmount() {
+        return amount;
+      }
+    };
   }
 
   private static DataIntegrityViolationException uniqueConstraintViolation(String constraintName) {

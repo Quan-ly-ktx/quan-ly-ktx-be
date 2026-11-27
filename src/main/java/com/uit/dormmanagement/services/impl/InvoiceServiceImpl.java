@@ -4,6 +4,8 @@ import com.uit.dormmanagement.configs.TimeConfig;
 import com.uit.dormmanagement.dtos.response.invoice.InvoiceDetailResponse;
 import com.uit.dormmanagement.dtos.response.invoice.InvoiceProofContent;
 import com.uit.dormmanagement.dtos.response.invoice.InvoiceProofResponse;
+import com.uit.dormmanagement.dtos.response.invoice.InvoiceSummaryResponse;
+import com.uit.dormmanagement.dtos.response.invoice.InvoiceSummaryStatsResponse;
 import com.uit.dormmanagement.dtos.response.invoice.PaymentTransactionResponse;
 import com.uit.dormmanagement.dtos.response.invoice.VietQrInfoResponse;
 import com.uit.dormmanagement.entities.Contract;
@@ -20,6 +22,7 @@ import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.ObjectStorageNotFoundException;
 import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.exceptions.error.SystemErrorCode;
+import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.repositories.InvoiceRepository;
 import com.uit.dormmanagement.repositories.PaymentTransactionRepository;
 import com.uit.dormmanagement.repositories.StaffProfileRepository;
@@ -30,6 +33,7 @@ import com.uit.dormmanagement.services.StoredObjectContent;
 import com.uit.dormmanagement.services.VietQrPayloadService;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -43,6 +47,10 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -83,6 +91,157 @@ public class InvoiceServiceImpl implements InvoiceService {
 
   public static String tenantProofContentPath(UUID invoiceId) {
     return "/api/v1/tenant/invoices/" + invoiceId + "/proof/content";
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Page<InvoiceSummaryResponse> getAdminInvoices(
+      Pageable pageable,
+      String search,
+      InvoiceStatus status,
+      LocalDate billingPeriod,
+      Boolean overdueOnly) {
+    validateBillingPeriodFilter(billingPeriod);
+
+    String trimmedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
+    boolean effectiveOverdueOnly = Boolean.TRUE.equals(overdueOnly);
+
+    Pageable effectivePageable = pageable;
+    if (effectivePageable == null || effectivePageable.getSort().isUnsorted()) {
+      int pageNumber =
+          effectivePageable != null && effectivePageable.isPaged()
+              ? effectivePageable.getPageNumber()
+              : 0;
+      int pageSize =
+          effectivePageable != null && effectivePageable.isPaged()
+              ? effectivePageable.getPageSize()
+              : 20;
+      effectivePageable =
+          PageRequest.of(
+              pageNumber,
+              pageSize,
+              Sort.by(Sort.Order.desc("billingPeriod"), Sort.Order.desc("issuedAt")));
+    }
+
+    LocalDate today = LocalDate.now(clock.withZone(TimeConfig.DORM_ZONE));
+    Page<Invoice> page =
+        invoiceRepository.findInvoicesWithFilters(
+            trimmedSearch, status, billingPeriod, effectiveOverdueOnly, today, effectivePageable);
+    return page.map(invoice -> toSummaryResponse(invoice, today));
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public InvoiceSummaryStatsResponse getAdminInvoiceSummary(LocalDate billingPeriod) {
+    validateBillingPeriodFilter(billingPeriod);
+
+    LocalDate today = LocalDate.now(clock.withZone(TimeConfig.DORM_ZONE));
+    List<InvoiceRepository.InvoiceSummaryProjection> rows =
+        invoiceRepository.findAllForSummary(billingPeriod);
+
+    BigDecimal paidAmount = BigDecimal.ZERO;
+    long paidCount = 0L;
+    BigDecimal unpaidInTermAmount = BigDecimal.ZERO;
+    long unpaidInTermCount = 0L;
+    BigDecimal overdueAmount = BigDecimal.ZERO;
+    long overdueCount = 0L;
+    BigDecimal pendingConfirmationAmount = BigDecimal.ZERO;
+    long pendingConfirmationCount = 0L;
+    BigDecimal totalExpectedAmount = BigDecimal.ZERO;
+
+    for (InvoiceRepository.InvoiceSummaryProjection row : rows) {
+      BigDecimal amt = row.getAmount() != null ? row.getAmount() : BigDecimal.ZERO;
+      totalExpectedAmount = totalExpectedAmount.add(amt);
+
+      InvoiceStatus rowStatus = row.getStatus();
+      if (rowStatus == InvoiceStatus.PAID) {
+        paidAmount = paidAmount.add(amt);
+        paidCount++;
+      } else if (rowStatus == InvoiceStatus.PENDING_CONFIRMATION) {
+        pendingConfirmationAmount = pendingConfirmationAmount.add(amt);
+        pendingConfirmationCount++;
+      } else if (rowStatus == InvoiceStatus.DEBT) {
+        if (row.getDueOn() != null && row.getDueOn().isBefore(today)) {
+          overdueAmount = overdueAmount.add(amt);
+          overdueCount++;
+        } else {
+          unpaidInTermAmount = unpaidInTermAmount.add(amt);
+          unpaidInTermCount++;
+        }
+      }
+    }
+
+    return InvoiceSummaryStatsResponse.builder()
+        .billingPeriod(billingPeriod)
+        .paidAmount(paidAmount)
+        .paidCount(paidCount)
+        .unpaidInTermAmount(unpaidInTermAmount)
+        .unpaidInTermCount(unpaidInTermCount)
+        .overdueAmount(overdueAmount)
+        .overdueCount(overdueCount)
+        .pendingConfirmationAmount(pendingConfirmationAmount)
+        .pendingConfirmationCount(pendingConfirmationCount)
+        .totalExpectedAmount(totalExpectedAmount)
+        .totalInvoiceCount(rows.size())
+        .build();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public InvoiceDetailResponse getAdminInvoiceById(UUID invoiceId) {
+    if (invoiceId == null) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND);
+    }
+    Invoice invoice =
+        invoiceRepository
+            .findById(invoiceId)
+            .orElseThrow(() -> new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND));
+    return toDetailResponse(invoice, true);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<InvoiceDetailResponse> getTenantInvoices(UUID tenantUserId, InvoiceStatus status) {
+    if (tenantUserId == null) {
+      throw new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND);
+    }
+    Tenant tenant =
+        tenantRepository
+            .findByUserId(tenantUserId)
+            .orElseThrow(() -> new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND));
+    List<Invoice> invoices =
+        status == null
+            ? invoiceRepository.findByContractTenantIdOrderByBillingPeriodDescIssuedAtDesc(
+                tenant.getId())
+            : invoiceRepository.findByContractTenantIdAndStatusOrderByBillingPeriodDescIssuedAtDesc(
+                tenant.getId(), status);
+    return invoices.stream().map(inv -> toDetailResponse(inv, false)).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public InvoiceDetailResponse getTenantInvoiceById(UUID tenantUserId, UUID invoiceId) {
+    if (tenantUserId == null || invoiceId == null) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND);
+    }
+    Tenant tenant =
+        tenantRepository
+            .findByUserId(tenantUserId)
+            .orElseThrow(() -> new BaseAppException(TenantErrorCode.TENANT_NOT_FOUND));
+    Invoice invoice =
+        invoiceRepository
+            .findById(invoiceId)
+            .orElseThrow(() -> new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND));
+    if (!isOwnedByTenant(invoice, tenant)) {
+      throw new BaseAppException(InvoiceErrorCode.INVOICE_NOT_FOUND);
+    }
+    return toDetailResponse(invoice, false);
+  }
+
+  private static void validateBillingPeriodFilter(LocalDate billingPeriod) {
+    if (billingPeriod != null && billingPeriod.getDayOfMonth() != 1) {
+      throw new BaseAppException(InvoiceErrorCode.INVALID_BILLING_PERIOD);
+    }
   }
 
   @Override
@@ -547,20 +706,52 @@ public class InvoiceServiceImpl implements InvoiceService {
     }
   }
 
+  private InvoiceSummaryResponse toSummaryResponse(Invoice invoice, LocalDate today) {
+    Contract contract = invoice.getContract();
+    Tenant tenant = contract != null ? contract.getTenant() : null;
+    User user = tenant != null ? tenant.getUser() : null;
+
+    boolean overdue = isOverdue(invoice, today);
+    long overdueDays = overdue ? ChronoUnit.DAYS.between(invoice.getDueOn(), today) : 0L;
+    boolean proofAvailable = hasProofKey(invoice);
+    PaymentTransactionResponse payment = resolvePaymentResponse(invoice);
+
+    return InvoiceSummaryResponse.builder()
+        .id(invoice.getId())
+        .invoiceCode(invoice.getInvoiceCode())
+        .contractId(contract != null ? contract.getId() : null)
+        .contractCode(contract != null ? contract.getContractCode() : null)
+        .tenantId(tenant != null ? tenant.getId() : null)
+        .tenantCode(tenant != null ? tenant.getTenantCode() : null)
+        .tenantName(tenant != null ? tenant.getFullName() : null)
+        .tenantPhone(tenant != null ? tenant.getPhone() : null)
+        .tenantIdCardNumber(tenant != null ? tenant.getIdCardNumber() : null)
+        .tenantEmail(user != null ? user.getEmail() : null)
+        .roomNumber(contract != null ? contract.getRoomCodeSnapshot() : null)
+        .bedCode(contract != null ? contract.getBedCodeSnapshot() : null)
+        .billingPeriod(invoice.getBillingPeriod())
+        .amount(invoice.getAmount())
+        .dueOn(invoice.getDueOn())
+        .status(invoice.getStatus())
+        .overdue(overdue)
+        .overdueDays(overdueDays)
+        .proofAvailable(proofAvailable)
+        .proofSubmittedAt(invoice.getProofSubmittedAt())
+        .payment(payment)
+        .issuedAt(invoice.getIssuedAt())
+        .build();
+  }
+
   private InvoiceDetailResponse toDetailResponse(Invoice invoice, boolean adminView) {
     Contract contract = invoice.getContract();
     Tenant tenant = contract != null ? contract.getTenant() : null;
     User user = tenant != null ? tenant.getUser() : null;
 
     LocalDate today = LocalDate.now(clock.withZone(TimeConfig.DORM_ZONE));
-    boolean overdue =
-        invoice.getStatus() == InvoiceStatus.DEBT
-            && invoice.getDueOn() != null
-            && invoice.getDueOn().isBefore(today);
+    boolean overdue = isOverdue(invoice, today);
     long overdueDays = overdue ? ChronoUnit.DAYS.between(invoice.getDueOn(), today) : 0L;
 
-    boolean proofAvailable =
-        invoice.getProofFileKey() != null && !invoice.getProofFileKey().isBlank();
+    boolean proofAvailable = hasProofKey(invoice);
     InvoiceProofResponse proof =
         proofAvailable
             ? InvoiceProofResponse.builder()
@@ -573,14 +764,7 @@ public class InvoiceServiceImpl implements InvoiceService {
                 .build()
             : null;
 
-    PaymentTransactionResponse payment = null;
-    if (invoice.getStatus() == InvoiceStatus.PAID) {
-      PaymentTransaction tx = invoice.getPaymentTransaction();
-      if (tx == null && invoice.getId() != null) {
-        tx = paymentTransactionRepository.findByInvoiceId(invoice.getId()).orElse(null);
-      }
-      payment = toPaymentTransactionResponse(tx);
-    }
+    PaymentTransactionResponse payment = resolvePaymentResponse(invoice);
 
     VietQrInfoResponse vietQr =
         invoice.getStatus() == InvoiceStatus.DEBT
@@ -613,6 +797,27 @@ public class InvoiceServiceImpl implements InvoiceService {
         .vietQr(vietQr)
         .issuedAt(invoice.getIssuedAt())
         .build();
+  }
+
+  private static boolean isOverdue(Invoice invoice, LocalDate today) {
+    return invoice.getStatus() == InvoiceStatus.DEBT
+        && invoice.getDueOn() != null
+        && invoice.getDueOn().isBefore(today);
+  }
+
+  private static boolean hasProofKey(Invoice invoice) {
+    return invoice.getProofFileKey() != null && !invoice.getProofFileKey().isBlank();
+  }
+
+  private PaymentTransactionResponse resolvePaymentResponse(Invoice invoice) {
+    if (invoice.getStatus() != InvoiceStatus.PAID) {
+      return null;
+    }
+    PaymentTransaction tx = invoice.getPaymentTransaction();
+    if (tx == null && invoice.getId() != null) {
+      tx = paymentTransactionRepository.findByInvoiceId(invoice.getId()).orElse(null);
+    }
+    return toPaymentTransactionResponse(tx);
   }
 
   private static PaymentTransactionResponse toPaymentTransactionResponse(PaymentTransaction tx) {
