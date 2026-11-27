@@ -10,6 +10,7 @@ import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.base.ErrorResponse;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
+import com.uit.dormmanagement.exceptions.error.ExpenseErrorCode;
 import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
@@ -55,8 +56,7 @@ class AppExceptionHandlerDataIntegrityTest {
         Arguments.of(
             "uq_contracts_active_tenant", ContractErrorCode.TENANT_ALREADY_HAS_ACTIVE_CONTRACT),
         Arguments.of("uq_contract_renewals_sequence", ContractErrorCode.CONTRACT_RENEWAL_CONFLICT),
-        Arguments.of(
-            "uq_contract_renewals_effective", ContractErrorCode.CONTRACT_RENEWAL_CONFLICT),
+        Arguments.of("uq_contract_renewals_effective", ContractErrorCode.CONTRACT_RENEWAL_CONFLICT),
         Arguments.of("uq_vehicles_issued_card_code", VehicleErrorCode.CARD_CODE_DUPLICATED),
         Arguments.of("uq_vehicles_tenant_active_quota", VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED),
         Arguments.of(
@@ -66,7 +66,9 @@ class AppExceptionHandlerDataIntegrityTest {
         Arguments.of("invoices_invoice_code_key", InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD),
         Arguments.of("payment_transactions_invoice_id_key", InvoiceErrorCode.INVOICE_ALREADY_PAID),
         Arguments.of(
-            "payment_transactions_receipt_code_key", InvoiceErrorCode.INVOICE_ALREADY_PAID));
+            "payment_transactions_receipt_code_key", InvoiceErrorCode.INVOICE_ALREADY_PAID),
+        Arguments.of(
+            "uq_facility_expenses_salary_month", ExpenseErrorCode.SALARY_EXPENSE_ALREADY_EXISTS));
   }
 
   @ParameterizedTest

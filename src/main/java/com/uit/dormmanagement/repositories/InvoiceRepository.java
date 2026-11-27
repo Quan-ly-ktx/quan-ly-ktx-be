@@ -105,4 +105,17 @@ public interface InvoiceRepository extends JpaRepository<Invoice, UUID> {
       WHERE (CAST(:billingPeriod AS LocalDate) IS NULL OR i.billingPeriod = :billingPeriod)
       """)
   List<InvoiceSummaryProjection> findAllForSummary(@Param("billingPeriod") LocalDate billingPeriod);
+
+  @Query(
+      """
+      SELECT i FROM Invoice i
+      LEFT JOIN FETCH i.contract c
+      LEFT JOIN FETCH c.tenant t
+      LEFT JOIN FETCH i.paymentTransaction pt
+      WHERE i.status = com.uit.dormmanagement.enums.InvoiceStatus.PAID
+        AND i.billingPeriod = :billingPeriod
+      ORDER BY i.issuedAt DESC, i.invoiceCode ASC
+      """)
+  List<Invoice> findPaidInvoicesForPeriodWithDetails(
+      @Param("billingPeriod") LocalDate billingPeriod);
 }

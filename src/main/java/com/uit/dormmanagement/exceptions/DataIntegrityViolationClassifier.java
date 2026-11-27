@@ -2,6 +2,7 @@ package com.uit.dormmanagement.exceptions;
 
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
+import com.uit.dormmanagement.exceptions.error.ExpenseErrorCode;
 import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
@@ -53,7 +54,9 @@ public final class DataIntegrityViolationClassifier {
           Map.entry("uq_invoices_contract_period", InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD),
           Map.entry("invoices_invoice_code_key", InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD),
           Map.entry("payment_transactions_invoice_id_key", InvoiceErrorCode.INVOICE_ALREADY_PAID),
-          Map.entry("payment_transactions_receipt_code_key", InvoiceErrorCode.INVOICE_ALREADY_PAID));
+          Map.entry("payment_transactions_receipt_code_key", InvoiceErrorCode.INVOICE_ALREADY_PAID),
+          Map.entry(
+              "uq_facility_expenses_salary_month", ExpenseErrorCode.SALARY_EXPENSE_ALREADY_EXISTS));
 
   private DataIntegrityViolationClassifier() {}
 

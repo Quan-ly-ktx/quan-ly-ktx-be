@@ -3,10 +3,12 @@ package com.uit.dormmanagement.exceptions;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
+import com.uit.dormmanagement.exceptions.error.ExpenseErrorCode;
 import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
 import com.uit.dormmanagement.exceptions.error.WebErrorCode;
+import java.util.Arrays;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -185,6 +187,64 @@ class DomainErrorCodeTest {
 
     for (InvoiceErrorCode code : InvoiceErrorCode.values()) {
       assertThat(code.getErrorCode()).isNotBlank().startsWith("INVOICE_");
+      assertThat(code.getMessage()).isNotBlank();
+      assertThat(code.getHttpStatus()).isNotNull();
+    }
+  }
+
+  @Test
+  @DisplayName("expenseErrorCode_shouldHaveAllRequiredCodesAndNonBlankFields")
+  void expenseErrorCode_shouldHaveAllRequiredCodesAndNonBlankFields() {
+    assertThat(ExpenseErrorCode.values()).hasSize(10);
+
+    assertThat(ExpenseErrorCode.EXPENSE_NOT_FOUND.getErrorCode()).isEqualTo("EXPENSE_404");
+    assertThat(ExpenseErrorCode.EXPENSE_NOT_FOUND.getHttpStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(ExpenseErrorCode.EXPENSE_RECEIPT_NOT_FOUND.getErrorCode())
+        .isEqualTo("EXPENSE_404_RECEIPT");
+    assertThat(ExpenseErrorCode.EXPENSE_RECEIPT_NOT_FOUND.getHttpStatus())
+        .isEqualTo(HttpStatus.NOT_FOUND);
+
+    assertThat(ExpenseErrorCode.INVALID_REPORT_PERIOD.getErrorCode())
+        .isEqualTo("EXPENSE_400_INVALID_PERIOD");
+    assertThat(ExpenseErrorCode.INVALID_REPORT_PERIOD.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ExpenseErrorCode.INVALID_EXPENSE_AMOUNT.getErrorCode())
+        .isEqualTo("EXPENSE_400_AMOUNT");
+    assertThat(ExpenseErrorCode.INVALID_EXPENSE_AMOUNT.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ExpenseErrorCode.INVALID_EXPORT_FORMAT.getErrorCode())
+        .isEqualTo("EXPENSE_400_EXPORT_FORMAT");
+    assertThat(ExpenseErrorCode.INVALID_EXPORT_FORMAT.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ExpenseErrorCode.RECEIPT_FILE_REQUIRED.getErrorCode())
+        .isEqualTo("EXPENSE_400_RECEIPT_REQUIRED");
+    assertThat(ExpenseErrorCode.RECEIPT_FILE_REQUIRED.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ExpenseErrorCode.RECEIPT_FILE_SIZE_EXCEEDED.getErrorCode())
+        .isEqualTo("EXPENSE_400_RECEIPT_SIZE");
+    assertThat(ExpenseErrorCode.RECEIPT_FILE_SIZE_EXCEEDED.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(ExpenseErrorCode.UNSUPPORTED_RECEIPT_FORMAT.getErrorCode())
+        .isEqualTo("EXPENSE_400_RECEIPT_FORMAT");
+    assertThat(ExpenseErrorCode.UNSUPPORTED_RECEIPT_FORMAT.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+
+    assertThat(ExpenseErrorCode.MANAGER_STAFF_PROFILE_REQUIRED.getErrorCode())
+        .isEqualTo("EXPENSE_403_STAFF_PROFILE");
+    assertThat(ExpenseErrorCode.MANAGER_STAFF_PROFILE_REQUIRED.getHttpStatus())
+        .isEqualTo(HttpStatus.FORBIDDEN);
+
+    assertThat(ExpenseErrorCode.SALARY_EXPENSE_ALREADY_EXISTS.getErrorCode())
+        .isEqualTo("EXPENSE_409_SALARY_MONTH");
+    assertThat(ExpenseErrorCode.SALARY_EXPENSE_ALREADY_EXISTS.getHttpStatus())
+        .isEqualTo(HttpStatus.CONFLICT);
+
+    assertThat(
+            Arrays.stream(ExpenseErrorCode.values()).map(ExpenseErrorCode::getErrorCode).toList())
+        .doesNotHaveDuplicates();
+
+    for (ExpenseErrorCode code : ExpenseErrorCode.values()) {
+      assertThat(code.getErrorCode()).isNotBlank().startsWith("EXPENSE_");
       assertThat(code.getMessage()).isNotBlank();
       assertThat(code.getHttpStatus()).isNotNull();
     }
