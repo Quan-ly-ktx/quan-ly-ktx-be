@@ -113,3 +113,9 @@ app:
       bucket-name: ${S3_BUCKET_NAME:}
       access-key: ${S3_ACCESS_KEY:}
       secret-key: ${S3_SECRET_KEY:}
+  vietqr:
+    bank-bin: ${VIETQR_BANK_BIN:}
+    bank-name: ${VIETQR_BANK_NAME:}
+    account-number: ${VIETQR_ACCOUNT_NUMBER:}
+    account-name: ${VIETQR_ACCOUNT_NAME:}
+    transfer-prefix: ${VIETQR_TRANSFER_PREFIX:KTX}

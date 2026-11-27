@@ -73,6 +73,19 @@ public interface ContractRepository extends JpaRepository<Contract, UUID> {
   List<Contract> findAllByStatusAndEffectiveEndOnLessThanEqual(
       @Param("status") ContractStatus status, @Param("thresholdDate") LocalDate thresholdDate);
 
+  @Query(
+      """
+      SELECT c FROM Contract c
+      WHERE c.status = :status
+        AND c.startOn <= :billingPeriod
+        AND COALESCE(
+              (SELECT MAX(r.newEndOn) FROM ContractRenewal r WHERE r.contract = c),
+              c.originalEndOn) >= :billingPeriod
+      ORDER BY c.startOn ASC, c.id ASC
+      """)
+  List<Contract> findActiveContractsCoveringBillingPeriod(
+      @Param("status") ContractStatus status, @Param("billingPeriod") LocalDate billingPeriod);
+
   long countByContractCodeStartingWith(String prefix);
 
   @Query(

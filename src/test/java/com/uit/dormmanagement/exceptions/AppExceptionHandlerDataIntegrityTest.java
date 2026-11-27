@@ -10,6 +10,7 @@ import com.uit.dormmanagement.dtos.response.ResponseFactory;
 import com.uit.dormmanagement.dtos.response.base.ErrorResponse;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
+import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
@@ -60,7 +61,12 @@ class AppExceptionHandlerDataIntegrityTest {
         Arguments.of("uq_vehicles_tenant_active_quota", VehicleErrorCode.VEHICLE_QUOTA_EXCEEDED),
         Arguments.of(
             "uq_vehicle_change_requests_pending_tenant",
-            VehicleErrorCode.VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS));
+            VehicleErrorCode.VEHICLE_CHANGE_REQUEST_ALREADY_EXISTS),
+        Arguments.of("uq_invoices_contract_period", InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD),
+        Arguments.of("invoices_invoice_code_key", InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD),
+        Arguments.of("payment_transactions_invoice_id_key", InvoiceErrorCode.INVOICE_ALREADY_PAID),
+        Arguments.of(
+            "payment_transactions_receipt_code_key", InvoiceErrorCode.INVOICE_ALREADY_PAID));
   }
 
   @ParameterizedTest
@@ -87,7 +93,7 @@ class AppExceptionHandlerDataIntegrityTest {
   void unmappedUniqueViolation_shouldReturn409Conflict() {
     SQLException sqlEx =
         new SQLException(
-            "duplicate key value violates unique constraint \"uq_invoices_contract_period\"",
+            "duplicate key value violates unique constraint \"contracts_contract_code_key\"",
             "23505");
     DataIntegrityViolationException dive =
         new DataIntegrityViolationException("could not execute statement", sqlEx);

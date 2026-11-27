@@ -3,6 +3,7 @@ package com.uit.dormmanagement.exceptions;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
+import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
 import com.uit.dormmanagement.exceptions.error.WebErrorCode;
@@ -120,6 +121,70 @@ class DomainErrorCodeTest {
 
     for (VehicleErrorCode code : VehicleErrorCode.values()) {
       assertThat(code.getErrorCode()).isNotBlank().startsWith("VEHICLE_");
+      assertThat(code.getMessage()).isNotBlank();
+      assertThat(code.getHttpStatus()).isNotNull();
+    }
+  }
+
+  @Test
+  @DisplayName("invoiceErrorCode_shouldHaveAllRequiredCodesAndNonBlankFields")
+  void invoiceErrorCode_shouldHaveAllRequiredCodesAndNonBlankFields() {
+    assertThat(InvoiceErrorCode.values()).hasSize(13);
+
+    assertThat(InvoiceErrorCode.INVOICE_NOT_FOUND.getErrorCode()).isEqualTo("INVOICE_404");
+    assertThat(InvoiceErrorCode.INVOICE_NOT_FOUND.getHttpStatus()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(InvoiceErrorCode.INVOICE_PROOF_NOT_FOUND.getErrorCode())
+        .isEqualTo("INVOICE_404_PROOF");
+    assertThat(InvoiceErrorCode.INVOICE_PROOF_NOT_FOUND.getHttpStatus())
+        .isEqualTo(HttpStatus.NOT_FOUND);
+
+    assertThat(InvoiceErrorCode.INVALID_BILLING_PERIOD.getErrorCode())
+        .isEqualTo("INVOICE_400_INVALID_PERIOD");
+    assertThat(InvoiceErrorCode.INVALID_BILLING_PERIOD.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(InvoiceErrorCode.FUTURE_BILLING_PERIOD_NOT_ALLOWED.getErrorCode())
+        .isEqualTo("INVOICE_400_FUTURE_PERIOD");
+    assertThat(InvoiceErrorCode.FUTURE_BILLING_PERIOD_NOT_ALLOWED.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(InvoiceErrorCode.ISSUANCE_WINDOW_NOT_OPEN.getErrorCode())
+        .isEqualTo("INVOICE_400_ISSUANCE_WINDOW");
+    assertThat(InvoiceErrorCode.ISSUANCE_WINDOW_NOT_OPEN.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(InvoiceErrorCode.PROOF_FILE_REQUIRED.getErrorCode())
+        .isEqualTo("INVOICE_400_PROOF_REQUIRED");
+    assertThat(InvoiceErrorCode.PROOF_FILE_REQUIRED.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(InvoiceErrorCode.PROOF_FILE_SIZE_EXCEEDED.getErrorCode())
+        .isEqualTo("INVOICE_400_PROOF_SIZE");
+    assertThat(InvoiceErrorCode.PROOF_FILE_SIZE_EXCEEDED.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+    assertThat(InvoiceErrorCode.UNSUPPORTED_PROOF_FORMAT.getErrorCode())
+        .isEqualTo("INVOICE_400_PROOF_FORMAT");
+    assertThat(InvoiceErrorCode.UNSUPPORTED_PROOF_FORMAT.getHttpStatus())
+        .isEqualTo(HttpStatus.BAD_REQUEST);
+
+    assertThat(InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED.getErrorCode())
+        .isEqualTo("INVOICE_403_STAFF_PROFILE");
+    assertThat(InvoiceErrorCode.MANAGER_STAFF_PROFILE_REQUIRED.getHttpStatus())
+        .isEqualTo(HttpStatus.FORBIDDEN);
+
+    assertThat(InvoiceErrorCode.INVOICE_ALREADY_PAID.getErrorCode())
+        .isEqualTo("INVOICE_409_ALREADY_PAID");
+    assertThat(InvoiceErrorCode.INVOICE_ALREADY_PAID.getHttpStatus())
+        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(InvoiceErrorCode.INVOICE_NOT_DEBT.getErrorCode()).isEqualTo("INVOICE_409_NOT_DEBT");
+    assertThat(InvoiceErrorCode.INVOICE_NOT_DEBT.getHttpStatus()).isEqualTo(HttpStatus.CONFLICT);
+    assertThat(InvoiceErrorCode.INVOICE_NOT_PENDING_CONFIRMATION.getErrorCode())
+        .isEqualTo("INVOICE_409_NOT_PENDING");
+    assertThat(InvoiceErrorCode.INVOICE_NOT_PENDING_CONFIRMATION.getHttpStatus())
+        .isEqualTo(HttpStatus.CONFLICT);
+    assertThat(InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD.getErrorCode())
+        .isEqualTo("INVOICE_409_DUPLICATE_PERIOD");
+    assertThat(InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD.getHttpStatus())
+        .isEqualTo(HttpStatus.CONFLICT);
+
+    for (InvoiceErrorCode code : InvoiceErrorCode.values()) {
+      assertThat(code.getErrorCode()).isNotBlank().startsWith("INVOICE_");
       assertThat(code.getMessage()).isNotBlank();
       assertThat(code.getHttpStatus()).isNotNull();
     }

@@ -7,6 +7,7 @@ import com.uit.dormmanagement.exceptions.AppErrorCode;
 import com.uit.dormmanagement.exceptions.DataIntegrityViolationClassifier;
 import com.uit.dormmanagement.exceptions.error.AuthErrorCode;
 import com.uit.dormmanagement.exceptions.error.ContractErrorCode;
+import com.uit.dormmanagement.exceptions.error.InvoiceErrorCode;
 import com.uit.dormmanagement.exceptions.error.RoomErrorCode;
 import com.uit.dormmanagement.exceptions.error.TenantErrorCode;
 import com.uit.dormmanagement.exceptions.error.VehicleErrorCode;
@@ -271,6 +272,78 @@ class DataIntegrityClassificationPostgresTest {
                     b2));
     assertThat(DataIntegrityViolationClassifier.classifyGlobal(unmappedUnique))
         .contains(WebErrorCode.CONFLICT);
+
+    // 5b. Billing unique constraints -> 409 INVOICE_409_DUPLICATE_PERIOD / INVOICE_409_ALREADY_PAID
+    UUID mgrUserId = UUID.randomUUID();
+    UUID staffId = UUID.randomUUID();
+    jdbcTemplate.update(
+        "INSERT INTO users(id, email, password_hash, role, status) VALUES (?, 'pg_mgr_inv@dorm.vn', 'h', 'MANAGER', 'ACTIVE')",
+        mgrUserId);
+    jdbcTemplate.update(
+        "INSERT INTO staff_profiles(id, user_id, full_name, phone) VALUES (?, ?, 'Manager PG', '0909000999')",
+        staffId,
+        mgrUserId);
+
+    UUID inv1 = UUID.randomUUID();
+    UUID inv2 = UUID.randomUUID();
+    jdbcTemplate.update(
+        "INSERT INTO invoices(id, invoice_code, contract_id, billing_period, amount, due_on, status) "
+            + "VALUES (?, 'INV-PG-001', ?, '2026-09-01', 1500000, '2026-09-05', 'PAID')",
+        inv1,
+        c1);
+    jdbcTemplate.update(
+        "INSERT INTO invoices(id, invoice_code, contract_id, billing_period, amount, due_on, status) "
+            + "VALUES (?, 'INV-PG-002', ?, '2026-10-01', 1500000, '2026-10-05', 'DEBT')",
+        inv2,
+        c1);
+
+    DataIntegrityViolationException dupInvoicePeriod =
+        captureViolation(
+            () ->
+                jdbcTemplate.update(
+                    "INSERT INTO invoices(invoice_code, contract_id, billing_period, amount, due_on, status) "
+                        + "VALUES ('INV-PG-003', ?, '2026-09-01', 1500000, '2026-09-05', 'DEBT')",
+                    c1));
+    assertThat(DataIntegrityViolationClassifier.classifyGlobal(dupInvoicePeriod))
+        .contains(InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD);
+
+    DataIntegrityViolationException dupInvoiceCode =
+        captureViolation(
+            () ->
+                jdbcTemplate.update(
+                    "INSERT INTO invoices(invoice_code, contract_id, billing_period, amount, due_on, status) "
+                        + "VALUES ('INV-PG-001', ?, '2026-11-01', 1500000, '2026-11-05', 'DEBT')",
+                    c1));
+    assertThat(DataIntegrityViolationClassifier.classifyGlobal(dupInvoiceCode))
+        .contains(InvoiceErrorCode.DUPLICATE_INVOICE_PERIOD);
+
+    jdbcTemplate.update(
+        "INSERT INTO payment_transactions(invoice_id, receipt_code, amount, payment_method, confirmed_by_staff_id) "
+            + "VALUES (?, 'PT-INV-PG-001', 1500000, 'CASH', ?)",
+        inv1,
+        staffId);
+
+    DataIntegrityViolationException dupPaymentInvoice =
+        captureViolation(
+            () ->
+                jdbcTemplate.update(
+                    "INSERT INTO payment_transactions(invoice_id, receipt_code, amount, payment_method, confirmed_by_staff_id) "
+                        + "VALUES (?, 'PT-INV-PG-OTHER', 1500000, 'CASH', ?)",
+                    inv1,
+                    staffId));
+    assertThat(DataIntegrityViolationClassifier.classifyGlobal(dupPaymentInvoice))
+        .contains(InvoiceErrorCode.INVOICE_ALREADY_PAID);
+
+    DataIntegrityViolationException dupPaymentReceipt =
+        captureViolation(
+            () ->
+                jdbcTemplate.update(
+                    "INSERT INTO payment_transactions(invoice_id, receipt_code, amount, payment_method, confirmed_by_staff_id) "
+                        + "VALUES (?, 'PT-INV-PG-001', 1500000, 'CASH', ?)",
+                    inv2,
+                    staffId));
+    assertThat(DataIntegrityViolationClassifier.classifyGlobal(dupPaymentReceipt))
+        .contains(InvoiceErrorCode.INVOICE_ALREADY_PAID);
 
     // 6. CHECK 23514, NOT NULL 23502, FK 23503 -> empty (400 WEB_400 in AppExceptionHandler)
     DataIntegrityViolationException checkErr =
