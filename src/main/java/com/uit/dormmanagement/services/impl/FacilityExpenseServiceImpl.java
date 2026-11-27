@@ -106,7 +106,7 @@ public class FacilityExpenseServiceImpl implements FacilityExpenseService {
         facilityExpenseRepository
             .findExpensesWithFilters(
                 startDate, endDate, expenseType, trimmedSearch, effectivePageable)
-            .map(this::toResponse);
+            .map(FacilityExpenseServiceImpl::toResponse);
     return PageResponse.from(page);
   }
 
@@ -598,7 +598,7 @@ public class FacilityExpenseServiceImpl implements FacilityExpenseService {
     }
   }
 
-  private FacilityExpenseResponse toResponse(FacilityExpense expense) {
+  public static FacilityExpenseResponse toResponse(FacilityExpense expense) {
     StaffProfile staff = expense.getRecordedByStaff();
     String key = expense.getInvoiceFileKey();
     FacilityExpenseReceiptResponse receipt =

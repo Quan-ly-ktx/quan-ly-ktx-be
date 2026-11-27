@@ -32,6 +32,7 @@
 		<spotless.version>3.3.0</spotless.version>
 		<google-java-format.version>1.29.0</google-java-format.version>
 		<poi.version>5.4.0</poi.version>
+		<openpdf.version>2.0.3</openpdf.version>
 	</properties>
 
 	<dependencyManagement>
@@ -115,11 +116,16 @@
 			<artifactId>s3</artifactId>
 		</dependency>
 
-		<!-- ==================== 5. EXCEL EXPORT (FR-14) ==================== -->
+		<!-- ==================== 5. EXCEL & PDF EXPORT (FR-14) ==================== -->
 		<dependency>
 			<groupId>org.apache.poi</groupId>
 			<artifactId>poi-ooxml</artifactId>
 			<version>${poi.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.github.librepdf</groupId>
+			<artifactId>openpdf</artifactId>
+			<version>${openpdf.version}</version>
 		</dependency>
 
 		<!-- ==================== 6. API DOCUMENTATION (SCALAR) ==================== -->
